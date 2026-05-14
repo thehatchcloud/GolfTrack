@@ -57,11 +57,15 @@ jobs:
         env:
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           OWNER: ${{ github.repository_owner }}
+          LITESTREAM_ACCESS_KEY_ID: ${{ secrets.LITESTREAM_ACCESS_KEY_ID }}
+          LITESTREAM_SECRET_ACCESS_KEY: ${{ secrets.LITESTREAM_SECRET_ACCESS_KEY }}
+          LITESTREAM_BUCKET: ${{ secrets.LITESTREAM_BUCKET }}
+          LITESTREAM_ENDPOINT: ${{ secrets.LITESTREAM_ENDPOINT }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ubuntu
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: GHCR_TOKEN,OWNER
+          envs: GHCR_TOKEN,OWNER,LITESTREAM_ACCESS_KEY_ID,LITESTREAM_SECRET_ACCESS_KEY,LITESTREAM_BUCKET,LITESTREAM_ENDPOINT
           script: |
             IMAGE="ghcr.io/${OWNER}/golftrack:latest"
 
@@ -79,6 +83,10 @@ jobs:
               -p 3000:3000 \
               -e DATABASE_URL="file:/data/prod.db" \
               -e NODE_ENV=production \
+              -e LITESTREAM_ACCESS_KEY_ID="$LITESTREAM_ACCESS_KEY_ID" \
+              -e LITESTREAM_SECRET_ACCESS_KEY="$LITESTREAM_SECRET_ACCESS_KEY" \
+              -e LITESTREAM_BUCKET="$LITESTREAM_BUCKET" \
+              -e LITESTREAM_ENDPOINT="$LITESTREAM_ENDPOINT" \
               -v /data/golftrack:/data \
               "$IMAGE"
 
