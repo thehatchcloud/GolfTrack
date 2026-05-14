@@ -1,12 +1,14 @@
-name: Deploy
+name: CI / Deploy
 
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
   test:
-    name: Test
+    name: Lint, build, and test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,12 +17,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run lint
+      - run: npm run build
       - run: npm test
 
   build:
     name: Build and push image
     runs-on: ubuntu-latest
     needs: test
+    if: github.event_name == 'push'
     permissions:
       contents: read
       packages: write
@@ -45,6 +50,7 @@ jobs:
     name: Deploy to exe.dev
     runs-on: ubuntu-latest
     needs: build
+    if: github.event_name == 'push'
     steps:
       - name: SSH deploy
         uses: appleboy/ssh-action@v1
