@@ -86,6 +86,8 @@ pull from it. If you prefer, you can set the package visibility to **Public** in
    - starts the new container (migrations run automatically before the server starts)
    - prunes old images
 
+The workflow also supports manual triggering: **Actions → CI / Deploy → Run workflow**. Use this when you've rotated a secret (e.g. `LITESTREAM_*`) and need to restart the container to pick up the new value without pushing a code change.
+
 ---
 
 ## Required environment variables
@@ -138,65 +140,70 @@ npm run db:seed      # seed with sample data
 
 ## Backups (Litestream)
 
-The container runs [Litestream](https://litestream.io) alongside the app. Litestream continuously streams SQLite WAL changes to an S3-compatible bucket, giving near-zero RPO without scheduled jobs.
+The container runs [Litestream](https://litestream.io) alongside the app, continuously streaming SQLite changes to an S3-compatible bucket. Production currently uses **DigitalOcean Spaces**; any S3-compatible provider works (B2, AWS S3, R2, etc.) by adjusting the endpoint.
 
-### One-time bucket setup (Backblaze B2 recommended)
+### How it runs in the container
 
-1. Create a B2 account and a private bucket (e.g. `golftrack-backups`).
-2. Create an application key scoped to that bucket with **Read and Write** permissions.
-3. Note the **Key ID**, **Application Key**, and **Endpoint** (e.g. `https://s3.us-west-004.backblazeb2.com`).
+`entrypoint.sh` orchestrates startup:
+
+1. If `LITESTREAM_BUCKET` is unset, runs `prisma migrate deploy` and starts `node server.js` directly (no replication — safe for local dev).
+2. If `LITESTREAM_BUCKET` is set:
+   - Restores `/data/prod.db` from the replica if it doesn't exist.
+   - Runs `prisma migrate deploy`.
+   - Starts `litestream replicate -exec "node server.js"`, which supervises the Node process and streams WAL changes to the bucket.
+
+> **Litestream v0.5 gotcha:** `-exec` does *not* run the command through `sh -c`. Pass a single executable, not a shell pipeline. Migrations must run as a separate step before `litestream replicate`, not chained inside `-exec` with `&&`.
+
+### One-time bucket setup
+
+Using DigitalOcean Spaces:
+
+1. Create a private Space (e.g. `golftrack-backup`) in the region of your choice.
+2. Create an Spaces access key (**API → Spaces Keys**) with read/write access. Note the **Key**, **Secret**, and **region**.
+
+Other providers work analogously — you just need a bucket, an access key pair, and the S3-compatible endpoint URL.
 
 ### Add GitHub Actions secrets
 
 In **Settings → Secrets and variables → Actions**, add:
 
-| Secret | Value |
-|--------|-------|
-| `LITESTREAM_ACCESS_KEY_ID` | B2 Key ID |
-| `LITESTREAM_SECRET_ACCESS_KEY` | B2 Application Key |
-| `LITESTREAM_BUCKET` | Bucket name, e.g. `golftrack-backups` |
-| `LITESTREAM_ENDPOINT` | B2 S3 endpoint, e.g. `https://s3.us-west-004.backblazeb2.com` |
+| Secret | Value | Notes |
+|--------|-------|-------|
+| `LITESTREAM_ACCESS_KEY_ID` | Spaces access key | |
+| `LITESTREAM_SECRET_ACCESS_KEY` | Spaces secret key | |
+| `LITESTREAM_BUCKET` | Bucket/Space name, e.g. `golftrack-backup` | Just the name — no URL, no path |
+| `LITESTREAM_ENDPOINT` | Region endpoint, e.g. `https://nyc3.digitaloceanspaces.com` | **Region-only.** Do not include the bucket name in the hostname. See gotcha below. |
 
-On the next deploy, the container will start replicating automatically.
+> **Endpoint format gotcha:** `LITESTREAM_ENDPOINT` must point at the region root, not the full bucket URL. DO Spaces shows your Space URL as `https://<bucket>.<region>.digitaloceanspaces.com` — do **not** paste that whole string. Use `https://<region>.digitaloceanspaces.com` instead. Litestream prepends the bucket itself in virtual-hosted style; if the bucket is already in the endpoint, every `ListObjectsV2` returns `404 NoSuchKey` because the bucket name effectively appears twice in the request URL.
+
+> **DO Spaces compatibility:** `litestream.yml` must **not** set `force-path-style: true`. DO Spaces only supports virtual-hosted-style URLs; path-style requests are 404'd. Other providers (e.g. B2) may need path-style — adjust per-provider.
 
 If `LITESTREAM_BUCKET` is not set, the container falls back to running without replication (safe for local dev / manual docker runs).
 
 ### Restore procedure
 
-To recover from data loss:
+The entrypoint auto-restores on first boot if `/data/prod.db` does not exist. To recover from data loss, wipe the persistent volume on the VM and restart the container — migrations run after restore, then the app starts against the recovered database:
 
 ```bash
-# On a fresh VM (or after wiping /data/golftrack), run the container once with:
+ssh <vmhost>
+docker stop golftrack && docker rm golftrack
+sudo rm /data/golftrack/prod.db   # or move it aside for inspection
+# Re-run the deploy workflow (Actions → CI / Deploy → Run workflow) or restart the container manually.
+```
+
+To restore manually without restarting the app (e.g. to inspect a recovered DB locally):
+
+```bash
 docker run --rm \
   -e LITESTREAM_ACCESS_KEY_ID="..." \
   -e LITESTREAM_SECRET_ACCESS_KEY="..." \
-  -e LITESTREAM_BUCKET="golftrack-backups" \
-  -e LITESTREAM_ENDPOINT="https://s3.us-west-004.backblazeb2.com" \
-  -v /data/golftrack:/data \
+  -e LITESTREAM_BUCKET="golftrack-backup" \
+  -e LITESTREAM_ENDPOINT="https://nyc3.digitaloceanspaces.com" \
+  -v $(pwd):/out \
   --entrypoint litestream \
   ghcr.io/<owner>/golftrack:latest \
-  restore -config /app/litestream.yml /data/prod.db
+  restore -config /app/litestream.yml /out/prod.db
 ```
-
-Then start the container normally — migrations will run and the app will pick up from the restored database.
-
-Alternatively, the entrypoint script auto-restores on first boot if the database file does not exist:
-
-```bash
-# Just start the container normally on a VM with no existing /data/golftrack/prod.db
-docker run -d --name golftrack --restart unless-stopped \
-  -p 3000:3000 \
-  -e DATABASE_URL="file:/data/prod.db" \
-  -e NODE_ENV=production \
-  -e LITESTREAM_ACCESS_KEY_ID="..." \
-  -e LITESTREAM_SECRET_ACCESS_KEY="..." \
-  -e LITESTREAM_BUCKET="golftrack-backups" \
-  -e LITESTREAM_ENDPOINT="https://s3.us-west-004.backblazeb2.com" \
-  -v /data/golftrack:/data \
-  ghcr.io/<owner>/golftrack:latest
-```
-
-The entrypoint will detect the missing database and restore from the latest replica before starting the app.
 
 ---
 

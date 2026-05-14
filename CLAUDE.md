@@ -86,7 +86,7 @@ Tests use Node's built-in test runner via `tsx --test`. They run against a **rea
 
 ## Deployment
 
-Docker-based, single container, SQLite on a persistent volume mounted at `/data`.
+Docker-based, single container, SQLite on a persistent volume mounted at `/data`. The container runs [Litestream](https://litestream.io) alongside the app, replicating SQLite to an S3-compatible bucket (DO Spaces in production).
 
 ```bash
 docker build -t golf-track .
@@ -95,5 +95,13 @@ docker run --rm -p 3000:3000 \
   -v $(pwd)/data:/data \
   golf-track
 ```
+
+Without `LITESTREAM_BUCKET` set, the container skips replication and runs the app standalone — that's the path the command above uses.
+
+### Container startup contract
+
+`entrypoint.sh` is the container's `CMD`. It is structured so that **`litestream replicate -exec` only ever wraps a single executable, never a shell pipeline.** Litestream v0.5's `-exec` does not invoke `sh -c`, so chaining commands with `&&` inside `-exec` would silently pass them as literal arguments to the first binary. Migrations therefore run as a separate shell step *before* `litestream replicate` starts. Keep this structure when modifying the entrypoint.
+
+If you change the S3-compatible backend (e.g. away from DO Spaces), revisit `litestream.yml` — `force-path-style` is provider-specific (DO Spaces rejects it; B2 requires it). The `LITESTREAM_ENDPOINT` secret must be the region root, not the full bucket URL. Details in `DEPLOYMENT.md`.
 
 Before first boot, run migrations: `npx prisma migrate deploy`. See `DEPLOYMENT.md` for full details.
