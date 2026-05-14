@@ -1,8 +1,10 @@
+import { fileURLToPath } from 'node:url'
+import { resolve } from 'node:path'
 import { PrismaClient, RoundStatus } from '@prisma/client'
 
 const prisma = new PrismaClient()
 
-async function main() {
+export function checkSeedGuards(): void {
   if (process.env.NODE_ENV === 'production') {
     throw new Error('Refusing to seed in production')
   }
@@ -10,6 +12,10 @@ async function main() {
   if (!dbUrl.includes('dev.db') && !dbUrl.includes('test.db')) {
     throw new Error(`Refusing to seed: DATABASE_URL does not look like a dev DB (${dbUrl})`)
   }
+}
+
+async function main() {
+  checkSeedGuards()
 
   await prisma.shot.deleteMany()
   await prisma.roundHole.deleteMany()
@@ -174,11 +180,13 @@ async function main() {
   })
 }
 
-main()
-  .catch((error) => {
-    console.error('Seed failed:', error)
-    process.exit(1)
-  })
-  .finally(async () => {
-    await prisma.$disconnect()
-  })
+if (resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
+  main()
+    .catch((error) => {
+      console.error('Seed failed:', error)
+      process.exit(1)
+    })
+    .finally(async () => {
+      await prisma.$disconnect()
+    })
+}
