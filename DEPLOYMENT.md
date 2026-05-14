@@ -136,13 +136,67 @@ npm run db:seed      # seed with sample data
 
 ---
 
-## Backups
+## Backups (Litestream)
 
-The database lives at `/data/golftrack/prod.db` on the VM. Copy it off the VM periodically:
+The container runs [Litestream](https://litestream.io) alongside the app. Litestream continuously streams SQLite WAL changes to an S3-compatible bucket, giving near-zero RPO without scheduled jobs.
+
+### One-time bucket setup (Backblaze B2 recommended)
+
+1. Create a B2 account and a private bucket (e.g. `golftrack-backups`).
+2. Create an application key scoped to that bucket with **Read and Write** permissions.
+3. Note the **Key ID**, **Application Key**, and **Endpoint** (e.g. `https://s3.us-west-004.backblazeb2.com`).
+
+### Add GitHub Actions secrets
+
+In **Settings → Secrets and variables → Actions**, add:
+
+| Secret | Value |
+|--------|-------|
+| `LITESTREAM_ACCESS_KEY_ID` | B2 Key ID |
+| `LITESTREAM_SECRET_ACCESS_KEY` | B2 Application Key |
+| `LITESTREAM_BUCKET` | Bucket name, e.g. `golftrack-backups` |
+| `LITESTREAM_ENDPOINT` | B2 S3 endpoint, e.g. `https://s3.us-west-004.backblazeb2.com` |
+
+On the next deploy, the container will start replicating automatically.
+
+If `LITESTREAM_BUCKET` is not set, the container falls back to running without replication (safe for local dev / manual docker runs).
+
+### Restore procedure
+
+To recover from data loss:
 
 ```bash
-scp golftrack.exe.xyz:/data/golftrack/prod.db ./backups/prod-$(date +%F-%H%M%S).db
+# On a fresh VM (or after wiping /data/golftrack), run the container once with:
+docker run --rm \
+  -e LITESTREAM_ACCESS_KEY_ID="..." \
+  -e LITESTREAM_SECRET_ACCESS_KEY="..." \
+  -e LITESTREAM_BUCKET="golftrack-backups" \
+  -e LITESTREAM_ENDPOINT="https://s3.us-west-004.backblazeb2.com" \
+  -v /data/golftrack:/data \
+  --entrypoint litestream \
+  ghcr.io/<owner>/golftrack:latest \
+  restore -config /app/litestream.yml /data/prod.db
 ```
+
+Then start the container normally — migrations will run and the app will pick up from the restored database.
+
+Alternatively, the entrypoint script auto-restores on first boot if the database file does not exist:
+
+```bash
+# Just start the container normally on a VM with no existing /data/golftrack/prod.db
+docker run -d --name golftrack --restart unless-stopped \
+  -p 3000:3000 \
+  -e DATABASE_URL="file:/data/prod.db" \
+  -e NODE_ENV=production \
+  -e LITESTREAM_ACCESS_KEY_ID="..." \
+  -e LITESTREAM_SECRET_ACCESS_KEY="..." \
+  -e LITESTREAM_BUCKET="golftrack-backups" \
+  -e LITESTREAM_ENDPOINT="https://s3.us-west-004.backblazeb2.com" \
+  -v /data/golftrack:/data \
+  ghcr.io/<owner>/golftrack:latest
+```
+
+The entrypoint will detect the missing database and restore from the latest replica before starting the app.
 
 ---
 

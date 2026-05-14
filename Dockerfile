@@ -20,6 +20,8 @@ ENV PORT=3000
 
 RUN mkdir -p /data
 
+COPY --from=litestream/litestream:latest /usr/local/bin/litestream /usr/local/bin/litestream
+
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
@@ -31,6 +33,10 @@ COPY --from=builder /app/prisma ./prisma
 COPY package.json package-lock.json ./
 RUN npm install --no-audit --no-fund prisma
 
+COPY litestream.yml ./
+COPY entrypoint.sh ./
+RUN chmod +x entrypoint.sh
+
 EXPOSE 3000
 
-CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && node server.js"]
+CMD ["./entrypoint.sh"]
