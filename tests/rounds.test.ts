@@ -79,6 +79,32 @@ test('createRound rejects front 9 or back 9 on a 9-hole course', async () => {
   }
 })
 
+test('concurrent addShot calls both succeed without unique constraint violations', async () => {
+  const ctx = await setupTestContext()
+
+  try {
+    await ctx.resetDatabase()
+    const course = await ctx.courses.createCourse(sampleCourseInput)
+    const round = await ctx.rounds.createRound(course.id)
+
+    const [result1, result2] = await Promise.all([
+      ctx.rounds.addShot(round.id, 1, 'Driver'),
+      ctx.rounds.addShot(round.id, 1, '7i'),
+    ])
+
+    assert.ok(result1)
+    assert.ok(result2)
+
+    const finalRound = await ctx.rounds.getRoundById(round.id)
+    const hole1 = finalRound?.holes.find((h) => h.holeNumber === 1)
+    assert.equal(hole1?.strokes, 2)
+    assert.equal(hole1?.shots.length, 2)
+    assert.deepEqual(hole1?.shots.map((s) => s.shotNumber), [1, 2])
+  } finally {
+    await ctx.teardown()
+  }
+})
+
 test('addShot increments strokes and appends ordered shots', async () => {
   const ctx = await setupTestContext()
 

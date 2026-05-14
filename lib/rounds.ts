@@ -1,4 +1,4 @@
-import { RoundStatus } from '@prisma/client'
+import { Prisma, RoundStatus } from '@prisma/client'
 
 import { db } from '@/lib/db'
 import { getCurrentHolePosition } from '@/lib/round-play'
@@ -180,10 +180,21 @@ export async function setCurrentHole(roundId: number, currentHole: number) {
 
 export async function addShot(roundId: number, holeNumber: number, club: string) {
   const parsed = shotInputSchema.parse({ club })
-  const roundHole = await ensureEditableRoundHole(roundId, holeNumber)
-  const nextShotNumber = (roundHole.shots.at(-1)?.shotNumber ?? 0) + 1
 
   return db.$transaction(async (tx) => {
+    const roundHole = await tx.roundHole.findFirst({
+      where: { roundId, holeNumber },
+      include: {
+        round: true,
+        shots: { orderBy: { shotNumber: 'asc' } },
+      },
+    })
+
+    if (!roundHole) throw new Error('Round hole not found')
+    if (roundHole.round.status !== RoundStatus.in_progress) throw new Error('Round is already completed')
+
+    const nextShotNumber = (roundHole.shots.at(-1)?.shotNumber ?? 0) + 1
+
     await tx.shot.create({
       data: {
         roundHoleId: roundHole.id,
@@ -200,30 +211,36 @@ export async function addShot(roundId: number, holeNumber: number, club: string)
     return tx.roundHole.findUnique({
       where: { id: roundHole.id },
       include: {
-        shots: {
-          orderBy: { shotNumber: 'asc' },
-        },
+        shots: { orderBy: { shotNumber: 'asc' } },
       },
     })
-  })
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
 }
 
 export async function undoLastShot(roundId: number, holeNumber: number) {
-  const roundHole = await ensureEditableRoundHole(roundId, holeNumber)
-  const latestShot = roundHole.shots.at(-1)
-
-  if (!latestShot) {
-    return db.roundHole.findUnique({
-      where: { id: roundHole.id },
+  return db.$transaction(async (tx) => {
+    const roundHole = await tx.roundHole.findFirst({
+      where: { roundId, holeNumber },
       include: {
-        shots: {
-          orderBy: { shotNumber: 'asc' },
-        },
+        round: true,
+        shots: { orderBy: { shotNumber: 'asc' } },
       },
     })
-  }
 
-  return db.$transaction(async (tx) => {
+    if (!roundHole) throw new Error('Round hole not found')
+    if (roundHole.round.status !== RoundStatus.in_progress) throw new Error('Round is already completed')
+
+    const latestShot = roundHole.shots.at(-1)
+
+    if (!latestShot) {
+      return tx.roundHole.findUnique({
+        where: { id: roundHole.id },
+        include: {
+          shots: { orderBy: { shotNumber: 'asc' } },
+        },
+      })
+    }
+
     await tx.shot.delete({
       where: { id: latestShot.id },
     })
@@ -236,12 +253,10 @@ export async function undoLastShot(roundId: number, holeNumber: number) {
     return tx.roundHole.findUnique({
       where: { id: roundHole.id },
       include: {
-        shots: {
-          orderBy: { shotNumber: 'asc' },
-        },
+        shots: { orderBy: { shotNumber: 'asc' } },
       },
     })
-  })
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
 }
 
 export async function updateShot(roundId: number, holeNumber: number, shotId: number, club: string) {
