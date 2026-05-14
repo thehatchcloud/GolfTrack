@@ -25,10 +25,11 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
 
-# Prisma CLI and all internal packages needed to run migrations at startup
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
-COPY --from=builder /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
+# Install prisma CLI so migrations can run at startup.
+# Done via npm rather than manual file copies — Prisma 6 has a complex
+# internal dependency graph (including WASM) that npm resolves correctly.
+COPY package.json package-lock.json ./
+RUN npm install --no-audit --no-fund prisma
 
 EXPOSE 3000
 
