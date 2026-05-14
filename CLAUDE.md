@@ -8,6 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **All changes must happen on a feature branch.** Never commit directly to `main`. Before starting work, create a new branch (`git checkout -b <descriptive-name>`).
 - **All merges to `main` go through a pull request.** Direct pushes to `main` are blocked by branch protection — including for repository admins. Open a PR with `gh pr create` and merge it from there.
+- **Never merge a PR.** Claude may open PRs and push updates to them, but only the repository owner may merge. Do not run `gh pr merge` under any circumstances.
 - Branch names should be short and descriptive (e.g., `fix/addshot-race`, `ci/run-on-prs`, `feat/auth-middleware`).
 
 ## Development commands
