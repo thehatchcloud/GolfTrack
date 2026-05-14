@@ -1,281 +1,153 @@
 # Deployment Guide
 
-This app is ready to deploy as a single-container Next.js application with SQLite.
-
-Recommended deployment model:
-- GitHub repo for source control
-- Docker-based deploy to your exe.dev server
-- persistent disk mount for SQLite database storage
+Pushes to `main` automatically test, build, and deploy to the exe.dev VM via the workflow in `.github/workflows/deploy.yml`.
 
 ---
 
-## 1. Deployment model
+## Deployment model
 
-The app uses:
-- Next.js standalone output
-- Prisma with SQLite
-- single process web server
-- one SQLite file stored on persistent disk
-
-This is a good fit for a simple private or low-traffic deployment.
+- Next.js standalone output running in a Docker container
+- SQLite database on a persistent directory on the VM (`/data/golftrack/`)
+- Container restarts automatically when the VM reboots (`--restart unless-stopped`)
+- Migrations run automatically inside the container at startup before the server process starts
+- exe.dev transparently proxies port 3000 at `https://<vmname>.exe.xyz:3000/`
 
 ---
 
-## 2. Files added for deployment
+## One-time setup
 
-- `Dockerfile`
-- `.dockerignore`
-- `.env.example`
-- `DEPLOYMENT.md`
+### 1. Create the exe.dev VM
 
----
-
-## 3. Required environment variables
-
-Create a `.env` file or set these in your server runtime:
-
-```env
-NODE_ENV=production
-PORT=3000
-DATABASE_URL="file:/data/prod.db"
-```
-
-### Important
-`/data/prod.db` should live on a **persistent mounted volume**, not ephemeral container storage.
-
----
-
-## 4. Build locally
-
-From the app directory:
+Start a VM using the `exeuntu` image, which includes Docker:
 
 ```bash
-cd golf-app
+ssh exe.dev new --name golftrack
+```
+
+Make it publicly accessible:
+
+```bash
+ssh exe.dev share set-public golftrack
+```
+
+Note the VM hostname (`golftrack.exe.xyz` or similar) — this is `DEPLOY_HOST`.
+
+### 2. Generate a deploy SSH key
+
+Generate a key pair for GitHub Actions to use:
+
+```bash
+ssh-keygen -t ed25519 -C "github-actions-golftrack" -f ~/.ssh/golftrack_deploy
+```
+
+Register the public key with exe.dev:
+
+```bash
+cat ~/.ssh/golftrack_deploy.pub | ssh exe.dev ssh-key add
+```
+
+The private key (`~/.ssh/golftrack_deploy`) becomes the `DEPLOY_SSH_KEY` secret.
+
+### 3. Generate a GHCR token
+
+Create a GitHub personal access token (classic) with the `read:packages` scope at
+**GitHub → Settings → Developer settings → Personal access tokens**.
+
+This is the `GHCR_TOKEN` secret — it lets the VM pull the container image from
+GitHub Container Registry.
+
+### 4. Set GitHub Actions secrets
+
+In the repository: **Settings → Secrets and variables → Actions → New repository secret**
+
+| Secret | Value |
+|--------|-------|
+| `DEPLOY_HOST` | exe.dev VM hostname, e.g. `golftrack.exe.xyz` |
+| `DEPLOY_SSH_KEY` | Contents of `~/.ssh/golftrack_deploy` (the private key) |
+| `GHCR_TOKEN` | PAT with `read:packages` scope |
+
+### 5. Make the GHCR package visible to the VM
+
+After the first successful workflow run, a package named `golftrack` will appear under
+your GitHub org/account. The `GHCR_TOKEN` PAT must belong to a user with access to
+pull from it. If you prefer, you can set the package visibility to **Public** in
+**GitHub → Packages → golftrack → Package settings**, which eliminates the need for
+`GHCR_TOKEN` authentication (remove the login line in the workflow script).
+
+---
+
+## What happens on each push to `main`
+
+1. **Test** — runs `npm test` against a fresh SQLite test database
+2. **Build** — builds the Docker image and pushes to `ghcr.io/<owner>/golftrack:latest`
+3. **Deploy** — SSHes into the exe.dev VM:
+   - pulls the new image
+   - stops and removes the old container
+   - starts the new container (migrations run automatically before the server starts)
+   - prunes old images
+
+---
+
+## Required environment variables
+
+| Variable | Value |
+|----------|-------|
+| `NODE_ENV` | `production` |
+| `PORT` | `3000` |
+| `DATABASE_URL` | `file:/data/prod.db` |
+
+These are set directly in the `docker run` command in the deploy workflow. No `.env` file is needed on the VM.
+
+---
+
+## Local development
+
+```bash
 npm install
-npm run build
+npm run db:migrate
+npm run dev
 ```
 
-To test production mode locally:
+## Local production build
 
 ```bash
+npm run build
 npm start
 ```
 
----
-
-## 5. Docker build
-
-Build the image:
+## Manual Docker run (local testing)
 
 ```bash
 docker build -t golf-track .
-```
-
-Run it locally:
-
-```bash
-docker run \
-  --rm \
-  -p 3000:3000 \
+docker run --rm -p 3000:3000 \
   -e DATABASE_URL="file:/data/prod.db" \
   -v $(pwd)/data:/data \
   golf-track
 ```
 
-Then open:
+## Prisma commands
 
-```text
-http://localhost:3000
+```bash
+npm run db:migrate   # create and apply migration (dev)
+npm run db:deploy    # apply existing migrations (production)
+npm run db:generate  # regenerate client after schema changes
+npm run db:seed      # seed with sample data
 ```
 
 ---
 
-## 6. Database setup in production
+## Backups
 
-Because the app uses SQLite, the DB file must be stored on a persistent disk.
-
-Recommended mounted path:
-- container path: `/data`
-- database file: `/data/prod.db`
-
-### First deploy
-Before first production start, run migrations:
+The database lives at `/data/golftrack/prod.db` on the VM. Copy it off the VM periodically:
 
 ```bash
-docker run \
-  --rm \
-  -e DATABASE_URL="file:/data/prod.db" \
-  -v /your/persistent/path:/data \
-  golf-track \
-  npx prisma migrate deploy
-```
-
-Optional seed for a non-empty first environment:
-
-```bash
-docker run \
-  --rm \
-  -e DATABASE_URL="file:/data/prod.db" \
-  -v /your/persistent/path:/data \
-  golf-track \
-  npx prisma db seed
-```
-
-For real production, you will likely skip seed unless you want demo/sample data.
-
----
-
-## 7. Suggested deploy flow on exe.dev
-
-Exact steps depend on how exe.dev expects services to be defined, but the general flow is:
-
-1. push code to GitHub
-2. connect the repo to exe.dev
-3. configure Docker build using `Dockerfile`
-4. attach a persistent volume mounted at `/data`
-5. set env vars:
-   - `NODE_ENV=production`
-   - `PORT=3000`
-   - `DATABASE_URL=file:/data/prod.db`
-6. run `npx prisma migrate deploy` before or during first release
-7. start the app
-
-If exe.dev supports a release command, use:
-
-```bash
-npx prisma migrate deploy
-```
-
-If it only supports a start command, run migrations manually before first boot.
-
----
-
-## 8. GitHub setup recommendation
-
-Recommended repo contents:
-- application source
-- prisma schema and migrations
-- deployment files
-- spec/docs if you want to keep them in repo
-
-Do **not** commit:
-- `.env`
-- local sqlite db files
-- test db files
-- `node_modules`
-- `.next`
-
-You can commit:
-- `prisma/migrations`
-- `prisma/schema.prisma`
-
----
-
-## 9. Backup recommendation
-
-Since production uses SQLite, backup is simple.
-
-### Minimum recommendation
-Regularly copy the database file:
-
-```bash
-cp /mounted/data/prod.db /mounted/backups/prod-$(date +%F-%H%M%S).db
-```
-
-### Better recommendation
-- daily backup job
-- retain several days/weeks
-- optionally copy backup off-server
-
----
-
-## 10. Upgrade / deploy updates
-
-For code changes:
-1. push updated code to GitHub
-2. rebuild image on exe.dev
-3. run migrations:
-   ```bash
-   npx prisma migrate deploy
-   ```
-4. roll out new container
-
-Because the DB is on a persistent volume, the data remains across deploys.
-
----
-
-## 11. Operational notes
-
-### This setup is good for
-- personal use
-- private family/friends use
-- low concurrency
-- simple maintenance
-
-### This setup is not ideal for
-- high write concurrency
-- multi-instance horizontal scaling
-- large public production traffic
-
-If the app grows significantly, the next step would likely be moving from SQLite to Postgres.
-
----
-
-## 12. Quick start checklist
-
-- [ ] push repo to GitHub
-- [ ] configure exe.dev app from repo
-- [ ] mount persistent volume to `/data`
-- [ ] set `DATABASE_URL=file:/data/prod.db`
-- [ ] run `npx prisma migrate deploy`
-- [ ] deploy app
-- [ ] verify home page loads
-- [ ] create a course
-- [ ] start and submit a round
-- [ ] confirm DB persists after restart
-
----
-
-## 13. Commands reference
-
-### Local dev
-```bash
-npm run dev
-```
-
-### Local tests
-```bash
-npm test
-```
-
-### Local production build
-```bash
-npm run build
-npm start
-```
-
-### Prisma local migration
-```bash
-npm run db:migrate
-```
-
-### Prisma production migration
-```bash
-npm run db:deploy
+scp golftrack.exe.xyz:/data/golftrack/prod.db ./backups/prod-$(date +%F-%H%M%S).db
 ```
 
 ---
 
-## 14. Recommendation for your setup
+## Upgrading from SQLite to Postgres
 
-Given your plan:
-- host code in GitHub
-- deploy to exe.dev server
-
-I recommend:
-- use the included `Dockerfile`
-- attach persistent storage at `/data`
-- set `DATABASE_URL=file:/data/prod.db`
-- run `npx prisma migrate deploy` on each deploy
-
-That is the simplest clean production path for this app.
+If traffic grows, swap `DATABASE_URL` for a Postgres connection string and update
+`prisma/schema.prisma` to use `provider = "postgresql"`. The rest of the app is
+unchanged.
