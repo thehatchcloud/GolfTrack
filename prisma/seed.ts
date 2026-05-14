@@ -3,6 +3,14 @@ import { PrismaClient, RoundStatus } from '@prisma/client'
 const prisma = new PrismaClient()
 
 async function main() {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Refusing to seed in production')
+  }
+  const dbUrl = process.env.DATABASE_URL ?? ''
+  if (!dbUrl.includes('dev.db') && !dbUrl.includes('test.db')) {
+    throw new Error(`Refusing to seed: DATABASE_URL does not look like a dev DB (${dbUrl})`)
+  }
+
   await prisma.shot.deleteMany()
   await prisma.roundHole.deleteMany()
   await prisma.round.deleteMany()
