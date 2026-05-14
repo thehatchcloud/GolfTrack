@@ -1,36 +1,74 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Golf Track
 
-## Getting Started
+A mobile-first golf score tracking web app built with:
+- Next.js
+- TypeScript
+- Tailwind CSS
+- Prisma
+- SQLite
 
-First, run the development server:
+## Features
+
+- create 9-hole and 18-hole courses
+- define par for each hole
+- start rounds from saved courses
+- for 18-hole courses, choose:
+  - full course
+  - front 9
+  - back 9
+- track shots hole-by-hole
+- record the club used for each shot
+- undo, edit, and delete shots
+- review and submit rounds with notes
+- cancel in-progress rounds
+- browse completed round history
+
+## Local development
 
 ```bash
+npm install
+npm run db:migrate
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```text
+http://localhost:3000
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Database
 
-## Learn More
+Local development uses SQLite.
 
-To learn more about Next.js, take a look at the following resources:
+Default env:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```env
+DATABASE_URL="file:./dev.db"
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Tests
 
-## Deploy on Vercel
+```bash
+npm test
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Production / deployment
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See:
+- `DEPLOYMENT.md`
+- `.env.example`
+- `Dockerfile`
+
+Recommended production setup:
+- Docker container
+- persistent volume mounted at `/data`
+- `DATABASE_URL=file:/data/prod.db`
+
+## Prisma commands
+
+```bash
+npm run db:migrate
+npm run db:deploy
+npm run db:seed
+```

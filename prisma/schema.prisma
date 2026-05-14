@@ -1,0 +1,84 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Course {
+  id        Int          @id @default(autoincrement())
+  name      String
+  holeCount Int          @map("hole_count")
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  holes  CourseHole[]
+  rounds Round[]
+
+  @@map("courses")
+}
+
+model CourseHole {
+  id         Int    @id @default(autoincrement())
+  courseId   Int    @map("course_id")
+  holeNumber Int    @map("hole_number")
+  par        Int
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, holeNumber])
+  @@map("course_holes")
+}
+
+model Round {
+  id          Int         @id @default(autoincrement())
+  courseId    Int         @map("course_id")
+  status      RoundStatus
+  startedAt   DateTime    @default(now()) @map("started_at")
+  finishedAt  DateTime?   @map("finished_at")
+  note        String?
+  currentHole Int         @default(1) @map("current_hole")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  holes  RoundHole[]
+
+  @@map("rounds")
+}
+
+model RoundHole {
+  id         Int      @id @default(autoincrement())
+  roundId    Int      @map("round_id")
+  holeNumber Int      @map("hole_number")
+  par        Int
+  strokes    Int      @default(0)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  round Round @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  shots Shot[]
+
+  @@unique([roundId, holeNumber])
+  @@map("round_holes")
+}
+
+model Shot {
+  id          Int      @id @default(autoincrement())
+  roundHoleId Int      @map("round_hole_id")
+  shotNumber  Int      @map("shot_number")
+  club        String
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  roundHole RoundHole @relation(fields: [roundHoleId], references: [id], onDelete: Cascade)
+
+  @@unique([roundHoleId, shotNumber])
+  @@map("shots")
+}
+
+enum RoundStatus {
+  in_progress
+  completed
+}

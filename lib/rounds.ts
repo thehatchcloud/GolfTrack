@@ -1,0 +1,356 @@
+import { RoundStatus } from '@prisma/client'
+
+import { db } from '@/lib/db'
+import { getCurrentHolePosition } from '@/lib/round-play'
+import { calculateRoundTotals } from '@/lib/scoring'
+import {
+  roundCompletionInputSchema,
+  setCurrentHoleInputSchema,
+  shotInputSchema,
+  startRoundInputSchema,
+  updateShotInputSchema,
+} from '@/lib/validation'
+
+async function ensureEditableRoundHole(roundId: number, holeNumber: number) {
+  const roundHole = await db.roundHole.findFirst({
+    where: {
+      roundId,
+      holeNumber,
+    },
+    include: {
+      round: true,
+      shots: {
+        orderBy: { shotNumber: 'asc' },
+      },
+    },
+  })
+
+  if (!roundHole) {
+    throw new Error('Round hole not found')
+  }
+
+  if (roundHole.round.status !== RoundStatus.in_progress) {
+    throw new Error('Round is already completed')
+  }
+
+  return roundHole
+}
+
+export async function getInProgressRound() {
+  return db.round.findFirst({
+    where: { status: RoundStatus.in_progress },
+    include: {
+      course: true,
+      holes: {
+        orderBy: { holeNumber: 'asc' },
+      },
+    },
+    orderBy: { startedAt: 'desc' },
+  })
+}
+
+export async function listCompletedRounds() {
+  const rounds = await db.round.findMany({
+    where: { status: RoundStatus.completed },
+    include: {
+      course: true,
+      holes: {
+        orderBy: { holeNumber: 'asc' },
+      },
+    },
+    orderBy: [{ finishedAt: 'desc' }, { startedAt: 'desc' }],
+  })
+
+  return rounds.map((round) => {
+    const totals = calculateRoundTotals(round.holes)
+
+    return {
+      ...round,
+      ...totals,
+    }
+  })
+}
+
+export async function getRoundById(id: number) {
+  return db.round.findUnique({
+    where: { id },
+    include: {
+      course: true,
+      holes: {
+        include: {
+          shots: {
+            orderBy: { shotNumber: 'asc' },
+          },
+        },
+        orderBy: { holeNumber: 'asc' },
+      },
+    },
+  })
+}
+
+export async function createRound(courseId: number, playMode: 'full' | 'front9' | 'back9' = 'full') {
+  const parsed = startRoundInputSchema.parse({ courseId, playMode })
+
+  const existingRound = await getInProgressRound()
+  if (existingRound) {
+    throw new Error('A round is already in progress')
+  }
+
+  const course = await db.course.findUnique({
+    where: { id: parsed.courseId },
+    include: {
+      holes: {
+        orderBy: { holeNumber: 'asc' },
+      },
+    },
+  })
+
+  if (!course) {
+    throw new Error('Course not found')
+  }
+
+  if (course.holeCount !== 18 && parsed.playMode !== 'full') {
+    throw new Error('Front 9 or back 9 is only available on 18-hole courses')
+  }
+
+  const selectedHoles =
+    parsed.playMode === 'front9'
+      ? course.holes.filter((hole) => hole.holeNumber >= 1 && hole.holeNumber <= 9)
+      : parsed.playMode === 'back9'
+        ? course.holes.filter((hole) => hole.holeNumber >= 10 && hole.holeNumber <= 18)
+        : course.holes
+
+  const startingHole = selectedHoles[0]?.holeNumber ?? 1
+
+  return db.$transaction((tx) =>
+    tx.round.create({
+      data: {
+        courseId: course.id,
+        status: RoundStatus.in_progress,
+        currentHole: startingHole,
+        holes: {
+          create: selectedHoles.map((hole) => ({
+            holeNumber: hole.holeNumber,
+            par: hole.par,
+            strokes: 0,
+          })),
+        },
+      },
+      include: {
+        course: true,
+        holes: {
+          orderBy: { holeNumber: 'asc' },
+        },
+      },
+    }),
+  )
+}
+
+export async function setCurrentHole(roundId: number, currentHole: number) {
+  const parsed = setCurrentHoleInputSchema.parse({ currentHole })
+
+  const round = await db.round.findUnique({
+    where: { id: roundId },
+    include: {
+      course: true,
+      holes: {
+        orderBy: { holeNumber: 'asc' },
+      },
+    },
+  })
+
+  if (!round) {
+    throw new Error('Round not found')
+  }
+
+  if (round.status !== RoundStatus.in_progress) {
+    throw new Error('Round is already completed')
+  }
+
+  const availableHoleNumbers = round.holes.map((hole) => hole.holeNumber)
+  if (!availableHoleNumbers.includes(parsed.currentHole)) {
+    throw new Error('Invalid hole number')
+  }
+
+  return db.round.update({
+    where: { id: roundId },
+    data: { currentHole: parsed.currentHole },
+  })
+}
+
+export async function addShot(roundId: number, holeNumber: number, club: string) {
+  const parsed = shotInputSchema.parse({ club })
+  const roundHole = await ensureEditableRoundHole(roundId, holeNumber)
+  const nextShotNumber = (roundHole.shots.at(-1)?.shotNumber ?? 0) + 1
+
+  return db.$transaction(async (tx) => {
+    await tx.shot.create({
+      data: {
+        roundHoleId: roundHole.id,
+        shotNumber: nextShotNumber,
+        club: parsed.club,
+      },
+    })
+
+    await tx.roundHole.update({
+      where: { id: roundHole.id },
+      data: { strokes: nextShotNumber },
+    })
+
+    return tx.roundHole.findUnique({
+      where: { id: roundHole.id },
+      include: {
+        shots: {
+          orderBy: { shotNumber: 'asc' },
+        },
+      },
+    })
+  })
+}
+
+export async function undoLastShot(roundId: number, holeNumber: number) {
+  const roundHole = await ensureEditableRoundHole(roundId, holeNumber)
+  const latestShot = roundHole.shots.at(-1)
+
+  if (!latestShot) {
+    return db.roundHole.findUnique({
+      where: { id: roundHole.id },
+      include: {
+        shots: {
+          orderBy: { shotNumber: 'asc' },
+        },
+      },
+    })
+  }
+
+  return db.$transaction(async (tx) => {
+    await tx.shot.delete({
+      where: { id: latestShot.id },
+    })
+
+    await tx.roundHole.update({
+      where: { id: roundHole.id },
+      data: { strokes: latestShot.shotNumber - 1 },
+    })
+
+    return tx.roundHole.findUnique({
+      where: { id: roundHole.id },
+      include: {
+        shots: {
+          orderBy: { shotNumber: 'asc' },
+        },
+      },
+    })
+  })
+}
+
+export async function updateShot(roundId: number, holeNumber: number, shotId: number, club: string) {
+  const parsed = updateShotInputSchema.parse({ club })
+  const roundHole = await ensureEditableRoundHole(roundId, holeNumber)
+
+  const shot = roundHole.shots.find((item) => item.id === shotId)
+  if (!shot) {
+    throw new Error('Shot not found')
+  }
+
+  return db.shot.update({
+    where: { id: shotId },
+    data: { club: parsed.club },
+  })
+}
+
+export async function deleteShot(roundId: number, holeNumber: number, shotId: number) {
+  const roundHole = await ensureEditableRoundHole(roundId, holeNumber)
+  const shot = roundHole.shots.find((item) => item.id === shotId)
+
+  if (!shot) {
+    throw new Error('Shot not found')
+  }
+
+  const remainingShots = roundHole.shots.filter((item) => item.id !== shotId)
+
+  return db.$transaction(async (tx) => {
+    await tx.shot.delete({
+      where: { id: shotId },
+    })
+
+    for (const [index, remainingShot] of remainingShots.entries()) {
+      const nextShotNumber = index + 1
+      if (remainingShot.shotNumber !== nextShotNumber) {
+        await tx.shot.update({
+          where: { id: remainingShot.id },
+          data: { shotNumber: nextShotNumber },
+        })
+      }
+    }
+
+    await tx.roundHole.update({
+      where: { id: roundHole.id },
+      data: { strokes: remainingShots.length },
+    })
+
+    return tx.roundHole.findUnique({
+      where: { id: roundHole.id },
+      include: {
+        shots: {
+          orderBy: { shotNumber: 'asc' },
+        },
+      },
+    })
+  })
+}
+
+export async function completeRound(roundId: number, note?: string | null) {
+  const parsed = roundCompletionInputSchema.parse({ note })
+
+  const round = await db.round.findUnique({
+    where: { id: roundId },
+  })
+
+  if (!round) {
+    throw new Error('Round not found')
+  }
+
+  if (round.status !== RoundStatus.in_progress) {
+    throw new Error('Round is already completed')
+  }
+
+  return db.round.update({
+    where: { id: roundId },
+    data: {
+      status: RoundStatus.completed,
+      finishedAt: new Date(),
+      note: parsed.note ?? null,
+    },
+  })
+}
+
+export async function cancelRound(roundId: number) {
+  const round = await db.round.findUnique({
+    where: { id: roundId },
+  })
+
+  if (!round) {
+    throw new Error('Round not found')
+  }
+
+  if (round.status !== RoundStatus.in_progress) {
+    throw new Error('Only in-progress rounds can be cancelled')
+  }
+
+  await db.round.delete({
+    where: { id: roundId },
+  })
+
+  return { id: roundId, cancelled: true }
+}
+
+export function getRoundPosition(round: {
+  holes: Array<{ holeNumber: number }>
+  currentHole: number
+}) {
+  return getCurrentHolePosition(
+    round.holes.map((hole) => hole.holeNumber),
+    round.currentHole,
+  )
+}
