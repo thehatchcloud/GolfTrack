@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 export const holeSchema = z.object({
   holeNumber: z.number().int().min(1),
-  par: z.union([z.literal(3), z.literal(4), z.literal(5)]),
+  par: z.union([z.literal(3), z.literal(4), z.literal(5), z.literal(6)]),
 })
 
 export const courseInputSchema =

@@ -154,7 +154,7 @@ export function CourseForm({ mode, initialValues, courseId }: CourseFormProps) {
                 onChange={(event) => updatePar(hole.holeNumber, Number(event.target.value))}
                 className="rounded-lg border border-stone-300 px-3 py-2 text-sm focus:border-emerald-600"
               >
-                {[3, 4, 5].map((par) => (
+                {[3, 4, 5, 6].map((par) => (
                   <option key={par} value={par}>
                     Par {par}
                   </option>
