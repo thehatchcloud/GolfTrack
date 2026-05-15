@@ -4,18 +4,18 @@ import { AppShell } from '@/components/app-shell'
 import { SectionCard } from '@/components/section-card'
 import { getRoundPlayLabel } from '@/lib/round-play'
 import { formatRelativeToPar } from '@/lib/scoring'
-import { listCompletedRounds } from '@/lib/rounds'
+import { getInProgressRound, listCompletedRounds } from '@/lib/rounds'
 
 export const dynamic = 'force-dynamic'
 
 export default async function RoundsPage() {
-  const rounds = await listCompletedRounds()
+  const [inProgressRound, rounds] = await Promise.all([getInProgressRound(), listCompletedRounds()])
 
   return (
     <AppShell>
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-stone-900">Past Rounds</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-stone-900">Rounds</h1>
           <p className="mt-1 text-sm text-stone-600">Review completed rounds and notes.</p>
         </div>
         <Link
@@ -25,6 +25,33 @@ export default async function RoundsPage() {
           New Round
         </Link>
       </div>
+
+      {inProgressRound && (
+        <Link
+          href={`/rounds/${inProgressRound.id}/play`}
+          className="mb-6 flex items-center justify-between rounded-2xl border border-emerald-300 bg-emerald-50 p-5 shadow-sm transition hover:border-emerald-400 hover:bg-emerald-100/60"
+        >
+          <div>
+            <div className="mb-1 flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-2.5 py-0.5 text-xs font-semibold text-white">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+                In Progress
+              </span>
+            </div>
+            <h2 className="text-base font-semibold text-stone-900">{inProgressRound.course.name}</h2>
+            <p className="mt-0.5 text-sm text-stone-600">
+              {getRoundPlayLabel(
+                inProgressRound.course.holeCount,
+                inProgressRound.holes.map((hole) => hole.holeNumber),
+              )}
+              {' · '}Hole {inProgressRound.currentHole}
+            </p>
+          </div>
+          <span className="shrink-0 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white">
+            Continue
+          </span>
+        </Link>
+      )}
 
       {rounds.length === 0 ? (
         <SectionCard
