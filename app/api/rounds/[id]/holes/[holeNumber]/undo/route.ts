@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 
+import { toResponse } from '@/lib/errors'
 import { undoLastShot } from '@/lib/rounds'
 
 function parseId(value: string) {
@@ -19,11 +20,6 @@ export async function POST(_: Request, context: { params: Promise<{ id: string; 
     const roundHole = await undoLastShot(roundId, holeNumber)
     return NextResponse.json(roundHole)
   } catch (error) {
-    if (error instanceof Error) {
-      const status = error.message === 'Round hole not found' ? 404 : 400
-      return NextResponse.json({ error: error.message }, { status })
-    }
-
-    return NextResponse.json({ error: 'Unable to undo shot' }, { status: 500 })
+    return toResponse(error)
   }
 }

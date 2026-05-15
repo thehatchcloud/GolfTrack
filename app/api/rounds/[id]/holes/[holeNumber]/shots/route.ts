@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
-import { ZodError } from 'zod'
 
+import { toResponse } from '@/lib/errors'
 import { addShot } from '@/lib/rounds'
 
 function parseId(value: string) {
@@ -25,20 +25,6 @@ export async function POST(
 
     return NextResponse.json(roundHole)
   } catch (error) {
-    if (error instanceof ZodError) {
-      return NextResponse.json(
-        {
-          error: error.issues[0]?.message ?? 'Invalid shot data',
-        },
-        { status: 400 },
-      )
-    }
-
-    if (error instanceof Error) {
-      const status = error.message === 'Round hole not found' ? 404 : 400
-      return NextResponse.json({ error: error.message }, { status })
-    }
-
-    return NextResponse.json({ error: 'Unable to add shot' }, { status: 500 })
+    return toResponse(error)
   }
 }

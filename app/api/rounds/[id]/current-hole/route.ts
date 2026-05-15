@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
-import { ZodError } from 'zod'
 
+import { toResponse } from '@/lib/errors'
 import { setCurrentHole } from '@/lib/rounds'
 
 function parseId(value: string) {
@@ -21,20 +21,6 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 
     return NextResponse.json({ id: round.id, currentHole: round.currentHole })
   } catch (error) {
-    if (error instanceof ZodError) {
-      return NextResponse.json(
-        {
-          error: error.issues[0]?.message ?? 'Invalid current hole',
-        },
-        { status: 400 },
-      )
-    }
-
-    if (error instanceof Error) {
-      const status = error.message === 'Round not found' ? 404 : 400
-      return NextResponse.json({ error: error.message }, { status })
-    }
-
-    return NextResponse.json({ error: 'Unable to update current hole' }, { status: 500 })
+    return toResponse(error)
   }
 }
