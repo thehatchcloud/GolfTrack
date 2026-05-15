@@ -262,6 +262,30 @@ test('cancelRound deletes an in-progress round and its related data', async () =
   }
 })
 
+test('concurrent createRound only allows one in-progress round', async () => {
+  const ctx = await setupTestContext()
+
+  try {
+    await ctx.resetDatabase()
+    const course = await ctx.courses.createCourse(sampleCourseInput)
+
+    const results = await Promise.allSettled([
+      ctx.rounds.createRound(course.id),
+      ctx.rounds.createRound(course.id),
+    ])
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled')
+    const rejected = results.filter((r) => r.status === 'rejected')
+
+    assert.equal(fulfilled.length, 1)
+    assert.equal(rejected.length, 1)
+    assert.match((rejected[0] as PromiseRejectedResult).reason.message, /A round is already in progress/)
+    assert.equal(await ctx.db.round.count(), 1)
+  } finally {
+    await ctx.teardown()
+  }
+})
+
 test('cancelRound rejects completed rounds', async () => {
   const ctx = await setupTestContext()
 

@@ -122,28 +122,35 @@ export async function createRound(courseId: number, playMode: 'full' | 'front9' 
 
   const startingHole = selectedHoles[0]?.holeNumber ?? 1
 
-  return db.$transaction((tx) =>
-    tx.round.create({
-      data: {
-        courseId: course.id,
-        status: RoundStatus.in_progress,
-        currentHole: startingHole,
-        holes: {
-          create: selectedHoles.map((hole) => ({
-            holeNumber: hole.holeNumber,
-            par: hole.par,
-            strokes: 0,
-          })),
+  try {
+    return await db.$transaction((tx) =>
+      tx.round.create({
+        data: {
+          courseId: course.id,
+          status: RoundStatus.in_progress,
+          currentHole: startingHole,
+          holes: {
+            create: selectedHoles.map((hole) => ({
+              holeNumber: hole.holeNumber,
+              par: hole.par,
+              strokes: 0,
+            })),
+          },
         },
-      },
-      include: {
-        course: true,
-        holes: {
-          orderBy: { holeNumber: 'asc' },
+        include: {
+          course: true,
+          holes: {
+            orderBy: { holeNumber: 'asc' },
+          },
         },
-      },
-    }),
-  )
+      }),
+    )
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+      throw new Error('A round is already in progress')
+    }
+    throw e
+  }
 }
 
 export async function setCurrentHole(roundId: number, currentHole: number) {
