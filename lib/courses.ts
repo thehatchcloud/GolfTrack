@@ -57,7 +57,10 @@ export async function updateCourse(id: number, input: CourseInput) {
   const data = courseInputSchema.parse(input)
 
   return db.$transaction(async (tx) => {
-    const existing = await tx.course.findUnique({ where: { id }, select: { id: true } })
+    const existing = await tx.course.findUnique({
+      where: { id },
+      include: { holes: true },
+    })
     if (!existing) {
       throw new NotFoundError('Course not found')
     }
@@ -70,17 +73,29 @@ export async function updateCourse(id: number, input: CourseInput) {
       },
     })
 
-    await tx.courseHole.deleteMany({
-      where: { courseId: id },
-    })
+    const existingByHole = new Map(existing.holes.map((h) => [h.holeNumber, h]))
+    const incomingByHole = new Map(data.holes.map((h) => [h.holeNumber, h]))
 
-    await tx.courseHole.createMany({
-      data: data.holes.map((hole) => ({
-        courseId: id,
-        holeNumber: hole.holeNumber,
-        par: hole.par,
-      })),
-    })
+    for (const hole of data.holes) {
+      const ex = existingByHole.get(hole.holeNumber)
+      if (ex) {
+        if (ex.par !== hole.par) {
+          await tx.courseHole.update({ where: { id: ex.id }, data: { par: hole.par } })
+        }
+      } else {
+        await tx.courseHole.create({
+          data: { courseId: id, holeNumber: hole.holeNumber, par: hole.par },
+        })
+      }
+    }
+
+    const removedIds = existing.holes
+      .filter((h) => !incomingByHole.has(h.holeNumber))
+      .map((h) => h.id)
+
+    if (removedIds.length > 0) {
+      await tx.courseHole.deleteMany({ where: { id: { in: removedIds } } })
+    }
 
     return tx.course.findUnique({
       where: { id },
