@@ -129,7 +129,10 @@ export function ShotList({ shots, roundId, holeNumber, editable = false }: ShotL
                         onChange={(event) => setEditingClub(event.target.value)}
                         className="w-full rounded-xl border border-stone-300 px-3 py-3 text-sm focus:border-emerald-600"
                       >
-                        {DEFAULT_CLUBS.map((club) => (
+                        {(DEFAULT_CLUBS.includes(editingClub as typeof DEFAULT_CLUBS[number])
+                          ? DEFAULT_CLUBS
+                          : [editingClub, ...DEFAULT_CLUBS]
+                        ).map((club) => (
                           <option key={club} value={club}>
                             {club}
                           </option>
