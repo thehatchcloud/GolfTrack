@@ -75,13 +75,23 @@ test('courseInputSchema rejects invalid low par values', () => {
   )
 })
 
-test('courseInputSchema rejects par 6', () => {
+test('courseInputSchema accepts par 6', () => {
+  const parsed = courseInputSchema.parse({
+    ...sampleCourseInput,
+    holes: sampleCourseInput.holes.map((hole) =>
+      hole.holeNumber === 2 ? { ...hole, par: 6 } : hole,
+    ),
+  })
+  assert.equal(parsed.holes.find((h) => h.holeNumber === 2)?.par, 6)
+})
+
+test('courseInputSchema rejects par 7', () => {
   assert.throws(
     () =>
       courseInputSchema.parse({
         ...sampleCourseInput,
         holes: sampleCourseInput.holes.map((hole) =>
-          hole.holeNumber === 2 ? { ...hole, par: 6 } : hole,
+          hole.holeNumber === 2 ? { ...hole, par: 7 } : hole,
         ),
       }),
     /Invalid input/,
