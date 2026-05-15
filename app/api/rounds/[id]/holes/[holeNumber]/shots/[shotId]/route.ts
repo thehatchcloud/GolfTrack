@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
-import { ZodError } from 'zod'
 
+import { toResponse } from '@/lib/errors'
 import { deleteShot, updateShot } from '@/lib/rounds'
 
 function parseId(value: string) {
@@ -26,21 +26,7 @@ export async function PATCH(
 
     return NextResponse.json(shot)
   } catch (error) {
-    if (error instanceof ZodError) {
-      return NextResponse.json(
-        {
-          error: error.issues[0]?.message ?? 'Invalid shot data',
-        },
-        { status: 400 },
-      )
-    }
-
-    if (error instanceof Error) {
-      const status = error.message === 'Shot not found' || error.message === 'Round hole not found' ? 404 : 400
-      return NextResponse.json({ error: error.message }, { status })
-    }
-
-    return NextResponse.json({ error: 'Unable to update shot' }, { status: 500 })
+    return toResponse(error)
   }
 }
 
@@ -61,11 +47,6 @@ export async function DELETE(
     const roundHole = await deleteShot(roundId, holeNumber, shotId)
     return NextResponse.json(roundHole)
   } catch (error) {
-    if (error instanceof Error) {
-      const status = error.message === 'Shot not found' || error.message === 'Round hole not found' ? 404 : 400
-      return NextResponse.json({ error: error.message }, { status })
-    }
-
-    return NextResponse.json({ error: 'Unable to delete shot' }, { status: 500 })
+    return toResponse(error)
   }
 }

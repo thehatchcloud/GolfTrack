@@ -1,6 +1,7 @@
 import { Prisma, RoundStatus } from '@prisma/client'
 
 import { db } from '@/lib/db'
+import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors'
 import { getCurrentHolePosition } from '@/lib/round-play'
 import { calculateRoundTotals } from '@/lib/scoring'
 import {
@@ -26,11 +27,11 @@ async function ensureEditableRoundHole(roundId: number, holeNumber: number) {
   })
 
   if (!roundHole) {
-    throw new Error('Round hole not found')
+    throw new NotFoundError('Round hole not found')
   }
 
   if (roundHole.round.status !== RoundStatus.in_progress) {
-    throw new Error('Round is already completed')
+    throw new ConflictError('Round is already completed')
   }
 
   return roundHole
@@ -93,7 +94,7 @@ export async function createRound(courseId: number, playMode: 'full' | 'front9' 
 
   const existingRound = await getInProgressRound()
   if (existingRound) {
-    throw new Error('A round is already in progress')
+    throw new ConflictError('A round is already in progress')
   }
 
   const course = await db.course.findUnique({
@@ -106,11 +107,11 @@ export async function createRound(courseId: number, playMode: 'full' | 'front9' 
   })
 
   if (!course) {
-    throw new Error('Course not found')
+    throw new NotFoundError('Course not found')
   }
 
   if (course.holeCount !== 18 && parsed.playMode !== 'full') {
-    throw new Error('Front 9 or back 9 is only available on 18-hole courses')
+    throw new ValidationError('Front 9 or back 9 is only available on 18-hole courses')
   }
 
   const selectedHoles =
@@ -147,7 +148,7 @@ export async function createRound(courseId: number, playMode: 'full' | 'front9' 
     )
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-      throw new Error('A round is already in progress')
+      throw new ConflictError('A round is already in progress')
     }
     throw e
   }
@@ -167,16 +168,16 @@ export async function setCurrentHole(roundId: number, currentHole: number) {
   })
 
   if (!round) {
-    throw new Error('Round not found')
+    throw new NotFoundError('Round not found')
   }
 
   if (round.status !== RoundStatus.in_progress) {
-    throw new Error('Round is already completed')
+    throw new ConflictError('Round is already completed')
   }
 
   const availableHoleNumbers = round.holes.map((hole) => hole.holeNumber)
   if (!availableHoleNumbers.includes(parsed.currentHole)) {
-    throw new Error('Invalid hole number')
+    throw new ValidationError('Invalid hole number')
   }
 
   return db.round.update({
@@ -197,8 +198,8 @@ export async function addShot(roundId: number, holeNumber: number, club: string)
       },
     })
 
-    if (!roundHole) throw new Error('Round hole not found')
-    if (roundHole.round.status !== RoundStatus.in_progress) throw new Error('Round is already completed')
+    if (!roundHole) throw new NotFoundError('Round hole not found')
+    if (roundHole.round.status !== RoundStatus.in_progress) throw new ConflictError('Round is already completed')
 
     const nextShotNumber = (roundHole.shots.at(-1)?.shotNumber ?? 0) + 1
 
@@ -234,8 +235,8 @@ export async function undoLastShot(roundId: number, holeNumber: number) {
       },
     })
 
-    if (!roundHole) throw new Error('Round hole not found')
-    if (roundHole.round.status !== RoundStatus.in_progress) throw new Error('Round is already completed')
+    if (!roundHole) throw new NotFoundError('Round hole not found')
+    if (roundHole.round.status !== RoundStatus.in_progress) throw new ConflictError('Round is already completed')
 
     const latestShot = roundHole.shots.at(-1)
 
@@ -272,7 +273,7 @@ export async function updateShot(roundId: number, holeNumber: number, shotId: nu
 
   const shot = roundHole.shots.find((item) => item.id === shotId)
   if (!shot) {
-    throw new Error('Shot not found')
+    throw new NotFoundError('Shot not found')
   }
 
   return db.shot.update({
@@ -286,7 +287,7 @@ export async function deleteShot(roundId: number, holeNumber: number, shotId: nu
   const shot = roundHole.shots.find((item) => item.id === shotId)
 
   if (!shot) {
-    throw new Error('Shot not found')
+    throw new NotFoundError('Shot not found')
   }
 
   const remainingShots = roundHole.shots.filter((item) => item.id !== shotId)
@@ -330,11 +331,11 @@ export async function completeRound(roundId: number, note?: string | null) {
   })
 
   if (!round) {
-    throw new Error('Round not found')
+    throw new NotFoundError('Round not found')
   }
 
   if (round.status !== RoundStatus.in_progress) {
-    throw new Error('Round is already completed')
+    throw new ConflictError('Round is already completed')
   }
 
   return db.round.update({
@@ -353,11 +354,11 @@ export async function cancelRound(roundId: number) {
   })
 
   if (!round) {
-    throw new Error('Round not found')
+    throw new NotFoundError('Round not found')
   }
 
   if (round.status !== RoundStatus.in_progress) {
-    throw new Error('Only in-progress rounds can be cancelled')
+    throw new ConflictError('Only in-progress rounds can be cancelled')
   }
 
   await db.round.delete({

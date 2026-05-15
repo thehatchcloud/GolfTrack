@@ -1,4 +1,7 @@
+import { Prisma } from '@prisma/client'
+
 import { db } from '@/lib/db'
+import { NotFoundError } from '@/lib/errors'
 import { courseInputSchema, type CourseInput } from '@/lib/validation'
 
 export async function listCourses() {
@@ -55,14 +58,15 @@ export async function createCourse(input: CourseInput) {
 export async function updateCourse(id: number, input: CourseInput) {
   const data = courseInputSchema.parse(input)
 
-  return db.$transaction(async (tx) => {
-    await tx.course.update({
-      where: { id },
-      data: {
-        name: data.name,
-        holeCount: data.holeCount,
-      },
-    })
+  try {
+    return await db.$transaction(async (tx) => {
+      await tx.course.update({
+        where: { id },
+        data: {
+          name: data.name,
+          holeCount: data.holeCount,
+        },
+      })
 
     await tx.courseHole.deleteMany({
       where: { courseId: id },
@@ -76,13 +80,19 @@ export async function updateCourse(id: number, input: CourseInput) {
       })),
     })
 
-    return tx.course.findUnique({
-      where: { id },
-      include: {
-        holes: {
-          orderBy: { holeNumber: 'asc' },
+      return tx.course.findUnique({
+        where: { id },
+        include: {
+          holes: {
+            orderBy: { holeNumber: 'asc' },
+          },
         },
-      },
+      })
     })
-  })
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
+      throw new NotFoundError('Course not found')
+    }
+    throw e
+  }
 }

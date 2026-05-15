@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
-import { ZodError } from 'zod'
 
+import { toResponse } from '@/lib/errors'
 import { completeRound } from '@/lib/rounds'
 
 function parseId(value: string) {
@@ -21,20 +21,6 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
     return NextResponse.json({ id: round.id })
   } catch (error) {
-    if (error instanceof ZodError) {
-      return NextResponse.json(
-        {
-          error: error.issues[0]?.message ?? 'Invalid round completion data',
-        },
-        { status: 400 },
-      )
-    }
-
-    if (error instanceof Error) {
-      const status = error.message === 'Round not found' ? 404 : 400
-      return NextResponse.json({ error: error.message }, { status })
-    }
-
-    return NextResponse.json({ error: 'Unable to complete round' }, { status: 500 })
+    return toResponse(error)
   }
 }
