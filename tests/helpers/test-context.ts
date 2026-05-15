@@ -35,6 +35,10 @@ export async function setupTestContext() {
     import('../../lib/rounds'),
   ])
 
+  await db.$executeRawUnsafe(
+    `CREATE UNIQUE INDEX IF NOT EXISTS "rounds_one_in_progress" ON "rounds" ("status") WHERE status = 'in_progress'`,
+  )
+
   async function resetDatabase() {
     await db.shot.deleteMany()
     await db.roundHole.deleteMany()
