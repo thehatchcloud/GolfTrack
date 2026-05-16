@@ -116,3 +116,25 @@ test('courseInputSchema rejects par 7', () => {
     /Invalid input/,
   )
 })
+
+test('courseInputSchema rejects a holes array with more than 18 entries', () => {
+  const extraHoles = Array.from({ length: 19 }, (_, i) => ({ holeNumber: i + 1, par: 4 as const }))
+  assert.throws(() =>
+    courseInputSchema.parse({
+      name: 'Test Course',
+      holeCount: 18,
+      holes: extraHoles,
+    }),
+  )
+})
+
+test('holeSchema rejects a holeNumber greater than 18', () => {
+  assert.throws(() =>
+    courseInputSchema.parse({
+      ...sampleCourseInput,
+      holes: sampleCourseInput.holes.map((hole) =>
+        hole.holeNumber === 9 ? { ...hole, holeNumber: 19 } : hole,
+      ),
+    }),
+  )
+})

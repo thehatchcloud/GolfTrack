@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 export const holeSchema = z.object({
-  holeNumber: z.number().int().min(1),
+  holeNumber: z.number().int().min(1).max(18),
   par: z.union([z.literal(3), z.literal(4), z.literal(5), z.literal(6)]),
 })
 
@@ -9,7 +9,7 @@ export const courseInputSchema =
   z.object({
     name: z.string().trim().min(1, 'Course name is required').max(100, 'Course name must be 100 characters or fewer'),
     holeCount: z.union([z.literal(9), z.literal(18)]),
-    holes: z.array(holeSchema),
+    holes: z.array(holeSchema).max(18),
   })
   .superRefine((value, ctx) => {
     if (value.holes.length !== value.holeCount) {
