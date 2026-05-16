@@ -2,10 +2,12 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useOptimistic, useState, useTransition } from 'react'
 
 import { CancelRoundButton } from '@/components/cancel-round-button'
 import { ClubPad } from '@/components/club-pad'
+import { HoleHeader } from '@/components/hole-header'
+import { ShotList } from '@/components/shot-list'
 
 type Shot = {
   id: number
@@ -19,6 +21,8 @@ type Hole = {
   strokes: number
   shots: Shot[]
 }
+
+type OptimisticAction = { type: 'add'; club: string } | { type: 'undo' }
 
 type LiveRoundControlsProps = {
   roundId: number
@@ -35,82 +39,98 @@ export function LiveRoundControls({
 }: LiveRoundControlsProps) {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
-  const [busyAction, setBusyAction] = useState<string | null>(null)
+  const [isMoveLoading, setIsMoveLoading] = useState(false)
   const [isPending, startTransition] = useTransition()
+
+  const [optimisticHole, addOptimistic] = useOptimistic(
+    currentHoleData,
+    (state: Hole, action: OptimisticAction) => {
+      if (action.type === 'add') {
+        return {
+          ...state,
+          strokes: state.strokes + 1,
+          shots: [
+            ...state.shots,
+            { id: -Date.now(), shotNumber: state.shots.length + 1, club: action.club },
+          ],
+        }
+      }
+      if (action.type === 'undo') {
+        return {
+          ...state,
+          strokes: Math.max(0, state.strokes - 1),
+          shots: state.shots.slice(0, -1),
+        }
+      }
+      return state
+    }
+  )
 
   const currentIndex = holeNumbers.indexOf(currentHole)
   const previousHole = currentIndex > 0 ? holeNumbers[currentIndex - 1] : null
-  const nextHole = currentIndex >= 0 && currentIndex < holeNumbers.length - 1 ? holeNumbers[currentIndex + 1] : null
+  const nextHole =
+    currentIndex >= 0 && currentIndex < holeNumbers.length - 1 ? holeNumbers[currentIndex + 1] : null
 
-  function refresh() {
+  function addShot(club: string) {
     setError(null)
-    startTransition(() => {
-      router.refresh()
+    startTransition(async () => {
+      addOptimistic({ type: 'add', club })
+
+      try {
+        const response = await fetch(
+          `/api/rounds/${roundId}/holes/${currentHoleData.holeNumber}/shots`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ club }),
+          }
+        )
+
+        if (!response.ok) {
+          const body = (await response.json().catch(() => null)) as { error?: string } | null
+          throw new Error(body?.error ?? 'Unable to add shot')
+        }
+
+        router.refresh()
+      } catch (addError) {
+        setError(addError instanceof Error ? addError.message : 'Unable to add shot')
+      }
     })
   }
 
-  async function addShot(club: string) {
+  function undoShot() {
     setError(null)
-    setBusyAction(`club-${club}`)
+    startTransition(async () => {
+      addOptimistic({ type: 'undo' })
 
-    try {
-      const response = await fetch(`/api/rounds/${roundId}/holes/${currentHoleData.holeNumber}/shots`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ club }),
-      })
+      try {
+        const response = await fetch(
+          `/api/rounds/${roundId}/holes/${currentHoleData.holeNumber}/undo`,
+          { method: 'POST' }
+        )
 
-      if (!response.ok) {
-        const body = (await response.json().catch(() => null)) as { error?: string } | null
-        throw new Error(body?.error ?? 'Unable to add shot')
+        if (!response.ok) {
+          const body = (await response.json().catch(() => null)) as { error?: string } | null
+          throw new Error(body?.error ?? 'Unable to undo shot')
+        }
+
+        router.refresh()
+      } catch (undoError) {
+        setError(undoError instanceof Error ? undoError.message : 'Unable to undo shot')
       }
-
-      refresh()
-    } catch (addError) {
-      setError(addError instanceof Error ? addError.message : 'Unable to add shot')
-    } finally {
-      setBusyAction(null)
-    }
-  }
-
-  async function undoShot() {
-    setError(null)
-    setBusyAction('undo')
-
-    try {
-      const response = await fetch(`/api/rounds/${roundId}/holes/${currentHoleData.holeNumber}/undo`, {
-        method: 'POST',
-      })
-
-      if (!response.ok) {
-        const body = (await response.json().catch(() => null)) as { error?: string } | null
-        throw new Error(body?.error ?? 'Unable to undo shot')
-      }
-
-      refresh()
-    } catch (undoError) {
-      setError(undoError instanceof Error ? undoError.message : 'Unable to undo shot')
-    } finally {
-      setBusyAction(null)
-    }
+    })
   }
 
   async function moveToHole(targetHole: number | null) {
-    if (!targetHole || targetHole === currentHole) {
-      return
-    }
+    if (!targetHole || targetHole === currentHole) return
 
     setError(null)
-    setBusyAction(`move-${targetHole}`)
+    setIsMoveLoading(true)
 
     try {
       const response = await fetch(`/api/rounds/${roundId}/current-hole`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ currentHole: targetHole }),
       })
 
@@ -120,18 +140,31 @@ export function LiveRoundControls({
       }
 
       router.push(`/rounds/${roundId}/play`)
-      refresh()
+      router.refresh()
     } catch (moveError) {
       setError(moveError instanceof Error ? moveError.message : 'Unable to update current hole')
     } finally {
-      setBusyAction(null)
+      setIsMoveLoading(false)
     }
   }
 
-  const isBusy = busyAction !== null || isPending
+  const isBusy = isPending || isMoveLoading
 
   return (
     <div className="space-y-4 pb-40 sm:pb-36">
+      <HoleHeader
+        holeNumber={optimisticHole.holeNumber}
+        par={optimisticHole.par}
+        strokes={optimisticHole.strokes}
+      />
+
+      <ShotList
+        shots={optimisticHole.shots}
+        roundId={roundId}
+        holeNumber={currentHoleData.holeNumber}
+        editable
+      />
+
       <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -165,10 +198,10 @@ export function LiveRoundControls({
             <button
               type="button"
               onClick={undoShot}
-              disabled={currentHoleData.shots.length === 0 || isBusy}
+              disabled={optimisticHole.shots.length === 0 || isBusy}
               className="min-h-12 rounded-2xl border border-stone-300 px-4 py-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {busyAction === 'undo' ? 'Undoing…' : 'Undo'}
+              Undo
             </button>
             <button
               type="button"

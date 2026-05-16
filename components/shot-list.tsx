@@ -121,7 +121,7 @@ export function ShotList({ shots, roundId, holeNumber, editable = false }: ShotL
                   ) : null}
                 </div>
 
-                {editable ? (
+                {editable && shot.id > 0 ? (
                   isEditing ? (
                     <div className="mt-3 space-y-3">
                       <select
