@@ -24,12 +24,6 @@ Start a VM using the `exeuntu` image, which includes Docker:
 ssh exe.dev new --name golftrack
 ```
 
-Make it publicly accessible:
-
-```bash
-ssh exe.dev share set-public golftrack
-```
-
 Note the VM hostname (`golftrack.exe.xyz` or similar) — this is `DEPLOY_HOST`.
 
 ### 2. Generate a deploy SSH key
