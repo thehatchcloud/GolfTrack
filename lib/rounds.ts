@@ -347,23 +347,19 @@ export async function completeRound(roundId: number, note?: string | null) {
 }
 
 export async function cancelRound(roundId: number) {
-  const round = await db.round.findUnique({
-    where: { id: roundId },
+  return db.$transaction(async (tx) => {
+    const result = await tx.round.deleteMany({
+      where: { id: roundId, status: RoundStatus.in_progress },
+    })
+
+    if (result.count === 0) {
+      const existing = await tx.round.findUnique({ where: { id: roundId } })
+      if (!existing) throw new NotFoundError('Round not found')
+      throw new ConflictError('Only in-progress rounds can be cancelled')
+    }
+
+    return { id: roundId, cancelled: true }
   })
-
-  if (!round) {
-    throw new NotFoundError('Round not found')
-  }
-
-  if (round.status !== RoundStatus.in_progress) {
-    throw new ConflictError('Only in-progress rounds can be cancelled')
-  }
-
-  await db.round.delete({
-    where: { id: roundId },
-  })
-
-  return { id: roundId, cancelled: true }
 }
 
 export function getRoundPosition(round: {
