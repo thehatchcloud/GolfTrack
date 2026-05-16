@@ -23,6 +23,25 @@ test('courseInputSchema rejects an empty course name', () => {
   )
 })
 
+test('courseInputSchema rejects a course name exceeding 100 characters', () => {
+  assert.throws(
+    () =>
+      courseInputSchema.parse({
+        ...sampleCourseInput,
+        name: 'a'.repeat(101),
+      }),
+    /Course name must be 100 characters or fewer/,
+  )
+})
+
+test('courseInputSchema accepts a course name of exactly 100 characters', () => {
+  const parsed = courseInputSchema.parse({
+    ...sampleCourseInput,
+    name: 'a'.repeat(100),
+  })
+  assert.equal(parsed.name.length, 100)
+})
+
 test('courseInputSchema rejects when hole count does not match holes array', () => {
   assert.throws(
     () =>
@@ -95,5 +114,27 @@ test('courseInputSchema rejects par 7', () => {
         ),
       }),
     /Invalid input/,
+  )
+})
+
+test('courseInputSchema rejects a holes array with more than 18 entries', () => {
+  const extraHoles = Array.from({ length: 19 }, (_, i) => ({ holeNumber: i + 1, par: 4 as const }))
+  assert.throws(() =>
+    courseInputSchema.parse({
+      name: 'Test Course',
+      holeCount: 18,
+      holes: extraHoles,
+    }),
+  )
+})
+
+test('holeSchema rejects a holeNumber greater than 18', () => {
+  assert.throws(() =>
+    courseInputSchema.parse({
+      ...sampleCourseInput,
+      holes: sampleCourseInput.holes.map((hole) =>
+        hole.holeNumber === 9 ? { ...hole, holeNumber: 19 } : hole,
+      ),
+    }),
   )
 })
