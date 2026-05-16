@@ -12,30 +12,6 @@ import {
   updateShotInputSchema,
 } from '@/lib/validation'
 
-async function ensureEditableRoundHole(roundId: number, holeNumber: number) {
-  const roundHole = await db.roundHole.findFirst({
-    where: {
-      roundId,
-      holeNumber,
-    },
-    include: {
-      round: true,
-      shots: {
-        orderBy: { shotNumber: 'asc' },
-      },
-    },
-  })
-
-  if (!roundHole) {
-    throw new NotFoundError('Round hole not found')
-  }
-
-  if (roundHole.round.status !== RoundStatus.in_progress) {
-    throw new ConflictError('Round is already completed')
-  }
-
-  return roundHole
-}
 
 export async function getInProgressRound() {
   return db.round.findFirst({
@@ -267,30 +243,47 @@ export async function undoLastShot(roundId: number, holeNumber: number) {
 
 export async function updateShot(roundId: number, holeNumber: number, shotId: number, club: string) {
   const parsed = updateShotInputSchema.parse({ club })
-  const roundHole = await ensureEditableRoundHole(roundId, holeNumber)
 
-  const shot = roundHole.shots.find((item) => item.id === shotId)
-  if (!shot) {
-    throw new NotFoundError('Shot not found')
-  }
+  return db.$transaction(async (tx) => {
+    const roundHole = await tx.roundHole.findFirst({
+      where: { roundId, holeNumber },
+      include: {
+        round: true,
+        shots: { orderBy: { shotNumber: 'asc' } },
+      },
+    })
 
-  return db.shot.update({
-    where: { id: shotId },
-    data: { club: parsed.club },
-  })
+    if (!roundHole) throw new NotFoundError('Round hole not found')
+    if (roundHole.round.status !== RoundStatus.in_progress) throw new ConflictError('Round is already completed')
+
+    const shot = roundHole.shots.find((item) => item.id === shotId)
+    if (!shot) throw new NotFoundError('Shot not found')
+
+    return tx.shot.update({
+      where: { id: shotId },
+      data: { club: parsed.club },
+    })
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
 }
 
 export async function deleteShot(roundId: number, holeNumber: number, shotId: number) {
-  const roundHole = await ensureEditableRoundHole(roundId, holeNumber)
-  const shot = roundHole.shots.find((item) => item.id === shotId)
-
-  if (!shot) {
-    throw new NotFoundError('Shot not found')
-  }
-
-  const remainingShots = roundHole.shots.filter((item) => item.id !== shotId)
-
   return db.$transaction(async (tx) => {
+    const roundHole = await tx.roundHole.findFirst({
+      where: { roundId, holeNumber },
+      include: {
+        round: true,
+        shots: { orderBy: { shotNumber: 'asc' } },
+      },
+    })
+
+    if (!roundHole) throw new NotFoundError('Round hole not found')
+    if (roundHole.round.status !== RoundStatus.in_progress) throw new ConflictError('Round is already completed')
+
+    const shot = roundHole.shots.find((item) => item.id === shotId)
+    if (!shot) throw new NotFoundError('Shot not found')
+
+    const remainingShots = roundHole.shots.filter((item) => item.id !== shotId)
+
     await tx.shot.delete({
       where: { id: shotId },
     })
@@ -318,7 +311,7 @@ export async function deleteShot(roundId: number, holeNumber: number, shotId: nu
         },
       },
     })
-  })
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
 }
 
 export async function completeRound(roundId: number, note?: string | null) {

@@ -286,6 +286,78 @@ test('concurrent createRound only allows one in-progress round', async () => {
   }
 })
 
+test('concurrent updateShot and deleteShot on the same shot leave data consistent', async () => {
+  const ctx = await setupTestContext()
+
+  try {
+    await ctx.resetDatabase()
+    const course = await ctx.courses.createCourse(sampleCourseInput)
+    const round = await ctx.rounds.createRound(course.id)
+
+    await ctx.rounds.addShot(round.id, 1, 'Driver')
+    await ctx.rounds.addShot(round.id, 1, '7i')
+
+    const roundBeforeRace = await ctx.rounds.getRoundById(round.id)
+    const shotToRace = roundBeforeRace!.holes.find((h) => h.holeNumber === 1)!.shots[0]
+
+    const results = await Promise.allSettled([
+      ctx.rounds.updateShot(round.id, 1, shotToRace.id, '5i'),
+      ctx.rounds.deleteShot(round.id, 1, shotToRace.id),
+    ])
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled')
+    assert.ok(fulfilled.length >= 1, 'at least one operation must succeed')
+
+    for (const r of results.filter((r) => r.status === 'rejected')) {
+      assert.match((r as PromiseRejectedResult).reason.message, /Shot not found/)
+    }
+
+    const finalHole = (await ctx.rounds.getRoundById(round.id))!.holes.find((h) => h.holeNumber === 1)!
+    assert.equal(finalHole.strokes, 1, 'only the 7i shot remains after deletion')
+    assert.equal(finalHole.shots.length, 1)
+    assert.equal(finalHole.shots[0].shotNumber, 1)
+    assert.equal(finalHole.shots[0].club, '7i')
+  } finally {
+    await ctx.teardown()
+  }
+})
+
+test('concurrent deleteShot on the same shot allows only one to succeed', async () => {
+  const ctx = await setupTestContext()
+
+  try {
+    await ctx.resetDatabase()
+    const course = await ctx.courses.createCourse(sampleCourseInput)
+    const round = await ctx.rounds.createRound(course.id)
+
+    await ctx.rounds.addShot(round.id, 1, 'Driver')
+    await ctx.rounds.addShot(round.id, 1, '7i')
+
+    const roundBeforeDelete = await ctx.rounds.getRoundById(round.id)
+    const shotId = roundBeforeDelete!.holes.find((h) => h.holeNumber === 1)!.shots[0].id
+
+    const results = await Promise.allSettled([
+      ctx.rounds.deleteShot(round.id, 1, shotId),
+      ctx.rounds.deleteShot(round.id, 1, shotId),
+    ])
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled')
+    const rejected = results.filter((r) => r.status === 'rejected')
+
+    assert.equal(fulfilled.length, 1)
+    assert.equal(rejected.length, 1)
+    assert.match((rejected[0] as PromiseRejectedResult).reason.message, /Shot not found/)
+
+    const finalRound = await ctx.rounds.getRoundById(round.id)
+    const hole1 = finalRound?.holes.find((h) => h.holeNumber === 1)
+    assert.equal(hole1?.strokes, 1)
+    assert.equal(hole1?.shots.length, 1)
+    assert.deepEqual(hole1?.shots.map((s) => s.shotNumber), [1])
+  } finally {
+    await ctx.teardown()
+  }
+})
+
 test('cancelRound rejects completed rounds', async () => {
   const ctx = await setupTestContext()
 
