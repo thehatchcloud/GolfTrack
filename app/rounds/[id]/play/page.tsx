@@ -3,11 +3,9 @@ import { notFound, redirect } from 'next/navigation'
 
 import { AppShell } from '@/components/app-shell'
 import { CancelRoundButton } from '@/components/cancel-round-button'
-import { HoleHeader } from '@/components/hole-header'
 import { HoleProgressStrip } from '@/components/hole-progress-strip'
 import { LiveRoundControls } from '@/components/live-round-controls'
 import { RoundSummaryBar } from '@/components/round-summary-bar'
-import { ShotList } from '@/components/shot-list'
 import { getCurrentHolePosition, getRoundPlayLabel } from '@/lib/round-play'
 import { calculateRoundTotals } from '@/lib/scoring'
 import { getRoundById } from '@/lib/rounds'
@@ -68,19 +66,6 @@ export default async function PlayRoundPage({
         />
 
         <HoleProgressStrip holes={round.holes} currentHole={currentHoleData.holeNumber} />
-
-        <HoleHeader
-          holeNumber={currentHoleData.holeNumber}
-          par={currentHoleData.par}
-          strokes={currentHoleData.strokes}
-        />
-
-        <ShotList
-          shots={currentHoleData.shots}
-          roundId={round.id}
-          holeNumber={currentHoleData.holeNumber}
-          editable
-        />
 
         <LiveRoundControls
           roundId={round.id}
