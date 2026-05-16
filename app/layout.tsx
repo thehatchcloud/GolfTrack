@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
 
@@ -15,6 +15,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: 'Golf Track',
   description: 'Mobile-first golf score tracking for courses, rounds, and shot-by-shot scoring.',
+}
+
+export const viewport: Viewport = {
+  themeColor: '#047857',
 }
 
 export default function RootLayout({
