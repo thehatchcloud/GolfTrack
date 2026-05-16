@@ -7,7 +7,7 @@ export const holeSchema = z.object({
 
 export const courseInputSchema =
   z.object({
-    name: z.string().trim().min(1, 'Course name is required'),
+    name: z.string().trim().min(1, 'Course name is required').max(100, 'Course name must be 100 characters or fewer'),
     holeCount: z.union([z.literal(9), z.literal(18)]),
     holes: z.array(holeSchema),
   })

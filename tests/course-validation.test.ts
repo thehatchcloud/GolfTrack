@@ -23,6 +23,25 @@ test('courseInputSchema rejects an empty course name', () => {
   )
 })
 
+test('courseInputSchema rejects a course name exceeding 100 characters', () => {
+  assert.throws(
+    () =>
+      courseInputSchema.parse({
+        ...sampleCourseInput,
+        name: 'a'.repeat(101),
+      }),
+    /Course name must be 100 characters or fewer/,
+  )
+})
+
+test('courseInputSchema accepts a course name of exactly 100 characters', () => {
+  const parsed = courseInputSchema.parse({
+    ...sampleCourseInput,
+    name: 'a'.repeat(100),
+  })
+  assert.equal(parsed.name.length, 100)
+})
+
 test('courseInputSchema rejects when hole count does not match holes array', () => {
   assert.throws(
     () =>
