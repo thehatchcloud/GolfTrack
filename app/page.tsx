@@ -9,12 +9,10 @@ import { formatRelativeToPar } from '@/lib/scoring'
 export const dynamic = 'force-dynamic'
 
 export default async function HomePage() {
-  const [inProgressRound, completedRounds] = await Promise.all([
+  const [inProgressRound, recentRounds] = await Promise.all([
     getInProgressRound(),
-    listCompletedRounds(),
+    listCompletedRounds(3),
   ])
-
-  const recentRounds = completedRounds.slice(0, 3)
 
   return (
     <AppShell>

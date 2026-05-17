@@ -26,7 +26,7 @@ export async function getInProgressRound() {
   })
 }
 
-export async function listCompletedRounds() {
+export async function listCompletedRounds(limit?: number) {
   const rounds = await db.round.findMany({
     where: { status: RoundStatus.completed },
     include: {
@@ -36,6 +36,7 @@ export async function listCompletedRounds() {
       },
     },
     orderBy: [{ finishedAt: 'desc' }, { startedAt: 'desc' }],
+    ...(limit !== undefined && { take: limit }),
   })
 
   return rounds.map((round) => {
