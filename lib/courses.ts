@@ -76,17 +76,35 @@ export async function updateCourse(id: number, input: CourseInput) {
     const existingByHole = new Map(existing.holes.map((h) => [h.holeNumber, h]))
     const incomingByHole = new Map(data.holes.map((h) => [h.holeNumber, h]))
 
+    const toCreate: Array<{ holeNumber: number; par: number }> = []
+    const toUpdate: Array<{ id: number; par: number }> = []
+
     for (const hole of data.holes) {
       const ex = existingByHole.get(hole.holeNumber)
       if (ex) {
         if (ex.par !== hole.par) {
-          await tx.courseHole.update({ where: { id: ex.id }, data: { par: hole.par } })
+          toUpdate.push({ id: ex.id, par: hole.par })
         }
       } else {
-        await tx.courseHole.create({
-          data: { courseId: id, holeNumber: hole.holeNumber, par: hole.par },
-        })
+        toCreate.push({ holeNumber: hole.holeNumber, par: hole.par })
       }
+    }
+
+    if (toCreate.length > 0) {
+      await tx.courseHole.createMany({
+        data: toCreate.map((h) => ({ courseId: id, holeNumber: h.holeNumber, par: h.par })),
+      })
+    }
+
+    // Group by par value so each distinct par is one updateMany instead of N updates
+    const updatesByPar = new Map<number, number[]>()
+    for (const { id: holeId, par } of toUpdate) {
+      const bucket = updatesByPar.get(par) ?? []
+      bucket.push(holeId)
+      updatesByPar.set(par, bucket)
+    }
+    for (const [par, ids] of updatesByPar) {
+      await tx.courseHole.updateMany({ where: { id: { in: ids } }, data: { par } })
     }
 
     const removedIds = existing.holes
