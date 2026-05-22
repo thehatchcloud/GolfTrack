@@ -18,7 +18,8 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 
-RUN mkdir -p /data
+RUN groupadd -r app && useradd -r -g app -d /app app
+RUN mkdir -p /data && chown app:app /data
 
 COPY --from=litestream/litestream:latest /usr/local/bin/litestream /usr/local/bin/litestream
 
@@ -37,6 +38,7 @@ COPY litestream.yml ./
 COPY entrypoint.sh ./
 RUN chmod +x entrypoint.sh
 
+USER app
 EXPOSE 3000
 
 CMD ["./entrypoint.sh"]
