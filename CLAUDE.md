@@ -84,6 +84,23 @@ Tests use Node's built-in test runner via `tsx --test`. They run against a **rea
 
 `tests/helpers/test-context.ts` exports `setupTestContext()` which provisions the test DB, returns `{ db, courses, rounds, resetDatabase, teardown }`, and cleans up after each suite.
 
+### Testing responsibilities
+
+**Claude runs these automatically** before opening or updating a PR — no user action needed:
+
+- `npm run lint` — ESLint
+- `npm run build` — TypeScript compilation + Next.js build
+- `npm test` — full integration test suite against a local SQLite test DB
+
+**You (the user) must run these** — Claude has no access to Docker or the production server:
+
+- `docker build` / `docker run` — verifying the container image builds and starts correctly
+- Checking that the correct OS user runs inside the container (`docker exec <container> whoami`)
+- Any test that requires a live Litestream connection (S3 restore, WAL replication)
+- Smoke-testing the deployed app on the production server after a deploy
+
+When Claude writes a PR test plan, items in the first group are ones Claude should have already verified. Items in the second group are explicitly for you to check before merging.
+
 ## Deployment
 
 Docker-based, single container, SQLite on a persistent volume mounted at `/data`. The container runs [Litestream](https://litestream.io) alongside the app, replicating SQLite to an S3-compatible bucket (DO Spaces in production).
