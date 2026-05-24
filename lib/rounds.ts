@@ -26,26 +26,13 @@ export async function getInProgressRound() {
   })
 }
 
-export async function listCompletedRounds(limit?: number) {
-  const rounds = await db.round.findMany({
+export async function listCompletedRounds(limit = 20, page = 0) {
+  return db.round.findMany({
     where: { status: RoundStatus.completed },
-    include: {
-      course: true,
-      holes: {
-        orderBy: { holeNumber: 'asc' },
-      },
-    },
+    include: { course: true },
     orderBy: [{ finishedAt: 'desc' }, { startedAt: 'desc' }],
-    ...(limit !== undefined && { take: limit }),
-  })
-
-  return rounds.map((round) => {
-    const totals = calculateRoundTotals(round.holes)
-
-    return {
-      ...round,
-      ...totals,
-    }
+    take: limit,
+    skip: page * limit,
   })
 }
 
@@ -111,6 +98,7 @@ export async function createRound(courseId: number, playMode: 'full' | 'front9' 
         courseId: course.id,
         status: RoundStatus.in_progress,
         currentHole: startingHole,
+        playMode: parsed.playMode,
         holes: {
           create: selectedHoles.map((hole) => ({
             holeNumber: hole.holeNumber,
@@ -313,9 +301,23 @@ export async function completeRound(roundId: number, note?: string | null) {
   const parsed = roundCompletionInputSchema.parse({ note })
 
   return db.$transaction(async (tx) => {
+    const holes = await tx.roundHole.findMany({
+      where: { roundId },
+      select: { par: true, strokes: true },
+    })
+
+    const totals = calculateRoundTotals(holes)
+
     const result = await tx.round.updateMany({
       where: { id: roundId, status: RoundStatus.in_progress },
-      data: { status: RoundStatus.completed, finishedAt: new Date(), note: parsed.note ?? null },
+      data: {
+        status: RoundStatus.completed,
+        finishedAt: new Date(),
+        note: parsed.note ?? null,
+        totalStrokes: totals.totalStrokes,
+        totalPar: totals.totalPar,
+        relativeToPar: totals.relativeToPar,
+      },
     })
 
     if (result.count === 0) {
