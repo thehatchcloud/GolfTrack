@@ -13,7 +13,7 @@ export function proxy(request: NextRequest) {
     "connect-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",
-    "form-action 'self'",
+    "form-action 'self' https://accounts.google.com https://login.microsoftonline.com",
     "frame-ancestors 'none'",
   ].join('; ')
 
