@@ -46,6 +46,8 @@ model Round {
   course Course @relation(fields: [courseId], references: [id], onDelete: Restrict)
   holes  RoundHole[]
 
+  @@index([status])
+  @@index([courseId])
   @@map("rounds")
 }
 
