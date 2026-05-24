@@ -132,33 +132,33 @@ export async function createRound(courseId: number, playMode: 'full' | 'front9' 
 export async function setCurrentHole(roundId: number, currentHole: number) {
   const parsed = setCurrentHoleInputSchema.parse({ currentHole })
 
-  const round = await db.round.findUnique({
-    where: { id: roundId },
-    include: {
-      course: true,
-      holes: {
-        orderBy: { holeNumber: 'asc' },
+  return db.$transaction(async (tx) => {
+    const round = await tx.round.findUnique({
+      where: { id: roundId },
+      include: {
+        holes: {
+          orderBy: { holeNumber: 'asc' },
+        },
       },
-    },
-  })
+    })
 
-  if (!round) {
-    throw new NotFoundError('Round not found')
-  }
+    if (!round) throw new NotFoundError('Round not found')
+    if (round.status !== RoundStatus.in_progress) throw new ConflictError('Round is already completed')
 
-  if (round.status !== RoundStatus.in_progress) {
-    throw new ConflictError('Round is already completed')
-  }
+    const availableHoleNumbers = round.holes.map((hole) => hole.holeNumber)
+    if (!availableHoleNumbers.includes(parsed.currentHole)) {
+      throw new ValidationError('Invalid hole number')
+    }
 
-  const availableHoleNumbers = round.holes.map((hole) => hole.holeNumber)
-  if (!availableHoleNumbers.includes(parsed.currentHole)) {
-    throw new ValidationError('Invalid hole number')
-  }
+    const result = await tx.round.updateMany({
+      where: { id: roundId, status: RoundStatus.in_progress },
+      data: { currentHole: parsed.currentHole },
+    })
 
-  return db.round.update({
-    where: { id: roundId },
-    data: { currentHole: parsed.currentHole },
-  })
+    if (result.count === 0) throw new ConflictError('Round is already completed')
+
+    return tx.round.findUniqueOrThrow({ where: { id: roundId } })
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
 }
 
 export async function addShot(roundId: number, holeNumber: number, club: string) {
@@ -312,26 +312,20 @@ export async function deleteShot(roundId: number, holeNumber: number, shotId: nu
 export async function completeRound(roundId: number, note?: string | null) {
   const parsed = roundCompletionInputSchema.parse({ note })
 
-  const round = await db.round.findUnique({
-    where: { id: roundId },
-  })
+  return db.$transaction(async (tx) => {
+    const result = await tx.round.updateMany({
+      where: { id: roundId, status: RoundStatus.in_progress },
+      data: { status: RoundStatus.completed, finishedAt: new Date(), note: parsed.note ?? null },
+    })
 
-  if (!round) {
-    throw new NotFoundError('Round not found')
-  }
+    if (result.count === 0) {
+      const existing = await tx.round.findUnique({ where: { id: roundId } })
+      if (!existing) throw new NotFoundError('Round not found')
+      throw new ConflictError('Round is already completed')
+    }
 
-  if (round.status !== RoundStatus.in_progress) {
-    throw new ConflictError('Round is already completed')
-  }
-
-  return db.round.update({
-    where: { id: roundId },
-    data: {
-      status: RoundStatus.completed,
-      finishedAt: new Date(),
-      note: parsed.note ?? null,
-    },
-  })
+    return tx.round.findUniqueOrThrow({ where: { id: roundId } })
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
 }
 
 export async function cancelRound(roundId: number) {

@@ -358,6 +358,43 @@ test('concurrent deleteShot on the same shot allows only one to succeed', async 
   }
 })
 
+test('concurrent completeRound and addShot never leaves a completed round with shots added after finishedAt', async () => {
+  const ctx = await setupTestContext()
+
+  try {
+    await ctx.resetDatabase()
+    const course = await ctx.courses.createCourse(sampleCourseInput)
+    const round = await ctx.rounds.createRound(course.id)
+
+    const results = await Promise.allSettled([
+      ctx.rounds.completeRound(round.id, 'Done'),
+      ctx.rounds.addShot(round.id, 1, 'Driver'),
+    ])
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled')
+    assert.ok(fulfilled.length >= 1, 'at least one operation must succeed')
+
+    for (const r of results.filter((r) => r.status === 'rejected')) {
+      assert.match((r as PromiseRejectedResult).reason.message, /Round is already completed/)
+    }
+
+    const finalRound = await ctx.rounds.getRoundById(round.id)
+    assert.ok(finalRound, 'round still exists')
+    assert.equal(finalRound!.status, 'completed')
+    assert.ok(finalRound!.finishedAt, 'finishedAt is set')
+
+    const allShots = finalRound!.holes.flatMap((h) => h.shots)
+    for (const shot of allShots) {
+      assert.ok(
+        shot.createdAt <= finalRound!.finishedAt!,
+        `shot createdAt (${shot.createdAt.toISOString()}) must not be after finishedAt (${finalRound!.finishedAt!.toISOString()})`,
+      )
+    }
+  } finally {
+    await ctx.teardown()
+  }
+})
+
 test('cancelRound rejects completed rounds', async () => {
   const ctx = await setupTestContext()
 
