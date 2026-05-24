@@ -33,15 +33,19 @@ model CourseHole {
 }
 
 model Round {
-  id          Int         @id @default(autoincrement())
-  courseId    Int         @map("course_id")
-  status      RoundStatus
-  startedAt   DateTime    @default(now()) @map("started_at")
-  finishedAt  DateTime?   @map("finished_at")
-  note        String?
-  currentHole Int         @default(1) @map("current_hole")
-  createdAt   DateTime    @default(now()) @map("created_at")
-  updatedAt   DateTime    @updatedAt @map("updated_at")
+  id               Int         @id @default(autoincrement())
+  courseId         Int         @map("course_id")
+  status           RoundStatus
+  playMode         String      @default("full") @map("play_mode")
+  startedAt        DateTime    @default(now()) @map("started_at")
+  finishedAt       DateTime?   @map("finished_at")
+  note             String?
+  currentHole      Int         @default(1) @map("current_hole")
+  totalStrokes     Int?        @map("total_strokes")
+  totalPar         Int?        @map("total_par")
+  relativeToPar    Int?        @map("relative_to_par")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
 
   course Course @relation(fields: [courseId], references: [id], onDelete: Restrict)
   holes  RoundHole[]

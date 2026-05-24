@@ -22,6 +22,12 @@ export function getRoundPlayLabel(courseHoleCount: number, holeNumbers: number[]
   return courseHoleCount === 9 ? '9 Holes' : 'Full Course'
 }
 
+export function getRoundPlayLabelFromMode(playMode: RoundPlayMode | string, courseHoleCount: number): string {
+  if (playMode === 'front9') return 'Front 9'
+  if (playMode === 'back9') return 'Back 9'
+  return courseHoleCount === 9 ? '9 Holes' : 'Full Course'
+}
+
 export function getCurrentHolePosition(holeNumbers: number[], currentHole: number) {
   const index = holeNumbers.indexOf(currentHole)
   return index === -1 ? 1 : index + 1

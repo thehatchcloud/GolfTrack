@@ -89,7 +89,7 @@ export default async function HomePage() {
                 >
                   <p className="text-sm font-semibold text-stone-900">{round.course.name}</p>
                   <p className="mt-1 text-sm text-stone-600">
-                    {round.totalStrokes} strokes · {formatRelativeToPar(round.relativeToPar)}
+                    {round.totalStrokes ?? 0} strokes · {formatRelativeToPar(round.relativeToPar ?? 0)}
                   </p>
                 </Link>
               ))}

@@ -410,3 +410,101 @@ test('cancelRound rejects completed rounds', async () => {
     await ctx.teardown()
   }
 })
+
+test('createRound stores playMode on the round', async () => {
+  const ctx = await setupTestContext()
+
+  try {
+    await ctx.resetDatabase()
+    const course = await ctx.courses.createCourse(sampleEighteenHoleCourseInput)
+
+    const full = await ctx.rounds.createRound(course.id, 'full')
+    assert.equal(full.playMode, 'full')
+    await ctx.rounds.cancelRound(full.id)
+
+    const front9 = await ctx.rounds.createRound(course.id, 'front9')
+    assert.equal(front9.playMode, 'front9')
+    await ctx.rounds.cancelRound(front9.id)
+
+    const back9 = await ctx.rounds.createRound(course.id, 'back9')
+    assert.equal(back9.playMode, 'back9')
+    await ctx.rounds.cancelRound(back9.id)
+  } finally {
+    await ctx.teardown()
+  }
+})
+
+test('completeRound stores totalStrokes, totalPar, and relativeToPar', async () => {
+  const ctx = await setupTestContext()
+
+  try {
+    await ctx.resetDatabase()
+    // sampleCourseInput: 9 holes, total par = 36
+    const course = await ctx.courses.createCourse(sampleCourseInput)
+    const round = await ctx.rounds.createRound(course.id)
+
+    // Add 5 shots to hole 1 (par 4), leave other holes at 0 strokes
+    for (let i = 0; i < 5; i++) {
+      await ctx.rounds.addShot(round.id, 1, 'Driver')
+    }
+
+    const completed = await ctx.rounds.completeRound(round.id)
+
+    assert.equal(completed.totalStrokes, 5)
+    assert.equal(completed.totalPar, 36)
+    assert.equal(completed.relativeToPar, 5 - 36)
+  } finally {
+    await ctx.teardown()
+  }
+})
+
+test('listCompletedRounds returns stored totals without holes data', async () => {
+  const ctx = await setupTestContext()
+
+  try {
+    await ctx.resetDatabase()
+    const course = await ctx.courses.createCourse(sampleCourseInput)
+
+    const round = await ctx.rounds.createRound(course.id)
+    await ctx.rounds.addShot(round.id, 1, 'Driver')
+    await ctx.rounds.addShot(round.id, 1, '7i')
+    await ctx.rounds.completeRound(round.id)
+
+    const rounds = await ctx.rounds.listCompletedRounds()
+
+    assert.equal(rounds.length, 1)
+    assert.equal(rounds[0].totalStrokes, 2)
+    assert.equal(rounds[0].totalPar, 36)
+    assert.equal(rounds[0].relativeToPar, 2 - 36)
+    assert.ok(!('holes' in rounds[0]), 'holes should not be included in list')
+  } finally {
+    await ctx.teardown()
+  }
+})
+
+test('listCompletedRounds paginates with limit and page', async () => {
+  const ctx = await setupTestContext()
+
+  try {
+    await ctx.resetDatabase()
+    const course = await ctx.courses.createCourse(sampleCourseInput)
+
+    // Create and complete 3 rounds
+    for (let i = 0; i < 3; i++) {
+      const round = await ctx.rounds.createRound(course.id)
+      await ctx.rounds.completeRound(round.id)
+    }
+
+    const page0 = await ctx.rounds.listCompletedRounds(2, 0)
+    const page1 = await ctx.rounds.listCompletedRounds(2, 1)
+    const page2 = await ctx.rounds.listCompletedRounds(2, 2)
+
+    assert.equal(page0.length, 2)
+    assert.equal(page1.length, 1)
+    assert.equal(page2.length, 0)
+    // pages should not overlap
+    assert.ok(page0[0].id !== page1[0].id)
+  } finally {
+    await ctx.teardown()
+  }
+})
