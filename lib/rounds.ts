@@ -283,25 +283,19 @@ export async function deleteShot(roundId: number, holeNumber: number, shotId: nu
     const shot = roundHole.shots.find((item) => item.id === shotId)
     if (!shot) throw new NotFoundError('Shot not found')
 
-    const remainingShots = roundHole.shots.filter((item) => item.id !== shotId)
-
     await tx.shot.delete({
       where: { id: shotId },
     })
 
-    for (const [index, remainingShot] of remainingShots.entries()) {
-      const nextShotNumber = index + 1
-      if (remainingShot.shotNumber !== nextShotNumber) {
-        await tx.shot.update({
-          where: { id: remainingShot.id },
-          data: { shotNumber: nextShotNumber },
-        })
-      }
-    }
+    await tx.$executeRaw`
+      UPDATE shots
+      SET shot_number = shot_number - 1
+      WHERE round_hole_id = ${roundHole.id} AND shot_number > ${shot.shotNumber}
+    `
 
     await tx.roundHole.update({
       where: { id: roundHole.id },
-      data: { strokes: remainingShots.length },
+      data: { strokes: roundHole.shots.length - 1 },
     })
 
     return tx.roundHole.findUnique({
