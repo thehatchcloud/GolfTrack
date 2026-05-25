@@ -104,8 +104,11 @@ These are set directly in the `docker run` command in the deploy workflow. No `.
 
 Both providers must have the production callback URL registered:
 
-- Google: `{AUTH_URL}/api/auth/callback/google` — create at https://console.cloud.google.com/apis/credentials.
-- Microsoft Entra: `{AUTH_URL}/api/auth/callback/microsoft-entra-id` — register at https://entra.microsoft.com → App registrations. Select "Accounts in any organizational directory and personal Microsoft accounts" so the default `common` issuer accepts both.
+- **Google** — [GolfTrack OAuth client](https://console.cloud.google.com/apis/credentials?project=prime-agency-199418)
+  Callback URL: `{AUTH_URL}/api/auth/callback/google`
+- **Microsoft Entra ID** — [GolfTrack app registration](https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/Overview/quickStartType~/null/sourceType/Microsoft_AAD_IAM/appId/d75517a5-078b-45b3-87e5-fecdac856e2a/objectId/ca0c6eee-61a4-43cb-949c-bd46b7be3a1f/isMSAApp~/false/defaultBlade/Overview/appSignInAudience/AzureADandPersonalMicrosoftAccount/servicePrincipalCreated~/true)
+  Callback URL: `{AUTH_URL}/api/auth/callback/microsoft-entra-id`
+  Audience: "Accounts in any organizational directory and personal Microsoft accounts" (required for the default `common` issuer to accept both work and personal accounts)
 
 For local development, also register `http://localhost:3000/api/auth/callback/{google,microsoft-entra-id}` on the same OAuth clients (or use separate dev-only credentials).
 
