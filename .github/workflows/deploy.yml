@@ -62,11 +62,18 @@ jobs:
           LITESTREAM_SECRET_ACCESS_KEY: ${{ secrets.LITESTREAM_SECRET_ACCESS_KEY }}
           LITESTREAM_BUCKET: ${{ secrets.LITESTREAM_BUCKET }}
           LITESTREAM_ENDPOINT: ${{ secrets.LITESTREAM_ENDPOINT }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          AUTH_URL: ${{ secrets.AUTH_URL }}
+          AUTH_GOOGLE_ID: ${{ secrets.AUTH_GOOGLE_ID }}
+          AUTH_GOOGLE_SECRET: ${{ secrets.AUTH_GOOGLE_SECRET }}
+          AUTH_MICROSOFT_ENTRA_ID_ID: ${{ secrets.AUTH_MICROSOFT_ENTRA_ID_ID }}
+          AUTH_MICROSOFT_ENTRA_ID_SECRET: ${{ secrets.AUTH_MICROSOFT_ENTRA_ID_SECRET }}
+          ADMIN_EMAILS: ${{ secrets.ADMIN_EMAILS }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ubuntu
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: GHCR_TOKEN,OWNER,LITESTREAM_ACCESS_KEY_ID,LITESTREAM_SECRET_ACCESS_KEY,LITESTREAM_BUCKET,LITESTREAM_ENDPOINT
+          envs: GHCR_TOKEN,OWNER,LITESTREAM_ACCESS_KEY_ID,LITESTREAM_SECRET_ACCESS_KEY,LITESTREAM_BUCKET,LITESTREAM_ENDPOINT,AUTH_SECRET,AUTH_URL,AUTH_GOOGLE_ID,AUTH_GOOGLE_SECRET,AUTH_MICROSOFT_ENTRA_ID_ID,AUTH_MICROSOFT_ENTRA_ID_SECRET,ADMIN_EMAILS
           script: |
             IMAGE="ghcr.io/${OWNER}/golftrack:latest"
 
@@ -88,6 +95,14 @@ jobs:
               -e LITESTREAM_SECRET_ACCESS_KEY="$LITESTREAM_SECRET_ACCESS_KEY" \
               -e LITESTREAM_BUCKET="$LITESTREAM_BUCKET" \
               -e LITESTREAM_ENDPOINT="$LITESTREAM_ENDPOINT" \
+              -e AUTH_SECRET="$AUTH_SECRET" \
+              -e AUTH_URL="$AUTH_URL" \
+              -e AUTH_TRUST_HOST=true \
+              -e AUTH_GOOGLE_ID="$AUTH_GOOGLE_ID" \
+              -e AUTH_GOOGLE_SECRET="$AUTH_GOOGLE_SECRET" \
+              -e AUTH_MICROSOFT_ENTRA_ID_ID="$AUTH_MICROSOFT_ENTRA_ID_ID" \
+              -e AUTH_MICROSOFT_ENTRA_ID_SECRET="$AUTH_MICROSOFT_ENTRA_ID_SECRET" \
+              -e ADMIN_EMAILS="$ADMIN_EMAILS" \
               -v /data/golftrack:/data \
               "$IMAGE"
 

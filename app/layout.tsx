@@ -29,7 +29,7 @@ export default async function RootLayout({
 }>) {
   const nonce = (await headers()).get('x-nonce') ?? undefined
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`} nonce={nonce}>
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`} nonce={nonce} suppressHydrationWarning>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   )

@@ -1,11 +1,12 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
+import { UserNav } from '@/components/user-nav'
 
 export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-stone-50 text-stone-950">
       <header className="sticky top-0 z-30 border-b border-stone-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/85">
-        <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3 sm:py-4">
+        <div className="mx-auto flex max-w-4xl items-center justify-between gap-2 px-4 py-3 sm:py-4">
           <Link href="/" className="text-lg font-semibold tracking-tight text-emerald-700">
             Golf Track
           </Link>
@@ -22,6 +23,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             >
               Rounds
             </Link>
+            <UserNav />
           </nav>
         </div>
       </header>

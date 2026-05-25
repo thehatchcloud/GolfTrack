@@ -91,8 +91,26 @@ The workflow also supports manual triggering: **Actions → CI / Deploy → Run 
 | `NODE_ENV` | `production` |
 | `PORT` | `3000` |
 | `DATABASE_URL` | `file:/data/prod.db` |
+| `AUTH_SECRET` | 32+ random bytes (generate with `openssl rand -base64 32`) |
+| `AUTH_URL` | Public origin, e.g. `https://golftrack.exe.xyz:3000` |
+| `AUTH_TRUST_HOST` | `true` (exe.dev terminates TLS upstream) |
+| `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | Google OAuth client credentials |
+| `AUTH_MICROSOFT_ENTRA_ID_ID` / `AUTH_MICROSOFT_ENTRA_ID_SECRET` | Microsoft Entra ID app credentials |
+| `ADMIN_EMAILS` | Comma-separated emails to grant `ADMIN` role at sign-in |
 
 These are set directly in the `docker run` command in the deploy workflow. No `.env` file is needed on the VM.
+
+### OAuth provider setup
+
+Both providers must have the production callback URL registered:
+
+- **Google** — [GolfTrack OAuth client](https://console.cloud.google.com/apis/credentials?project=prime-agency-199418)
+  Callback URL: `{AUTH_URL}/api/auth/callback/google`
+- **Microsoft Entra ID** — [GolfTrack app registration](https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/Overview/quickStartType~/null/sourceType/Microsoft_AAD_IAM/appId/d75517a5-078b-45b3-87e5-fecdac856e2a/objectId/ca0c6eee-61a4-43cb-949c-bd46b7be3a1f/isMSAApp~/false/defaultBlade/Overview/appSignInAudience/AzureADandPersonalMicrosoftAccount/servicePrincipalCreated~/true)
+  Callback URL: `{AUTH_URL}/api/auth/callback/microsoft-entra-id`
+  Audience: "Accounts in any organizational directory and personal Microsoft accounts" (required for the default `common` issuer to accept both work and personal accounts)
+
+For local development, also register `http://localhost:3000/api/auth/callback/{google,microsoft-entra-id}` on the same OAuth clients (or use separate dev-only credentials).
 
 ---
 
