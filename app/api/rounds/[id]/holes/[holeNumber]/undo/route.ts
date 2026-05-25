@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server'
+import { getToken } from 'next-auth/jwt'
+import { NextRequest, NextResponse } from 'next/server'
 
 import { toResponse } from '@/lib/errors'
 import { undoLastShot } from '@/lib/rounds'
@@ -7,7 +8,13 @@ function parseId(value: string) {
   return Number.parseInt(value, 10)
 }
 
-export async function POST(_: Request, context: { params: Promise<{ id: string; holeNumber: string }> }) {
+export async function POST(request: NextRequest, context: { params: Promise<{ id: string; holeNumber: string }> }) {
+  const token = await getToken({
+    req: request,
+    secret: process.env.AUTH_SECRET,
+    secureCookie: request.url.startsWith('https://'),
+  })
+
   const params = await context.params
   const roundId = parseId(params.id)
   const holeNumber = parseId(params.holeNumber)
@@ -17,7 +24,7 @@ export async function POST(_: Request, context: { params: Promise<{ id: string; 
   }
 
   try {
-    const roundHole = await undoLastShot(roundId, holeNumber)
+    const roundHole = await undoLastShot(token!.sub as string, roundId, holeNumber)
     return NextResponse.json(roundHole)
   } catch (error) {
     return toResponse(error)

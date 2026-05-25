@@ -1,5 +1,6 @@
 import Link from 'next/link'
 
+import { auth } from '@/auth'
 import { AppShell } from '@/components/app-shell'
 import { SectionCard } from '@/components/section-card'
 import { getInProgressRound, listCompletedRounds } from '@/lib/rounds'
@@ -9,9 +10,12 @@ import { formatRelativeToPar } from '@/lib/scoring'
 export const dynamic = 'force-dynamic'
 
 export default async function HomePage() {
+  const session = await auth()
+  const userId = session!.user!.id
+
   const [inProgressRound, recentRounds] = await Promise.all([
-    getInProgressRound(),
-    listCompletedRounds(3),
+    getInProgressRound(userId),
+    listCompletedRounds(userId, 3),
   ])
 
   return (

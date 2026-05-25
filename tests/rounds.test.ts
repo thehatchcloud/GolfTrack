@@ -11,7 +11,7 @@ test('createRound snapshots course holes and starts at hole 1', async () => {
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleCourseInput)
 
-    const round = await ctx.rounds.createRound(course.id)
+    const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
 
     assert.equal(round.status, 'in_progress')
     assert.equal(round.currentHole, 1)
@@ -32,7 +32,7 @@ test('createRound can create a front 9 round from an 18-hole course', async () =
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleEighteenHoleCourseInput)
 
-    const round = await ctx.rounds.createRound(course.id, 'front9')
+    const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
 
     assert.equal(round.currentHole, 1)
     assert.deepEqual(
@@ -51,7 +51,7 @@ test('createRound can create a back 9 round from an 18-hole course', async () =>
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleEighteenHoleCourseInput)
 
-    const round = await ctx.rounds.createRound(course.id, 'back9')
+    const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
 
     assert.equal(round.currentHole, 10)
     assert.deepEqual(
@@ -71,7 +71,7 @@ test('createRound rejects front 9 or back 9 on a 9-hole course', async () => {
     const course = await ctx.courses.createCourse(sampleCourseInput)
 
     await assert.rejects(
-      () => ctx.rounds.createRound(course.id, 'front9'),
+      () => ctx.rounds.createRound(ctx.testUser.id, course.id),
       /Front 9 or back 9 is only available on 18-hole courses/,
     )
   } finally {
@@ -85,11 +85,11 @@ test('concurrent addShot calls both succeed without unique constraint violations
   try {
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleCourseInput)
-    const round = await ctx.rounds.createRound(course.id)
+    const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
 
     const [result1, result2] = await Promise.all([
-      ctx.rounds.addShot(round.id, 1, 'Driver'),
-      ctx.rounds.addShot(round.id, 1, '7i'),
+      ctx.rounds.addShot(ctx.testUser.id, round.id, 1, 'Driver'),
+      ctx.rounds.addShot(ctx.testUser.id, round.id, 1, '7i'),
     ])
 
     assert.ok(result1)
@@ -111,10 +111,10 @@ test('addShot increments strokes and appends ordered shots', async () => {
   try {
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleCourseInput)
-    const round = await ctx.rounds.createRound(course.id)
+    const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
 
-    await ctx.rounds.addShot(round.id, 1, 'Driver')
-    const updatedHole = await ctx.rounds.addShot(round.id, 1, '7i')
+    await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, 'Driver')
+    const updatedHole = await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, '7i')
 
     assert.ok(updatedHole)
     assert.equal(updatedHole?.strokes, 2)
@@ -136,10 +136,10 @@ test('undoLastShot removes the latest shot and updates strokes', async () => {
   try {
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleCourseInput)
-    const round = await ctx.rounds.createRound(course.id)
+    const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
 
-    await ctx.rounds.addShot(round.id, 1, 'Driver')
-    await ctx.rounds.addShot(round.id, 1, '7i')
+    await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, 'Driver')
+    await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, '7i')
     const holeAfterUndo = await ctx.rounds.undoLastShot(round.id, 1)
 
     assert.ok(holeAfterUndo)
@@ -159,11 +159,11 @@ test('deleteShot removes a middle shot, renumbers the rest, and updates strokes'
   try {
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleCourseInput)
-    const round = await ctx.rounds.createRound(course.id)
+    const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
 
-    await ctx.rounds.addShot(round.id, 1, 'Driver')
-    await ctx.rounds.addShot(round.id, 1, '7i')
-    await ctx.rounds.addShot(round.id, 1, 'PW')
+    await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, 'Driver')
+    await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, '7i')
+    await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, 'PW')
 
     const roundBeforeDelete = await ctx.rounds.getRoundById(round.id)
     const shotToDelete = roundBeforeDelete?.holes.find((hole) => hole.holeNumber === 1)?.shots[1]
@@ -192,10 +192,10 @@ test('updateShot changes the club without changing shot order', async () => {
   try {
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleCourseInput)
-    const round = await ctx.rounds.createRound(course.id)
+    const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
 
-    await ctx.rounds.addShot(round.id, 1, 'Driver')
-    const holeWithShot = await ctx.rounds.addShot(round.id, 1, '7i')
+    await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, 'Driver')
+    const holeWithShot = await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, '7i')
     const shotToUpdate = holeWithShot?.shots[1]
 
     assert.ok(shotToUpdate)
@@ -223,16 +223,16 @@ test('completeRound marks round completed and blocks future scoring changes', as
   try {
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleCourseInput)
-    const round = await ctx.rounds.createRound(course.id)
+    const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
 
-    await ctx.rounds.addShot(round.id, 1, 'Driver')
+    await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, 'Driver')
     const completedRound = await ctx.rounds.completeRound(round.id, 'Finished strong')
 
     assert.equal(completedRound.status, 'completed')
     assert.equal(completedRound.note, 'Finished strong')
     assert.ok(completedRound.finishedAt)
 
-    await assert.rejects(() => ctx.rounds.addShot(round.id, 1, '7i'), /Round is already completed/)
+    await assert.rejects(() => ctx.rounds.addShot(ctx.testUser.id, round.id, 1, '7i'), /Round is already completed/)
     await assert.rejects(() => ctx.rounds.undoLastShot(round.id, 1), /Round is already completed/)
     await assert.rejects(() => ctx.rounds.updateShot(round.id, 1, 1, 'PW'), /Round is already completed|Shot not found/)
   } finally {
@@ -246,9 +246,9 @@ test('cancelRound deletes an in-progress round and its related data', async () =
   try {
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleCourseInput)
-    const round = await ctx.rounds.createRound(course.id)
+    const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
 
-    await ctx.rounds.addShot(round.id, 1, 'Driver')
+    await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, 'Driver')
     const result = await ctx.rounds.cancelRound(round.id)
 
     assert.deepEqual(result, { id: round.id, cancelled: true })
@@ -270,8 +270,8 @@ test('concurrent createRound only allows one in-progress round', async () => {
     const course = await ctx.courses.createCourse(sampleCourseInput)
 
     const results = await Promise.allSettled([
-      ctx.rounds.createRound(course.id),
-      ctx.rounds.createRound(course.id),
+      ctx.rounds.createRound(ctx.testUser.id, course.id),
+      ctx.rounds.createRound(ctx.testUser.id, course.id),
     ])
 
     const fulfilled = results.filter((r) => r.status === 'fulfilled')
@@ -292,10 +292,10 @@ test('concurrent updateShot and deleteShot on the same shot leave data consisten
   try {
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleCourseInput)
-    const round = await ctx.rounds.createRound(course.id)
+    const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
 
-    await ctx.rounds.addShot(round.id, 1, 'Driver')
-    await ctx.rounds.addShot(round.id, 1, '7i')
+    await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, 'Driver')
+    await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, '7i')
 
     const roundBeforeRace = await ctx.rounds.getRoundById(round.id)
     const shotToRace = roundBeforeRace!.holes.find((h) => h.holeNumber === 1)!.shots[0]
@@ -328,10 +328,10 @@ test('concurrent deleteShot on the same shot allows only one to succeed', async 
   try {
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleCourseInput)
-    const round = await ctx.rounds.createRound(course.id)
+    const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
 
-    await ctx.rounds.addShot(round.id, 1, 'Driver')
-    await ctx.rounds.addShot(round.id, 1, '7i')
+    await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, 'Driver')
+    await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, '7i')
 
     const roundBeforeDelete = await ctx.rounds.getRoundById(round.id)
     const shotId = roundBeforeDelete!.holes.find((h) => h.holeNumber === 1)!.shots[0].id
@@ -364,11 +364,11 @@ test('concurrent completeRound and addShot never leaves a completed round with s
   try {
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleCourseInput)
-    const round = await ctx.rounds.createRound(course.id)
+    const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
 
     const results = await Promise.allSettled([
       ctx.rounds.completeRound(round.id, 'Done'),
-      ctx.rounds.addShot(round.id, 1, 'Driver'),
+      ctx.rounds.addShot(ctx.testUser.id, round.id, 1, 'Driver'),
     ])
 
     const fulfilled = results.filter((r) => r.status === 'fulfilled')
@@ -401,7 +401,7 @@ test('cancelRound rejects completed rounds', async () => {
   try {
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleCourseInput)
-    const round = await ctx.rounds.createRound(course.id)
+    const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
 
     await ctx.rounds.completeRound(round.id, 'Done')
 
@@ -418,15 +418,15 @@ test('createRound stores playMode on the round', async () => {
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleEighteenHoleCourseInput)
 
-    const full = await ctx.rounds.createRound(course.id, 'full')
+    const full = await ctx.rounds.createRound(ctx.testUser.id, course.id)
     assert.equal(full.playMode, 'full')
     await ctx.rounds.cancelRound(full.id)
 
-    const front9 = await ctx.rounds.createRound(course.id, 'front9')
+    const front9 = await ctx.rounds.createRound(ctx.testUser.id, course.id)
     assert.equal(front9.playMode, 'front9')
     await ctx.rounds.cancelRound(front9.id)
 
-    const back9 = await ctx.rounds.createRound(course.id, 'back9')
+    const back9 = await ctx.rounds.createRound(ctx.testUser.id, course.id)
     assert.equal(back9.playMode, 'back9')
     await ctx.rounds.cancelRound(back9.id)
   } finally {
@@ -441,11 +441,11 @@ test('completeRound stores totalStrokes, totalPar, and relativeToPar', async () 
     await ctx.resetDatabase()
     // sampleCourseInput: 9 holes, total par = 36
     const course = await ctx.courses.createCourse(sampleCourseInput)
-    const round = await ctx.rounds.createRound(course.id)
+    const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
 
     // Add 5 shots to hole 1 (par 4), leave other holes at 0 strokes
     for (let i = 0; i < 5; i++) {
-      await ctx.rounds.addShot(round.id, 1, 'Driver')
+      await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, 'Driver')
     }
 
     const completed = await ctx.rounds.completeRound(round.id)
@@ -465,9 +465,9 @@ test('listCompletedRounds returns stored totals without holes data', async () =>
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleCourseInput)
 
-    const round = await ctx.rounds.createRound(course.id)
-    await ctx.rounds.addShot(round.id, 1, 'Driver')
-    await ctx.rounds.addShot(round.id, 1, '7i')
+    const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
+    await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, 'Driver')
+    await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, '7i')
     await ctx.rounds.completeRound(round.id)
 
     const rounds = await ctx.rounds.listCompletedRounds()
@@ -491,7 +491,7 @@ test('listCompletedRounds paginates with limit and page', async () => {
 
     // Create and complete 3 rounds
     for (let i = 0; i < 3; i++) {
-      const round = await ctx.rounds.createRound(course.id)
+      const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
       await ctx.rounds.completeRound(round.id)
     }
 

@@ -1,5 +1,6 @@
 import { notFound, redirect } from 'next/navigation'
 
+import { auth } from '@/auth'
 import { AppShell } from '@/components/app-shell'
 import { CancelRoundButton } from '@/components/cancel-round-button'
 import { ReviewRoundForm } from '@/components/review-round-form'
@@ -13,8 +14,10 @@ export default async function ReviewRoundPage({
 }: {
   params: Promise<{ id: string }>
 }) {
+  const session = await auth()
+  const userId = session!.user!.id
   const { id } = await params
-  const round = await getRoundById(Number(id))
+  const round = await getRoundById(Number(id), userId)
 
   if (!round) {
     notFound()

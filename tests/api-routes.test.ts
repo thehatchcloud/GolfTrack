@@ -59,7 +59,7 @@ test('POST /api/rounds returns 409 when a round is already in progress', async (
   try {
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleCourseInput)
-    await ctx.rounds.createRound(course.id)
+    await ctx.rounds.createRound(ctx.testUser.id, course.id)
 
     const res = await roundsPost(jsonRequest({ courseId: course.id }))
     const body = await res.json()
@@ -78,7 +78,7 @@ test('POST /api/rounds/:id/cancel returns 200 and cancels the round', async () =
   try {
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleCourseInput)
-    const round = await ctx.rounds.createRound(course.id)
+    const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
 
     const res = await cancelPost(new Request('http://localhost', { method: 'POST' }), routeContext(round.id))
     const body = await res.json()
@@ -126,8 +126,8 @@ test('POST /api/rounds/:id/cancel returns 409 when round is already completed', 
   try {
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleCourseInput)
-    const round = await ctx.rounds.createRound(course.id)
-    await ctx.rounds.completeRound(round.id)
+    const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
+    await ctx.rounds.completeRound(ctx.testUser.id, round.id)
 
     const res = await cancelPost(new Request('http://localhost', { method: 'POST' }), routeContext(round.id))
     const body = await res.json()

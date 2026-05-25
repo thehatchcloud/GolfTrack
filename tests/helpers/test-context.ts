@@ -39,6 +39,13 @@ export async function setupTestContext() {
     `CREATE UNIQUE INDEX IF NOT EXISTS "rounds_one_in_progress" ON "rounds" ("status") WHERE status = 'in_progress'`,
   )
 
+  const testUser = await db.user.create({
+    data: {
+      email: 'test@example.com',
+      name: 'Test User',
+    },
+  })
+
   async function resetDatabase() {
     await db.shot.deleteMany()
     await db.roundHole.deleteMany()
@@ -56,6 +63,7 @@ export async function setupTestContext() {
     db,
     courses,
     rounds,
+    testUser,
     resetDatabase,
     teardown,
   }

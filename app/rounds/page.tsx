@@ -1,5 +1,6 @@
 import Link from 'next/link'
 
+import { auth } from '@/auth'
 import { AppShell } from '@/components/app-shell'
 import { SectionCard } from '@/components/section-card'
 import { getRoundPlayLabelFromMode } from '@/lib/round-play'
@@ -15,12 +16,14 @@ export default async function RoundsPage({
 }: {
   searchParams: Promise<{ page?: string }>
 }) {
+  const session = await auth()
+  const userId = session!.user!.id
   const params = await searchParams
   const page = Math.max(0, parseInt(params.page ?? '0', 10) || 0)
 
   const [inProgressRound, rounds] = await Promise.all([
-    getInProgressRound(),
-    listCompletedRounds(PAGE_SIZE + 1, page),
+    getInProgressRound(userId),
+    listCompletedRounds(userId, PAGE_SIZE + 1, page),
   ])
 
   const hasMore = rounds.length > PAGE_SIZE
