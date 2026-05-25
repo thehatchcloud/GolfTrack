@@ -19,7 +19,7 @@ export async function UserNav() {
 
   async function handleSignOut() {
     'use server'
-    await signOut({ redirectTo: '/sign-in' })
+    await signOut({ redirectTo: '/' })
   }
 
   return (
