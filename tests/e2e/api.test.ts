@@ -10,9 +10,9 @@ process.env.AUTH_SECRET = 'test-secret-key-for-testing-only'
 process.env.TEST_USE_DEV_DB = 'true'
 
 import request from 'supertest'
-import { setupTestContext } from './helpers/test-context'
-import { sampleCourseInput } from './helpers/sample-data'
-import { createAuthToken } from './helpers/auth'
+import { setupTestContext } from '../helpers/test-context'
+import { sampleCourseInput } from '../helpers/sample-data'
+import { createAuthToken } from '../helpers/auth'
 
 const BASE_URL = 'http://localhost:3000'
 let ctx: Awaited<ReturnType<typeof setupTestContext>>
