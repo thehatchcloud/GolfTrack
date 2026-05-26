@@ -95,7 +95,7 @@ test('course updates do not alter existing round hole snapshots', async () => {
 
     await ctx.courses.updateCourse(createdCourse.id, updatedCourseInput)
 
-    const roundAfterUpdate = await ctx.rounds.getRoundById(round.id)
+    const roundAfterUpdate = await ctx.rounds.getRoundById(ctx.testUser.id, round.id)
 
     assert.ok(roundAfterUpdate)
     assert.deepEqual(

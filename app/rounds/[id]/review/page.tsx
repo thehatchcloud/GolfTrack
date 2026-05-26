@@ -17,7 +17,7 @@ export default async function ReviewRoundPage({
   const session = await auth()
   const userId = session!.user!.id
   const { id } = await params
-  const round = await getRoundById(Number(id), userId)
+  const round = await getRoundById(userId, Number(id))
 
   if (!round) {
     notFound()

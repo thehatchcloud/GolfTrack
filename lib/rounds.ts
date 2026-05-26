@@ -36,9 +36,9 @@ export async function listCompletedRounds(userId: string, limit = 20, page = 0) 
   })
 }
 
-export async function getRoundById(id: number, userId: string) {
-  return db.round.findUnique({
-    where: { id, userId },
+export async function getRoundById(userId: string, id: number) {
+  const round = await db.round.findUnique({
+    where: { id },
     include: {
       course: true,
       holes: {
@@ -51,6 +51,12 @@ export async function getRoundById(id: number, userId: string) {
       },
     },
   })
+
+  if (!round || round.userId !== userId) {
+    return null
+  }
+
+  return round
 }
 
 export async function createRound(userId: string, courseId: number, playMode: 'full' | 'front9' | 'back9' = 'full') {

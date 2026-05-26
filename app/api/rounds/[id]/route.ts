@@ -21,7 +21,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     return NextResponse.json({ error: 'Invalid round id' }, { status: 400 })
   }
 
-  const round = await getRoundById(id, token!.sub as string)
+  const round = await getRoundById(token!.sub as string, id)
 
   if (!round) {
     return NextResponse.json({ error: 'Round not found' }, { status: 404 })

@@ -32,7 +32,7 @@ test('createRound can create a front 9 round from an 18-hole course', async () =
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleEighteenHoleCourseInput)
 
-    const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
+    const round = await ctx.rounds.createRound(ctx.testUser.id, course.id, 'front9')
 
     assert.equal(round.currentHole, 1)
     assert.deepEqual(
@@ -51,7 +51,7 @@ test('createRound can create a back 9 round from an 18-hole course', async () =>
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleEighteenHoleCourseInput)
 
-    const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
+    const round = await ctx.rounds.createRound(ctx.testUser.id, course.id, 'back9')
 
     assert.equal(round.currentHole, 10)
     assert.deepEqual(
@@ -71,7 +71,7 @@ test('createRound rejects front 9 or back 9 on a 9-hole course', async () => {
     const course = await ctx.courses.createCourse(sampleCourseInput)
 
     await assert.rejects(
-      () => ctx.rounds.createRound(ctx.testUser.id, course.id),
+      () => ctx.rounds.createRound(ctx.testUser.id, course.id, 'front9'),
       /Front 9 or back 9 is only available on 18-hole courses/,
     )
   } finally {
@@ -95,7 +95,7 @@ test('concurrent addShot calls both succeed without unique constraint violations
     assert.ok(result1)
     assert.ok(result2)
 
-    const finalRound = await ctx.rounds.getRoundById(round.id)
+    const finalRound = await ctx.rounds.getRoundById(ctx.testUser.id, round.id)
     const hole1 = finalRound?.holes.find((h) => h.holeNumber === 1)
     assert.equal(hole1?.strokes, 2)
     assert.equal(hole1?.shots.length, 2)
@@ -140,7 +140,7 @@ test('undoLastShot removes the latest shot and updates strokes', async () => {
 
     await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, 'Driver')
     await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, '7i')
-    const holeAfterUndo = await ctx.rounds.undoLastShot(round.id, 1)
+    const holeAfterUndo = await ctx.rounds.undoLastShot(ctx.testUser.id, round.id, 1)
 
     assert.ok(holeAfterUndo)
     assert.equal(holeAfterUndo?.strokes, 1)
@@ -165,12 +165,12 @@ test('deleteShot removes a middle shot, renumbers the rest, and updates strokes'
     await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, '7i')
     await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, 'PW')
 
-    const roundBeforeDelete = await ctx.rounds.getRoundById(round.id)
+    const roundBeforeDelete = await ctx.rounds.getRoundById(ctx.testUser.id, round.id)
     const shotToDelete = roundBeforeDelete?.holes.find((hole) => hole.holeNumber === 1)?.shots[1]
 
     assert.ok(shotToDelete)
 
-    const holeAfterDelete = await ctx.rounds.deleteShot(round.id, 1, shotToDelete!.id)
+    const holeAfterDelete = await ctx.rounds.deleteShot(ctx.testUser.id, round.id, 1, shotToDelete!.id)
 
     assert.ok(holeAfterDelete)
     assert.equal(holeAfterDelete?.strokes, 2)
@@ -200,8 +200,8 @@ test('updateShot changes the club without changing shot order', async () => {
 
     assert.ok(shotToUpdate)
 
-    await ctx.rounds.updateShot(round.id, 1, shotToUpdate!.id, '8i')
-    const updatedRound = await ctx.rounds.getRoundById(round.id)
+    await ctx.rounds.updateShot(ctx.testUser.id, round.id, 1, shotToUpdate!.id, '8i')
+    const updatedRound = await ctx.rounds.getRoundById(ctx.testUser.id, round.id)
     const updatedHole = updatedRound?.holes.find((hole) => hole.holeNumber === 1)
 
     assert.deepEqual(
@@ -226,15 +226,15 @@ test('completeRound marks round completed and blocks future scoring changes', as
     const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
 
     await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, 'Driver')
-    const completedRound = await ctx.rounds.completeRound(round.id, 'Finished strong')
+    const completedRound = await ctx.rounds.completeRound(ctx.testUser.id, round.id, 'Finished strong')
 
     assert.equal(completedRound.status, 'completed')
     assert.equal(completedRound.note, 'Finished strong')
     assert.ok(completedRound.finishedAt)
 
     await assert.rejects(() => ctx.rounds.addShot(ctx.testUser.id, round.id, 1, '7i'), /Round is already completed/)
-    await assert.rejects(() => ctx.rounds.undoLastShot(round.id, 1), /Round is already completed/)
-    await assert.rejects(() => ctx.rounds.updateShot(round.id, 1, 1, 'PW'), /Round is already completed|Shot not found/)
+    await assert.rejects(() => ctx.rounds.undoLastShot(ctx.testUser.id, round.id, 1), /Round is already completed/)
+    await assert.rejects(() => ctx.rounds.updateShot(ctx.testUser.id, round.id, 1, 1, 'PW'), /Round is already completed|Shot not found/)
   } finally {
     await ctx.teardown()
   }
@@ -249,11 +249,11 @@ test('cancelRound deletes an in-progress round and its related data', async () =
     const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
 
     await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, 'Driver')
-    const result = await ctx.rounds.cancelRound(round.id)
+    const result = await ctx.rounds.cancelRound(ctx.testUser.id, round.id)
 
     assert.deepEqual(result, { id: round.id, cancelled: true })
-    assert.equal(await ctx.rounds.getRoundById(round.id), null)
-    assert.equal(await ctx.rounds.getInProgressRound(), null)
+    assert.equal(await ctx.rounds.getRoundById(ctx.testUser.id, round.id), null)
+    assert.equal(await ctx.rounds.getInProgressRound(ctx.testUser.id), null)
     assert.equal(await ctx.db.round.count(), 0)
     assert.equal(await ctx.db.roundHole.count(), 0)
     assert.equal(await ctx.db.shot.count(), 0)
@@ -297,12 +297,12 @@ test('concurrent updateShot and deleteShot on the same shot leave data consisten
     await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, 'Driver')
     await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, '7i')
 
-    const roundBeforeRace = await ctx.rounds.getRoundById(round.id)
+    const roundBeforeRace = await ctx.rounds.getRoundById(ctx.testUser.id, round.id)
     const shotToRace = roundBeforeRace!.holes.find((h) => h.holeNumber === 1)!.shots[0]
 
     const results = await Promise.allSettled([
-      ctx.rounds.updateShot(round.id, 1, shotToRace.id, '5i'),
-      ctx.rounds.deleteShot(round.id, 1, shotToRace.id),
+      ctx.rounds.updateShot(ctx.testUser.id, round.id, 1, shotToRace.id, '5i'),
+      ctx.rounds.deleteShot(ctx.testUser.id, round.id, 1, shotToRace.id),
     ])
 
     const fulfilled = results.filter((r) => r.status === 'fulfilled')
@@ -312,7 +312,7 @@ test('concurrent updateShot and deleteShot on the same shot leave data consisten
       assert.match((r as PromiseRejectedResult).reason.message, /Shot not found/)
     }
 
-    const finalHole = (await ctx.rounds.getRoundById(round.id))!.holes.find((h) => h.holeNumber === 1)!
+    const finalHole = (await ctx.rounds.getRoundById(ctx.testUser.id, round.id))!.holes.find((h) => h.holeNumber === 1)!
     assert.equal(finalHole.strokes, 1, 'only the 7i shot remains after deletion')
     assert.equal(finalHole.shots.length, 1)
     assert.equal(finalHole.shots[0].shotNumber, 1)
@@ -333,12 +333,12 @@ test('concurrent deleteShot on the same shot allows only one to succeed', async 
     await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, 'Driver')
     await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, '7i')
 
-    const roundBeforeDelete = await ctx.rounds.getRoundById(round.id)
+    const roundBeforeDelete = await ctx.rounds.getRoundById(ctx.testUser.id, round.id)
     const shotId = roundBeforeDelete!.holes.find((h) => h.holeNumber === 1)!.shots[0].id
 
     const results = await Promise.allSettled([
-      ctx.rounds.deleteShot(round.id, 1, shotId),
-      ctx.rounds.deleteShot(round.id, 1, shotId),
+      ctx.rounds.deleteShot(ctx.testUser.id, round.id, 1, shotId),
+      ctx.rounds.deleteShot(ctx.testUser.id, round.id, 1, shotId),
     ])
 
     const fulfilled = results.filter((r) => r.status === 'fulfilled')
@@ -348,7 +348,7 @@ test('concurrent deleteShot on the same shot allows only one to succeed', async 
     assert.equal(rejected.length, 1)
     assert.match((rejected[0] as PromiseRejectedResult).reason.message, /Shot not found/)
 
-    const finalRound = await ctx.rounds.getRoundById(round.id)
+    const finalRound = await ctx.rounds.getRoundById(ctx.testUser.id, round.id)
     const hole1 = finalRound?.holes.find((h) => h.holeNumber === 1)
     assert.equal(hole1?.strokes, 1)
     assert.equal(hole1?.shots.length, 1)
@@ -367,7 +367,7 @@ test('concurrent completeRound and addShot never leaves a completed round with s
     const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
 
     const results = await Promise.allSettled([
-      ctx.rounds.completeRound(round.id, 'Done'),
+      ctx.rounds.completeRound(ctx.testUser.id, round.id, 'Done'),
       ctx.rounds.addShot(ctx.testUser.id, round.id, 1, 'Driver'),
     ])
 
@@ -378,7 +378,7 @@ test('concurrent completeRound and addShot never leaves a completed round with s
       assert.match((r as PromiseRejectedResult).reason.message, /Round is already completed/)
     }
 
-    const finalRound = await ctx.rounds.getRoundById(round.id)
+    const finalRound = await ctx.rounds.getRoundById(ctx.testUser.id, round.id)
     assert.ok(finalRound, 'round still exists')
     assert.equal(finalRound!.status, 'completed')
     assert.ok(finalRound!.finishedAt, 'finishedAt is set')
@@ -403,9 +403,9 @@ test('cancelRound rejects completed rounds', async () => {
     const course = await ctx.courses.createCourse(sampleCourseInput)
     const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
 
-    await ctx.rounds.completeRound(round.id, 'Done')
+    await ctx.rounds.completeRound(ctx.testUser.id, round.id, 'Done')
 
-    await assert.rejects(() => ctx.rounds.cancelRound(round.id), /Only in-progress rounds can be cancelled/)
+    await assert.rejects(() => ctx.rounds.cancelRound(ctx.testUser.id, round.id), /Only in-progress rounds can be cancelled/)
   } finally {
     await ctx.teardown()
   }
@@ -418,17 +418,17 @@ test('createRound stores playMode on the round', async () => {
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleEighteenHoleCourseInput)
 
-    const full = await ctx.rounds.createRound(ctx.testUser.id, course.id)
+    const full = await ctx.rounds.createRound(ctx.testUser.id, course.id, 'full')
     assert.equal(full.playMode, 'full')
-    await ctx.rounds.cancelRound(full.id)
+    await ctx.rounds.cancelRound(ctx.testUser.id, full.id)
 
-    const front9 = await ctx.rounds.createRound(ctx.testUser.id, course.id)
+    const front9 = await ctx.rounds.createRound(ctx.testUser.id, course.id, 'front9')
     assert.equal(front9.playMode, 'front9')
-    await ctx.rounds.cancelRound(front9.id)
+    await ctx.rounds.cancelRound(ctx.testUser.id, front9.id)
 
-    const back9 = await ctx.rounds.createRound(ctx.testUser.id, course.id)
+    const back9 = await ctx.rounds.createRound(ctx.testUser.id, course.id, 'back9')
     assert.equal(back9.playMode, 'back9')
-    await ctx.rounds.cancelRound(back9.id)
+    await ctx.rounds.cancelRound(ctx.testUser.id, back9.id)
   } finally {
     await ctx.teardown()
   }
@@ -448,7 +448,7 @@ test('completeRound stores totalStrokes, totalPar, and relativeToPar', async () 
       await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, 'Driver')
     }
 
-    const completed = await ctx.rounds.completeRound(round.id)
+    const completed = await ctx.rounds.completeRound(ctx.testUser.id, round.id)
 
     assert.equal(completed.totalStrokes, 5)
     assert.equal(completed.totalPar, 36)
@@ -468,9 +468,9 @@ test('listCompletedRounds returns stored totals without holes data', async () =>
     const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
     await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, 'Driver')
     await ctx.rounds.addShot(ctx.testUser.id, round.id, 1, '7i')
-    await ctx.rounds.completeRound(round.id)
+    await ctx.rounds.completeRound(ctx.testUser.id, round.id)
 
-    const rounds = await ctx.rounds.listCompletedRounds()
+    const rounds = await ctx.rounds.listCompletedRounds(ctx.testUser.id)
 
     assert.equal(rounds.length, 1)
     assert.equal(rounds[0].totalStrokes, 2)
@@ -492,12 +492,12 @@ test('listCompletedRounds paginates with limit and page', async () => {
     // Create and complete 3 rounds
     for (let i = 0; i < 3; i++) {
       const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
-      await ctx.rounds.completeRound(round.id)
+      await ctx.rounds.completeRound(ctx.testUser.id, round.id)
     }
 
-    const page0 = await ctx.rounds.listCompletedRounds(2, 0)
-    const page1 = await ctx.rounds.listCompletedRounds(2, 1)
-    const page2 = await ctx.rounds.listCompletedRounds(2, 2)
+    const page0 = await ctx.rounds.listCompletedRounds(ctx.testUser.id, 2, 0)
+    const page1 = await ctx.rounds.listCompletedRounds(ctx.testUser.id, 2, 1)
+    const page2 = await ctx.rounds.listCompletedRounds(ctx.testUser.id, 2, 2)
 
     assert.equal(page0.length, 2)
     assert.equal(page1.length, 1)

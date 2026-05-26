@@ -4,16 +4,39 @@ import assert from 'node:assert/strict'
 // Must import before route handlers so DATABASE_URL is set before Prisma client init
 import { setupTestContext } from './helpers/test-context'
 import { sampleCourseInput, updatedCourseInput } from './helpers/sample-data'
+import { createAuthToken } from './helpers/auth'
 
 import { POST as roundsPost } from '../app/api/rounds/route'
 import { POST as cancelPost } from '../app/api/rounds/[id]/cancel/route'
 import { PUT as coursePut } from '../app/api/courses/[id]/route'
 
-function jsonRequest(body: unknown): Request {
+process.env.AUTH_SECRET = 'test-secret-key-for-testing-only'
+
+// Create a simple test token (not a real JWT, just an identifier we'll parse)
+function createTestAuthToken(userId: string): string {
+  return `test-token-${userId}`
+}
+
+function jsonRequest(body: unknown, authToken?: string): Request {
+  const headers: HeadersInit = { 'Content-Type': 'application/json' }
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`
+  }
   return new Request('http://localhost', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(body),
+  })
+}
+
+function authRequest(authToken?: string): Request {
+  const headers: HeadersInit = {}
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`
+  }
+  return new Request('http://localhost', {
+    method: 'POST',
+    headers,
   })
 }
 
@@ -28,8 +51,9 @@ test('POST /api/rounds returns 201 with round id on success', async () => {
   try {
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleCourseInput)
+    const token = createAuthToken(ctx.testUser.id)
 
-    const res = await roundsPost(jsonRequest({ courseId: course.id }))
+    const res = await roundsPost(jsonRequest({ courseId: course.id }, token))
     const body = await res.json()
 
     assert.equal(res.status, 201)
@@ -43,8 +67,9 @@ test('POST /api/rounds returns 404 when course does not exist', async () => {
   const ctx = await setupTestContext()
   try {
     await ctx.resetDatabase()
+    const token = createAuthToken(ctx.testUser.id)
 
-    const res = await roundsPost(jsonRequest({ courseId: 99999 }))
+    const res = await roundsPost(jsonRequest({ courseId: 99999 }, token))
     const body = await res.json()
 
     assert.equal(res.status, 404)
@@ -60,8 +85,9 @@ test('POST /api/rounds returns 409 when a round is already in progress', async (
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleCourseInput)
     await ctx.rounds.createRound(ctx.testUser.id, course.id)
+    const token = createAuthToken(ctx.testUser.id)
 
-    const res = await roundsPost(jsonRequest({ courseId: course.id }))
+    const res = await roundsPost(jsonRequest({ courseId: course.id }, token))
     const body = await res.json()
 
     assert.equal(res.status, 409)
@@ -79,8 +105,9 @@ test('POST /api/rounds/:id/cancel returns 200 and cancels the round', async () =
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleCourseInput)
     const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
+    const token = createAuthToken(ctx.testUser.id)
 
-    const res = await cancelPost(new Request('http://localhost', { method: 'POST' }), routeContext(round.id))
+    const res = await cancelPost(authRequest(token), routeContext(round.id))
     const body = await res.json()
 
     assert.equal(res.status, 200)
@@ -110,8 +137,9 @@ test('POST /api/rounds/:id/cancel returns 404 when round does not exist', async 
   const ctx = await setupTestContext()
   try {
     await ctx.resetDatabase()
+    const token = createAuthToken(ctx.testUser.id)
 
-    const res = await cancelPost(new Request('http://localhost', { method: 'POST' }), routeContext(99999))
+    const res = await cancelPost(authRequest(token), routeContext(99999))
     const body = await res.json()
 
     assert.equal(res.status, 404)
@@ -128,8 +156,9 @@ test('POST /api/rounds/:id/cancel returns 409 when round is already completed', 
     const course = await ctx.courses.createCourse(sampleCourseInput)
     const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
     await ctx.rounds.completeRound(ctx.testUser.id, round.id)
+    const token = createAuthToken(ctx.testUser.id)
 
-    const res = await cancelPost(new Request('http://localhost', { method: 'POST' }), routeContext(round.id))
+    const res = await cancelPost(authRequest(token), routeContext(round.id))
     const body = await res.json()
 
     assert.equal(res.status, 409)

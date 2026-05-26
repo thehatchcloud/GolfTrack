@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx --test --test-concurrency=1 tests/**/*.test.ts",
+    "test": "tsx --test --test-concurrency=1 tests/**/*.test.ts --exclude tests/**/*.e2e.test.ts",
+    "test:e2e": "tsx --test --test-concurrency=1 tests/**/*.e2e.test.ts",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:generate": "prisma generate",
@@ -30,6 +31,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "prisma": "^6.9.0",
+    "supertest": "^7.2.2",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
     "typescript": "^5"
