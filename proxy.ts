@@ -4,9 +4,22 @@ import { getToken } from 'next-auth/jwt'
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
+  // Allow public access to health check
+  if (pathname === '/health') {
+    return NextResponse.next()
+  }
+
   // Auth.js routes handle their own auth — always pass through
   if (pathname.startsWith('/api/auth')) {
     return withCsp(request)
+  }
+
+  // API routes with Bearer tokens handle their own auth — pass through
+  if (pathname.startsWith('/api/')) {
+    const authHeader = request.headers.get('authorization')
+    if (authHeader?.startsWith('Bearer ')) {
+      return withCsp(request)
+    }
   }
 
   // secureCookie must match how Auth.js created the session cookie:

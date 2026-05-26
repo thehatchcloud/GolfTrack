@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server'
+import { getToken } from 'next-auth/jwt'
+import { NextRequest, NextResponse } from 'next/server'
 
 import { toResponse } from '@/lib/errors'
 import { deleteShot, updateShot } from '@/lib/rounds'
@@ -8,9 +9,15 @@ function parseId(value: string) {
 }
 
 export async function PATCH(
-  request: Request,
+  request: NextRequest,
   context: { params: Promise<{ id: string; holeNumber: string; shotId: string }> },
 ) {
+  const token = await getToken({
+    req: request,
+    secret: process.env.AUTH_SECRET,
+    secureCookie: request.url.startsWith('https://'),
+  })
+
   const params = await context.params
   const roundId = parseId(params.id)
   const holeNumber = parseId(params.holeNumber)
@@ -22,7 +29,7 @@ export async function PATCH(
 
   try {
     const body = await request.json()
-    const shot = await updateShot(roundId, holeNumber, shotId, body.club)
+    const shot = await updateShot(token!.sub as string, roundId, holeNumber, shotId, body.club)
 
     return NextResponse.json(shot)
   } catch (error) {
@@ -31,9 +38,15 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _: Request,
+  request: NextRequest,
   context: { params: Promise<{ id: string; holeNumber: string; shotId: string }> },
 ) {
+  const token = await getToken({
+    req: request,
+    secret: process.env.AUTH_SECRET,
+    secureCookie: request.url.startsWith('https://'),
+  })
+
   const params = await context.params
   const roundId = parseId(params.id)
   const holeNumber = parseId(params.holeNumber)
@@ -44,7 +57,7 @@ export async function DELETE(
   }
 
   try {
-    const roundHole = await deleteShot(roundId, holeNumber, shotId)
+    const roundHole = await deleteShot(token!.sub as string, roundId, holeNumber, shotId)
     return NextResponse.json(roundHole)
   } catch (error) {
     return toResponse(error)

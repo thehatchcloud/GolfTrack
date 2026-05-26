@@ -1,5 +1,6 @@
 import Link from 'next/link'
 
+import { auth } from '@/auth'
 import { AppShell } from '@/components/app-shell'
 import { SectionCard } from '@/components/section-card'
 import { StartRoundForm } from '@/components/start-round-form'
@@ -10,7 +11,9 @@ import { getInProgressRound } from '@/lib/rounds'
 export const dynamic = 'force-dynamic'
 
 export default async function NewRoundPage() {
-  const [courses, inProgressRound] = await Promise.all([listCourses(), getInProgressRound()])
+  const session = await auth()
+  const userId = session!.user!.id
+  const [courses, inProgressRound] = await Promise.all([listCourses(), getInProgressRound(userId)])
 
   return (
     <AppShell>

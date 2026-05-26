@@ -22,6 +22,14 @@ async function main() {
   await prisma.round.deleteMany()
   await prisma.courseHole.deleteMany()
   await prisma.course.deleteMany()
+  await prisma.user.deleteMany()
+
+  const testUser = await prisma.user.create({
+    data: {
+      email: 'test@example.com',
+      name: 'Test User',
+    },
+  })
 
   const sampleMunicipal = await prisma.course.create({
     data: {
@@ -76,6 +84,7 @@ async function main() {
 
   const completedRound = await prisma.round.create({
     data: {
+      userId: testUser.id,
       courseId: sampleMunicipal.id,
       status: RoundStatus.completed,
       currentHole: 9,
@@ -124,6 +133,7 @@ async function main() {
 
   const inProgressRound = await prisma.round.create({
     data: {
+      userId: testUser.id,
       courseId: lakeside.id,
       status: RoundStatus.in_progress,
       currentHole: 4,

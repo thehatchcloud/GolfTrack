@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 
+import { auth } from '@/auth'
 import { AppShell } from '@/components/app-shell'
 import { CancelRoundButton } from '@/components/cancel-round-button'
 import { HoleProgressStrip } from '@/components/hole-progress-strip'
@@ -17,8 +18,10 @@ export default async function PlayRoundPage({
 }: {
   params: Promise<{ id: string }>
 }) {
+  const session = await auth()
+  const userId = session!.user!.id
   const { id } = await params
-  const round = await getRoundById(Number(id))
+  const round = await getRoundById(userId, Number(id))
 
   if (!round) {
     notFound()

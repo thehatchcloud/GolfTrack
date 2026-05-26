@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 
+import { auth } from '@/auth'
 import { AppShell } from '@/components/app-shell'
 import { getRoundPlayLabel } from '@/lib/round-play'
 import { calculateRoundTotals, formatRelativeToPar } from '@/lib/scoring'
@@ -13,8 +14,10 @@ export default async function RoundDetailPage({
 }: {
   params: Promise<{ id: string }>
 }) {
+  const session = await auth()
+  const userId = session!.user!.id
   const { id } = await params
-  const round = await getRoundById(Number(id))
+  const round = await getRoundById(userId, Number(id))
 
   if (!round) {
     notFound()
