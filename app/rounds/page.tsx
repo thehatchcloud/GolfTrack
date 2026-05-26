@@ -6,6 +6,7 @@ import { SectionCard } from '@/components/section-card'
 import { getRoundPlayLabelFromMode } from '@/lib/round-play'
 import { formatRelativeToPar } from '@/lib/scoring'
 import { getInProgressRound, listCompletedRounds } from '@/lib/rounds'
+import { getSessionUserId } from '@/lib/session'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,6 +22,7 @@ export default async function RoundsPage({
   const params = await searchParams
   const page = Math.max(0, parseInt(params.page ?? '0', 10) || 0)
 
+  const userId = await getSessionUserId()
   const [inProgressRound, rounds] = await Promise.all([
     getInProgressRound(userId),
     listCompletedRounds(userId, PAGE_SIZE + 1, page),
