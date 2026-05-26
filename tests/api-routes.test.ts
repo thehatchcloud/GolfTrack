@@ -8,14 +8,10 @@ import { createAuthToken } from './helpers/auth'
 
 import { POST as roundsPost } from '../app/api/rounds/route'
 import { POST as cancelPost } from '../app/api/rounds/[id]/cancel/route'
+import { POST as coursesPost } from '../app/api/courses/route'
 import { PUT as coursePut } from '../app/api/courses/[id]/route'
 
 process.env.AUTH_SECRET = 'test-secret-key-for-testing-only'
-
-// Create a simple test token (not a real JWT, just an identifier we'll parse)
-function createTestAuthToken(userId: string): string {
-  return `test-token-${userId}`
-}
 
 function jsonRequest(body: unknown, authToken?: string): Request {
   const headers: HeadersInit = { 'Content-Type': 'application/json' }
@@ -168,15 +164,65 @@ test('POST /api/rounds/:id/cancel returns 409 when round is already completed', 
   }
 })
 
+// POST /api/courses
+
+test('POST /api/courses returns 201 when posted by an admin', async () => {
+  const ctx = await setupTestContext()
+  try {
+    await ctx.resetDatabase()
+    const token = createAuthToken(ctx.testAdmin.id, 'ADMIN')
+
+    const res = await coursesPost(jsonRequest(sampleCourseInput, token))
+    const body = await res.json()
+
+    assert.equal(res.status, 201)
+    assert.ok(typeof body.id === 'number')
+  } finally {
+    await ctx.teardown()
+  }
+})
+
+test('POST /api/courses returns 401 without a token', async () => {
+  const ctx = await setupTestContext()
+  try {
+    await ctx.resetDatabase()
+
+    const res = await coursesPost(jsonRequest(sampleCourseInput))
+    const body = await res.json()
+
+    assert.equal(res.status, 401)
+    assert.match(body.error, /Unauthorized/)
+  } finally {
+    await ctx.teardown()
+  }
+})
+
+test('POST /api/courses returns 403 for non-admin users', async () => {
+  const ctx = await setupTestContext()
+  try {
+    await ctx.resetDatabase()
+    const token = createAuthToken(ctx.testUser.id, 'USER')
+
+    const res = await coursesPost(jsonRequest(sampleCourseInput, token))
+    const body = await res.json()
+
+    assert.equal(res.status, 403)
+    assert.match(body.error, /Forbidden/)
+  } finally {
+    await ctx.teardown()
+  }
+})
+
 // PUT /api/courses/:id
 
-test('PUT /api/courses/:id returns 200 and updates the course', async () => {
+test('PUT /api/courses/:id returns 200 and updates the course (admin)', async () => {
   const ctx = await setupTestContext()
   try {
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleCourseInput)
+    const token = createAuthToken(ctx.testAdmin.id, 'ADMIN')
 
-    const res = await coursePut(jsonRequest(updatedCourseInput), routeContext(course.id))
+    const res = await coursePut(jsonRequest(updatedCourseInput, token), routeContext(course.id))
     const body = await res.json()
 
     assert.equal(res.status, 200)
@@ -186,12 +232,13 @@ test('PUT /api/courses/:id returns 200 and updates the course', async () => {
   }
 })
 
-test('PUT /api/courses/:id returns 404 when course does not exist', async () => {
+test('PUT /api/courses/:id returns 404 when course does not exist (admin)', async () => {
   const ctx = await setupTestContext()
   try {
     await ctx.resetDatabase()
+    const token = createAuthToken(ctx.testAdmin.id, 'ADMIN')
 
-    const res = await coursePut(jsonRequest(updatedCourseInput), routeContext(99999))
+    const res = await coursePut(jsonRequest(updatedCourseInput, token), routeContext(99999))
     const body = await res.json()
 
     assert.equal(res.status, 404)
@@ -201,17 +248,51 @@ test('PUT /api/courses/:id returns 404 when course does not exist', async () => 
   }
 })
 
-test('PUT /api/courses/:id returns 400 for invalid course data', async () => {
+test('PUT /api/courses/:id returns 400 for invalid course data (admin)', async () => {
+  const ctx = await setupTestContext()
+  try {
+    await ctx.resetDatabase()
+    const course = await ctx.courses.createCourse(sampleCourseInput)
+    const token = createAuthToken(ctx.testAdmin.id, 'ADMIN')
+
+    const res = await coursePut(jsonRequest({ name: '', holeCount: 9, holes: [] }, token), routeContext(course.id))
+    const body = await res.json()
+
+    assert.equal(res.status, 400)
+    assert.ok(body.error)
+  } finally {
+    await ctx.teardown()
+  }
+})
+
+test('PUT /api/courses/:id returns 401 without a token', async () => {
   const ctx = await setupTestContext()
   try {
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleCourseInput)
 
-    const res = await coursePut(jsonRequest({ name: '', holeCount: 9, holes: [] }), routeContext(course.id))
+    const res = await coursePut(jsonRequest(updatedCourseInput), routeContext(course.id))
     const body = await res.json()
 
-    assert.equal(res.status, 400)
-    assert.ok(body.error)
+    assert.equal(res.status, 401)
+    assert.match(body.error, /Unauthorized/)
+  } finally {
+    await ctx.teardown()
+  }
+})
+
+test('PUT /api/courses/:id returns 403 for non-admin users', async () => {
+  const ctx = await setupTestContext()
+  try {
+    await ctx.resetDatabase()
+    const course = await ctx.courses.createCourse(sampleCourseInput)
+    const token = createAuthToken(ctx.testUser.id, 'USER')
+
+    const res = await coursePut(jsonRequest(updatedCourseInput, token), routeContext(course.id))
+    const body = await res.json()
+
+    assert.equal(res.status, 403)
+    assert.match(body.error, /Forbidden/)
   } finally {
     await ctx.teardown()
   }

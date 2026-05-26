@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
+import { auth } from '@/auth'
 import { AppShell } from '@/components/app-shell'
 import { getCourseById } from '@/lib/courses'
 
@@ -12,12 +13,13 @@ export default async function CourseDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const course = await getCourseById(Number(id))
+  const [course, session] = await Promise.all([getCourseById(Number(id)), auth()])
 
   if (!course) {
     notFound()
   }
 
+  const isAdmin = session?.user?.role === 'ADMIN'
   const totalPar = course.holes.reduce((sum, hole) => sum + hole.par, 0)
 
   return (
@@ -30,12 +32,14 @@ export default async function CourseDetailPage({
             {course.holeCount} holes · Total par {totalPar}
           </p>
         </div>
-        <Link
-          href={`/courses/${course.id}/edit`}
-          className="rounded-xl border border-stone-300 px-4 py-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-50"
-        >
-          Edit Course
-        </Link>
+        {isAdmin ? (
+          <Link
+            href={`/courses/${course.id}/edit`}
+            className="rounded-xl border border-stone-300 px-4 py-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-50"
+          >
+            Edit Course
+          </Link>
+        ) : null}
       </div>
 
       <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">

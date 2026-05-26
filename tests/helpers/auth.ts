@@ -19,11 +19,12 @@ function sign(message: string, secret: string): string {
   )
 }
 
-export function createAuthToken(userId: string): string {
+export function createAuthToken(userId: string, role: 'USER' | 'ADMIN' = 'USER'): string {
   const header = base64urlEncode(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
   const payload = base64urlEncode(
     JSON.stringify({
       sub: userId,
+      role,
       iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + 86400, // 24 hours
     })

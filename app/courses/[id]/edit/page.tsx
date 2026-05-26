@@ -1,5 +1,6 @@
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 
+import { auth } from '@/auth'
 import { AppShell } from '@/components/app-shell'
 import { CourseForm } from '@/components/course-form'
 import { getCourseById } from '@/lib/courses'
@@ -11,6 +12,11 @@ export default async function EditCoursePage({
 }: {
   params: Promise<{ id: string }>
 }) {
+  const session = await auth()
+  if (session?.user?.role !== 'ADMIN') {
+    redirect('/courses')
+  }
+
   const { id } = await params
   const course = await getCourseById(Number(id))
 

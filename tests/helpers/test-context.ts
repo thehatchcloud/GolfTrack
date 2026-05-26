@@ -66,6 +66,20 @@ export async function setupTestContext() {
     })
   }
 
+  let testAdmin = await db.user.findUnique({
+    where: { email: 'admin@example.com' },
+  })
+
+  if (!testAdmin) {
+    testAdmin = await db.user.create({
+      data: {
+        email: 'admin@example.com',
+        name: 'Test Admin',
+        role: 'ADMIN',
+      },
+    })
+  }
+
   async function resetDatabase() {
     await db.shot.deleteMany()
     await db.roundHole.deleteMany()
@@ -84,6 +98,7 @@ export async function setupTestContext() {
     courses,
     rounds,
     testUser,
+    testAdmin,
     resetDatabase,
     teardown,
   }
