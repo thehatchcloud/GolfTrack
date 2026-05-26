@@ -158,13 +158,6 @@ export function LiveRoundControls({
         strokes={optimisticHole.strokes}
       />
 
-      <ShotList
-        shots={optimisticHole.shots}
-        roundId={roundId}
-        holeNumber={currentHoleData.holeNumber}
-        editable
-      />
-
       <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -177,6 +170,13 @@ export function LiveRoundControls({
         </div>
         <ClubPad onSelectClub={addShot} disabled={isBusy} />
       </section>
+
+      <ShotList
+        shots={optimisticHole.shots}
+        roundId={roundId}
+        holeNumber={currentHoleData.holeNumber}
+        editable
+      />
 
       {error ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
