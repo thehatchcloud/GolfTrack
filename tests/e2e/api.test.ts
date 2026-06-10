@@ -2,17 +2,32 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import path from 'node:path'
 
-// Set database and auth before importing services
+import { loadEnvConfig } from '@next/env'
+
+// Load the same .env files Next.js loads for the dev server, so our session
+// cookie is encrypted with the same AUTH_SECRET the dev server will decrypt
+// with. Without this, the proxy returns 401 on every request.
+loadEnvConfig(process.cwd(), true)
+
+if (!process.env.AUTH_SECRET) {
+  console.error(
+    '[test] AUTH_SECRET is not set. E2E tests need to produce session cookies\n' +
+      '       that the running dev server can decrypt, so the two processes must\n' +
+      '       share AUTH_SECRET. Set it in .env or .env.local and restart\n' +
+      '       `npm run dev` before re-running E2E tests.',
+  )
+  process.exit(1)
+}
+
+// Use dev.db for E2E tests so the dev server can see the test data
 const devDbPath = path.join(process.cwd(), 'prisma', 'dev.db')
 process.env.DATABASE_URL = `file:${devDbPath}`
-process.env.AUTH_SECRET = 'test-secret-key-for-testing-only'
-// Use dev.db for E2E tests so the dev server can see the test data
 process.env.TEST_USE_DEV_DB = 'true'
 
 import request from 'supertest'
 import { setupTestContext } from '../helpers/test-context'
 import { sampleCourseInput } from '../helpers/sample-data'
-import { createAuthToken } from '../helpers/auth'
+import { createSessionCookie } from '../helpers/auth'
 
 const BASE_URL = 'http://localhost:3000'
 let ctx: Awaited<ReturnType<typeof setupTestContext>>
@@ -83,11 +98,11 @@ test.after(async () => {
 test('POST /api/rounds returns 201 with round id on success', async () => {
   await ctx.resetDatabase()
   const course = await ctx.courses.createCourse(sampleCourseInput)
-  const token = createAuthToken(ctx.testUser.id)
+  const cookie = await createSessionCookie(ctx.testUser.id)
 
   const res = await request(BASE_URL)
     .post('/api/rounds')
-    .set('Authorization', `Bearer ${token}`)
+    .set('Cookie', cookie)
     .send({ courseId: course.id })
 
   assert.equal(res.status, 201)
@@ -96,11 +111,11 @@ test('POST /api/rounds returns 201 with round id on success', async () => {
 
 test('POST /api/rounds returns 404 when course does not exist', async () => {
   await ctx.resetDatabase()
-  const token = createAuthToken(ctx.testUser.id)
+  const cookie = await createSessionCookie(ctx.testUser.id)
 
   const res = await request(BASE_URL)
     .post('/api/rounds')
-    .set('Authorization', `Bearer ${token}`)
+    .set('Cookie', cookie)
     .send({ courseId: 99999 })
 
   assert.equal(res.status, 404)
@@ -111,11 +126,11 @@ test('POST /api/rounds returns 409 when a round is already in progress', async (
   await ctx.resetDatabase()
   const course = await ctx.courses.createCourse(sampleCourseInput)
   await ctx.rounds.createRound(ctx.testUser.id, course.id)
-  const token = createAuthToken(ctx.testUser.id)
+  const cookie = await createSessionCookie(ctx.testUser.id)
 
   const res = await request(BASE_URL)
     .post('/api/rounds')
-    .set('Authorization', `Bearer ${token}`)
+    .set('Cookie', cookie)
     .send({ courseId: course.id })
 
   assert.equal(res.status, 409)
@@ -128,11 +143,11 @@ test('POST /api/rounds/:id/cancel returns 200 and cancels the round', async () =
   await ctx.resetDatabase()
   const course = await ctx.courses.createCourse(sampleCourseInput)
   const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
-  const token = createAuthToken(ctx.testUser.id)
+  const cookie = await createSessionCookie(ctx.testUser.id)
 
   const res = await request(BASE_URL)
     .post(`/api/rounds/${round.id}/cancel`)
-    .set('Authorization', `Bearer ${token}`)
+    .set('Cookie', cookie)
 
   assert.equal(res.status, 200)
   assert.deepEqual(res.body, { id: round.id, cancelled: true })
@@ -141,11 +156,11 @@ test('POST /api/rounds/:id/cancel returns 200 and cancels the round', async () =
 
 test('POST /api/rounds/:id/cancel returns 404 when round does not exist', async () => {
   await ctx.resetDatabase()
-  const token = createAuthToken(ctx.testUser.id)
+  const cookie = await createSessionCookie(ctx.testUser.id)
 
   const res = await request(BASE_URL)
     .post('/api/rounds/99999/cancel')
-    .set('Authorization', `Bearer ${token}`)
+    .set('Cookie', cookie)
 
   assert.equal(res.status, 404)
   assert.match(res.body.error, /Round not found/)
@@ -156,11 +171,11 @@ test('POST /api/rounds/:id/cancel returns 409 when round is already completed', 
   const course = await ctx.courses.createCourse(sampleCourseInput)
   const round = await ctx.rounds.createRound(ctx.testUser.id, course.id)
   await ctx.rounds.completeRound(ctx.testUser.id, round.id)
-  const token = createAuthToken(ctx.testUser.id)
+  const cookie = await createSessionCookie(ctx.testUser.id)
 
   const res = await request(BASE_URL)
     .post(`/api/rounds/${round.id}/cancel`)
-    .set('Authorization', `Bearer ${token}`)
+    .set('Cookie', cookie)
 
   assert.equal(res.status, 409)
   assert.match(res.body.error, /Only in-progress rounds can be cancelled/)

@@ -1,35 +1,24 @@
-import crypto from 'node:crypto'
+import { encode } from 'next-auth/jwt'
 
-const AUTH_SECRET = process.env.AUTH_SECRET || 'test-secret-key-for-testing-only'
+const SESSION_COOKIE_NAME = 'authjs.session-token'
 
-function base64urlEncode(data: string): string {
-  return Buffer.from(data)
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=/g, '')
-}
-
-function sign(message: string, secret: string): string {
-  return base64urlEncode(
-    crypto
-      .createHmac('sha256', secret)
-      .update(message)
-      .digest('base64')
-  )
-}
-
-export function createAuthToken(userId: string): string {
-  const header = base64urlEncode(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
-  const payload = base64urlEncode(
-    JSON.stringify({
-      sub: userId,
-      iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + 86400, // 24 hours
-    })
-  )
-  const message = `${header}.${payload}`
-  const signature = sign(message, AUTH_SECRET)
-
-  return `${message}.${signature}`
+/**
+ * Produces a real Auth.js v5 session cookie (encrypted JWE) for tests.
+ * The route handlers' getToken() call decrypts this exactly like a browser cookie.
+ *
+ * AUTH_SECRET is read at call time, not at module init, so it picks up env
+ * changes made after this module is imported (ESM hoists imports above
+ * top-level statements, including loadEnvConfig() and process.env assignments).
+ */
+export async function createSessionCookie(
+  userId: string,
+  role: 'USER' | 'ADMIN' = 'USER',
+): Promise<string> {
+  const secret = process.env.AUTH_SECRET || 'test-secret-key-for-testing-only'
+  const token = await encode({
+    token: { sub: userId, role },
+    secret,
+    salt: SESSION_COOKIE_NAME,
+  })
+  return `${SESSION_COOKIE_NAME}=${token}`
 }

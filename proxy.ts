@@ -14,14 +14,6 @@ export async function proxy(request: NextRequest) {
     return withCsp(request)
   }
 
-  // API routes with Bearer tokens handle their own auth — pass through
-  if (pathname.startsWith('/api/')) {
-    const authHeader = request.headers.get('authorization')
-    if (authHeader?.startsWith('Bearer ')) {
-      return withCsp(request)
-    }
-  }
-
   // secureCookie must match how Auth.js created the session cookie:
   // true on HTTPS (prod), false on HTTP (local dev)
   const token = await getToken({
