@@ -2,11 +2,26 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import path from 'node:path'
 
-// Set database and auth before importing services
+import { loadEnvConfig } from '@next/env'
+
+// Load the same .env files Next.js loads for the dev server, so our session
+// cookie is encrypted with the same AUTH_SECRET the dev server will decrypt
+// with. Without this, the proxy returns 401 on every request.
+loadEnvConfig(process.cwd(), true)
+
+if (!process.env.AUTH_SECRET) {
+  console.error(
+    '[test] AUTH_SECRET is not set. E2E tests need to produce session cookies\n' +
+      '       that the running dev server can decrypt, so the two processes must\n' +
+      '       share AUTH_SECRET. Set it in .env or .env.local and restart\n' +
+      '       `npm run dev` before re-running E2E tests.',
+  )
+  process.exit(1)
+}
+
+// Use dev.db for E2E tests so the dev server can see the test data
 const devDbPath = path.join(process.cwd(), 'prisma', 'dev.db')
 process.env.DATABASE_URL = `file:${devDbPath}`
-process.env.AUTH_SECRET = 'test-secret-key-for-testing-only'
-// Use dev.db for E2E tests so the dev server can see the test data
 process.env.TEST_USE_DEV_DB = 'true'
 
 import request from 'supertest'
