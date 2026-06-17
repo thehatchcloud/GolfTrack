@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
+import { requireAdmin } from '@/lib/api-auth'
 import { createCourse, listCourses } from '@/lib/courses'
 import { toResponse } from '@/lib/errors'
 
@@ -8,7 +9,10 @@ export async function GET() {
   return NextResponse.json(courses)
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const auth = await requireAdmin(request)
+  if ('response' in auth) return auth.response
+
   try {
     const body = await request.json()
     const course = await createCourse(body)

@@ -53,6 +53,7 @@ All database access and business logic lives here; route handlers are thin wrapp
 | `validation.ts` | Zod schemas for all API inputs |
 | `round-play.ts` | `getCurrentHolePosition` — maps hole list + currentHole to prev/next navigation |
 | `clubs.ts` | Default club list |
+| `api-auth.ts` | `getRequestToken` / `requireAdmin` — decrypt the Auth.js session cookie in route handlers and gate admin-only endpoints (401/403) |
 
 ### API routes (`app/api/`)
 

@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
+import { requireAdmin } from '@/lib/api-auth'
 import { getCourseById, updateCourse } from '@/lib/courses'
 import { toResponse } from '@/lib/errors'
 
@@ -24,7 +25,10 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
   return NextResponse.json(course)
 }
 
-export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
+export async function PUT(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const auth = await requireAdmin(request)
+  if ('response' in auth) return auth.response
+
   const params = await context.params
   const id = parseId(params.id)
 
