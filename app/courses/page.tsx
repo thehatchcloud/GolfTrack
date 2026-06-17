@@ -1,5 +1,6 @@
 import Link from 'next/link'
 
+import { auth } from '@/auth'
 import { AppShell } from '@/components/app-shell'
 import { SectionCard } from '@/components/section-card'
 import { listCourses } from '@/lib/courses'
@@ -7,34 +8,47 @@ import { listCourses } from '@/lib/courses'
 export const dynamic = 'force-dynamic'
 
 export default async function CoursesPage() {
-  const courses = await listCourses()
+  const [courses, session] = await Promise.all([listCourses(), auth()])
+  const isAdmin = session?.user?.role === 'ADMIN'
 
   return (
     <AppShell>
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-stone-900">Courses</h1>
-          <p className="mt-1 text-sm text-stone-600">Manage the courses you can play rounds on.</p>
+          <p className="mt-1 text-sm text-stone-600">
+            {isAdmin
+              ? 'Manage the courses you can play rounds on.'
+              : 'Browse the courses you can play rounds on.'}
+          </p>
         </div>
-        <Link
-          href="/courses/new"
-          className="rounded-xl bg-emerald-700 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800"
-        >
-          Add Course
-        </Link>
+        {isAdmin && (
+          <Link
+            href="/courses/new"
+            className="rounded-xl bg-emerald-700 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800"
+          >
+            Add Course
+          </Link>
+        )}
       </div>
 
       {courses.length === 0 ? (
         <SectionCard
           title="No courses yet"
-          description="Add your first course to start tracking rounds."
+          description={
+            isAdmin
+              ? 'Add your first course to start tracking rounds.'
+              : 'An administrator needs to add a course before you can track rounds.'
+          }
         >
-          <Link
-            href="/courses/new"
-            className="inline-flex rounded-xl bg-emerald-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-800"
-          >
-            Create a course
-          </Link>
+          {isAdmin && (
+            <Link
+              href="/courses/new"
+              className="inline-flex rounded-xl bg-emerald-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-800"
+            >
+              Create a course
+            </Link>
+          )}
         </SectionCard>
       ) : (
         <div className="grid gap-4">

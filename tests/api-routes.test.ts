@@ -9,6 +9,7 @@ import { createSessionCookie } from './helpers/auth'
 import { POST as roundsPost } from '../app/api/rounds/route'
 import { POST as cancelPost } from '../app/api/rounds/[id]/cancel/route'
 import { PUT as coursePut } from '../app/api/courses/[id]/route'
+import { POST as coursePost } from '../app/api/courses/route'
 
 process.env.AUTH_SECRET = 'test-secret-key-for-testing-only'
 
@@ -181,13 +182,14 @@ test('POST /api/rounds/:id/cancel returns 409 when round is already completed', 
 
 // PUT /api/courses/:id
 
-test('PUT /api/courses/:id returns 200 and updates the course', async () => {
+test('PUT /api/courses/:id returns 200 and updates the course for an admin', async () => {
   const ctx = await setupTestContext()
   try {
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleCourseInput)
+    const cookie = await createSessionCookie(ctx.testUser.id, 'ADMIN')
 
-    const res = await coursePut(jsonRequest(updatedCourseInput), routeContext(course.id))
+    const res = await coursePut(jsonRequest(updatedCourseInput, cookie), routeContext(course.id))
     const body = await res.json()
 
     assert.equal(res.status, 200)
@@ -201,8 +203,9 @@ test('PUT /api/courses/:id returns 404 when course does not exist', async () => 
   const ctx = await setupTestContext()
   try {
     await ctx.resetDatabase()
+    const cookie = await createSessionCookie(ctx.testUser.id, 'ADMIN')
 
-    const res = await coursePut(jsonRequest(updatedCourseInput), routeContext(99999))
+    const res = await coursePut(jsonRequest(updatedCourseInput, cookie), routeContext(99999))
     const body = await res.json()
 
     assert.equal(res.status, 404)
@@ -217,12 +220,90 @@ test('PUT /api/courses/:id returns 400 for invalid course data', async () => {
   try {
     await ctx.resetDatabase()
     const course = await ctx.courses.createCourse(sampleCourseInput)
+    const cookie = await createSessionCookie(ctx.testUser.id, 'ADMIN')
 
-    const res = await coursePut(jsonRequest({ name: '', holeCount: 9, holes: [] }), routeContext(course.id))
+    const res = await coursePut(
+      jsonRequest({ name: '', holeCount: 9, holes: [] }, cookie),
+      routeContext(course.id),
+    )
     const body = await res.json()
 
     assert.equal(res.status, 400)
     assert.ok(body.error)
+  } finally {
+    await ctx.teardown()
+  }
+})
+
+test('PUT /api/courses/:id returns 401 without a session cookie', async () => {
+  const ctx = await setupTestContext()
+  try {
+    await ctx.resetDatabase()
+    const course = await ctx.courses.createCourse(sampleCourseInput)
+
+    const res = await coursePut(jsonRequest(updatedCourseInput), routeContext(course.id))
+
+    assert.equal(res.status, 401)
+  } finally {
+    await ctx.teardown()
+  }
+})
+
+test('PUT /api/courses/:id returns 403 for a non-admin user', async () => {
+  const ctx = await setupTestContext()
+  try {
+    await ctx.resetDatabase()
+    const course = await ctx.courses.createCourse(sampleCourseInput)
+    const cookie = await createSessionCookie(ctx.testUser.id, 'USER')
+
+    const res = await coursePut(jsonRequest(updatedCourseInput, cookie), routeContext(course.id))
+
+    assert.equal(res.status, 403)
+  } finally {
+    await ctx.teardown()
+  }
+})
+
+// POST /api/courses
+
+test('POST /api/courses returns 201 for an admin', async () => {
+  const ctx = await setupTestContext()
+  try {
+    await ctx.resetDatabase()
+    const cookie = await createSessionCookie(ctx.testUser.id, 'ADMIN')
+
+    const res = await coursePost(jsonRequest(sampleCourseInput, cookie))
+    const body = await res.json()
+
+    assert.equal(res.status, 201)
+    assert.ok(body.id)
+  } finally {
+    await ctx.teardown()
+  }
+})
+
+test('POST /api/courses returns 401 without a session cookie', async () => {
+  const ctx = await setupTestContext()
+  try {
+    await ctx.resetDatabase()
+
+    const res = await coursePost(jsonRequest(sampleCourseInput))
+
+    assert.equal(res.status, 401)
+  } finally {
+    await ctx.teardown()
+  }
+})
+
+test('POST /api/courses returns 403 for a non-admin user', async () => {
+  const ctx = await setupTestContext()
+  try {
+    await ctx.resetDatabase()
+    const cookie = await createSessionCookie(ctx.testUser.id, 'USER')
+
+    const res = await coursePost(jsonRequest(sampleCourseInput, cookie))
+
+    assert.equal(res.status, 403)
   } finally {
     await ctx.teardown()
   }
