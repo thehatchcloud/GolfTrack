@@ -13,7 +13,13 @@ export default async function CourseDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const [course, session] = await Promise.all([getCourseById(Number(id)), auth()])
+  const courseId = Number(id)
+
+  if (Number.isNaN(courseId)) {
+    notFound()
+  }
+
+  const [course, session] = await Promise.all([getCourseById(courseId), auth()])
 
   if (!course) {
     notFound()

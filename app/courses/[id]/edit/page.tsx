@@ -19,7 +19,12 @@ export default async function EditCoursePage({
     redirect(`/courses/${id}`)
   }
 
-  const course = await getCourseById(Number(id))
+  const courseId = Number(id)
+  if (Number.isNaN(courseId)) {
+    notFound()
+  }
+
+  const course = await getCourseById(courseId)
 
   if (!course) {
     notFound()
