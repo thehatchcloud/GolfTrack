@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+> **Rewrite in progress (#85):** GolfTrack is being migrated to **Django + Django Ninja + Tailwind CSS**. The Django app currently lives alongside this Next.js app — see `DJANGO.md` for its layout and dev commands. The guidance below describes the existing Next.js app, which remains authoritative until the Phase 8 cutover.
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 > **Important:** The installed Next.js version has breaking API changes from earlier releases. Before writing any Next.js-specific code, check the relevant guide in `node_modules/next/dist/docs/`.
