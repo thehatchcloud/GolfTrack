@@ -6,7 +6,7 @@ lives alongside the existing Next.js app in this repo.
 
 ## Stack
 
-Django 5.1 · Django Ninja · Tailwind CSS (standalone CLI) · SQLite · WhiteNoise · Gunicorn/Uvicorn.
+Django 6.0 (Python 3.14) · Django Ninja · Tailwind CSS (standalone CLI) · SQLite · WhiteNoise · Gunicorn/Uvicorn.
 Front-end interactivity: HTMX + Alpine.js against the Ninja JSON API. Auth (later): django-allauth.
 
 ## Layout
@@ -28,8 +28,8 @@ The REST API is mounted at `/api/` so paths match the existing contract (`GET /a
 ## Dev commands
 
 ```bash
-uv venv --python 3.11 .venv && source .venv/bin/activate
-uv pip install django django-ninja whitenoise gunicorn uvicorn ruff pytest pytest-django
+uv venv --python 3.14 .venv && source .venv/bin/activate
+uv pip install "django>=6.0,<6.1" django-ninja whitenoise gunicorn uvicorn ruff pytest pytest-django
 
 python manage.py migrate
 python manage.py runserver        # http://localhost:8000  (and /api/health)
