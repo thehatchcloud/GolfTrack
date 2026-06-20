@@ -11,6 +11,7 @@ from rounds.scoring import calculate_round_totals
 def get_in_progress_round(user):
     return (
         Round.objects.select_related("course")
+        .prefetch_related("course__holes", "holes__shots")
         .filter(user=user, status=Round.Status.IN_PROGRESS)
         .order_by("-started_at")
         .first()
@@ -21,6 +22,7 @@ def list_completed_rounds(user, limit=20, page=0):
     offset = page * limit
     return list(
         Round.objects.select_related("course")
+        .prefetch_related("course__holes")
         .filter(user=user, status=Round.Status.COMPLETED)
         .order_by("-finished_at", "-started_at")[offset : offset + limit]
     )
@@ -28,7 +30,11 @@ def list_completed_rounds(user, limit=20, page=0):
 
 def get_round_by_id(user, round_id):
     try:
-        return Round.objects.select_related("course").get(pk=round_id, user=user)
+        return (
+            Round.objects.select_related("course")
+            .prefetch_related("course__holes", "holes__shots")
+            .get(pk=round_id, user=user)
+        )
     except Round.DoesNotExist:
         return None
 
