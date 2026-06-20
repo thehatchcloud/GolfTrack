@@ -45,3 +45,14 @@ next-env.d.ts
 prisma/*.db
 prisma/*.db-journal
 prisma/prisma/
+
+# --- Django / Python (rewrite, see #85) ---
+__pycache__/
+*.py[cod]
+.venv/
+db.sqlite3
+db.sqlite3-journal
+/staticfiles/
+/bin/tailwindcss
+.pytest_cache/
+.ruff_cache/

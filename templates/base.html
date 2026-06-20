@@ -1,0 +1,21 @@
+{% load static %}
+<!doctype html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}GolfTrack{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/app.css' %}" />
+    <script src="https://unpkg.com/htmx.org@2.0.3" defer></script>
+    <script src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js" defer></script>
+  </head>
+  <body class="h-full bg-slate-50 text-slate-900 antialiased">
+    <div class="mx-auto flex min-h-full max-w-2xl flex-col">
+      <header class="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+        <a href="{% url 'home' %}" class="text-lg font-semibold tracking-tight">⛳ GolfTrack</a>
+        <nav class="text-sm text-slate-500">{% block nav %}{% endblock %}</nav>
+      </header>
+      <main class="flex-1 px-4 py-6">{% block content %}{% endblock %}</main>
+    </div>
+  </body>
+</html>
