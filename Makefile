@@ -25,7 +25,7 @@ lint: ## Lint with ruff
 	ruff check .
 
 css: ## Compile Tailwind CSS → static/css/app.css
-	./bin/build-css.sh
+	sh ./bin/build-css.sh
 
 collectstatic: ## Collect static files for production
 	DJANGO_DEBUG=false python manage.py collectstatic --noinput
