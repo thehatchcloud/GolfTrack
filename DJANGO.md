@@ -14,9 +14,10 @@ Front-end interactivity: HTMX + Alpine.js against the Ninja JSON API. Auth (late
 | Path | Purpose |
 |------|---------|
 | `config/` | Django project: `settings.py`, `urls.py`, `api.py` (NinjaAPI), `wsgi.py`/`asgi.py` |
+| `accounts/` | Custom `User` model (`AUTH_USER_MODEL`) with USER/ADMIN `role` |
 | `core/` | Shared/site app — home view, health |
-| `courses/` | Course + CourseHole domain (models land in Phase 1) |
-| `rounds/` | Round + RoundHole + Shot domain (models land in Phase 1) |
+| `courses/` | `Course` + `CourseHole` models |
+| `rounds/` | `Round` + `RoundHole` + `Shot` models |
 | `templates/` | Project-level Django templates (`base.html`, `home.html`) |
 | `static/src/input.css` | Tailwind entry; compiles to `static/css/app.css` |
 | `tests/` | pytest suite |
@@ -24,6 +25,8 @@ Front-end interactivity: HTMX + Alpine.js against the Ninja JSON API. Auth (late
 | `bin/build-css.sh` | Downloads the Tailwind standalone CLI and builds the stylesheet |
 
 The REST API is mounted at `/api/` so paths match the existing contract (`GET /api/health` today).
+
+**Domain model (Phase 1):** `Course` 1–N `CourseHole`; `Round` (belongs to a `User` + `Course`) 1–N `RoundHole` 1–N `Shot`. `RoundHole.par` is snapshotted at round creation and `RoundHole.strokes` caches the shot count (both maintained by the service layer in Phase 2). A partial unique index enforces one in-progress round per user.
 
 ## Dev commands
 
