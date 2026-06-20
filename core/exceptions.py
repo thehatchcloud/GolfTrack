@@ -12,3 +12,11 @@ class ConflictError(GolfTrackError):
 
 class ValidationError(GolfTrackError):
     pass
+
+
+class UnauthorizedError(GolfTrackError):
+    pass
+
+
+class ForbiddenError(GolfTrackError):
+    pass

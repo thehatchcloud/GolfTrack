@@ -24,7 +24,15 @@ Front-end interactivity: HTMX + Alpine.js against the Ninja JSON API. Auth (late
 | `pyproject.toml` | Python deps + `ruff` / `pytest` config |
 | `bin/build-css.sh` | Downloads the Tailwind standalone CLI and builds the stylesheet |
 
-The REST API is mounted at `/api/` so paths match the existing contract (`GET /api/health` today).
+The REST API is mounted at `/api/` so paths match the existing contract. Phase 3
+implements the full surface in Django Ninja: courses (`GET/POST /api/courses`,
+`GET/PUT /api/courses/{id}`), rounds (`GET/POST /api/rounds`, `GET /api/rounds/{id}`,
+`GET /api/rounds/in-progress`, `POST .../complete`, `.../cancel`,
+`PATCH .../current-hole`), shots (`POST/PATCH/DELETE .../holes/{n}/shots[/{id}]`,
+`POST .../undo`), and `GET /api/health`. Routers live in `courses/api.py` and
+`rounds/api.py`; request/response schemas serialize to camelCase to match the
+old contract. Service-layer exceptions map to 400/401/403/404/409 in
+`config/api.py`.
 
 **Domain model (Phase 1):** `Course` 1–N `CourseHole`; `Round` (belongs to a `User` + `Course`) 1–N `RoundHole` 1–N `Shot`. `RoundHole.par` is snapshotted at round creation and `RoundHole.strokes` caches the shot count (both maintained by the service layer in Phase 2). A partial unique index enforces one in-progress round per user.
 
