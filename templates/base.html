@@ -13,7 +13,15 @@
     <div class="mx-auto flex min-h-full max-w-2xl flex-col">
       <header class="flex items-center justify-between border-b border-slate-200 px-4 py-3">
         <a href="{% url 'home' %}" class="text-lg font-semibold tracking-tight">⛳ GolfTrack</a>
-        <nav class="text-sm text-slate-500">{% block nav %}{% endblock %}</nav>
+        <nav class="flex items-center gap-4 text-sm text-slate-500">
+          {% block nav %}{% endblock %}
+          {% if user.is_authenticated %}
+            <span class="hidden sm:inline truncate max-w-[12rem]">{{ user.email }}</span>
+            <a href="{% url 'account_logout' %}" class="hover:text-slate-800 hover:underline">Sign out</a>
+          {% else %}
+            <a href="{% url 'account_login' %}" class="hover:text-slate-800 hover:underline">Sign in</a>
+          {% endif %}
+        </nav>
       </header>
       <main class="flex-1 px-4 py-6">{% block content %}{% endblock %}</main>
     </div>

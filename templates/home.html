@@ -1,14 +1,23 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <section class="space-y-3">
-    <h1 class="text-2xl font-bold">GolfTrack</h1>
+<section class="space-y-4">
+  <h1 class="text-2xl font-bold">GolfTrack</h1>
+
+  {% if user.is_authenticated %}
     <p class="text-slate-600">
-      Django + Django Ninja + Tailwind rewrite — Phase 0 scaffolding is live.
+      Welcome back, <strong>{{ user.email }}</strong>{% if user.is_admin %} (admin){% endif %}.
     </p>
     <p class="text-sm text-slate-500">
-      API health check:
-      <a class="font-mono text-emerald-600 underline" href="/api/health">/api/health</a>
+      The full UI arrives in Phase 5. For now, explore the API at
+      <a class="font-mono text-emerald-600 underline" href="/api/docs">/api/docs</a>.
     </p>
-  </section>
+  {% else %}
+    <p class="text-slate-600">Track your golf rounds, hole by hole.</p>
+    <a href="{% url 'account_login' %}"
+       class="inline-block rounded-lg bg-emerald-600 px-5 py-2 text-sm font-medium text-white hover:bg-emerald-700">
+      Sign in to get started
+    </a>
+  {% endif %}
+</section>
 {% endblock %}
