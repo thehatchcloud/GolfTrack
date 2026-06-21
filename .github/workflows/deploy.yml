@@ -18,8 +18,7 @@ jobs:
           node-version: 22
           cache: npm
       - uses: astral-sh/setup-uv@v5
-        with:
-          python-version: "3.14"
+      - run: uv python install 3.14
       - run: npm ci
       - run: npm run lint
       - run: npm run build
