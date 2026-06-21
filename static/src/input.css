@@ -1,3 +1,13 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer utilities {
+  /* Hide Alpine-managed elements before JS hydrates to prevent flash */
+  [x-cloak] { display: none !important; }
+
+  /* iOS safe-area bottom padding for the sticky nav bar */
+  .pb-safe {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+}

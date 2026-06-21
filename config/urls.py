@@ -8,5 +8,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/", api.urls),
     path("accounts/", include("allauth.urls")),
+    path("courses/", include("courses.urls")),
+    path("rounds/", include("rounds.urls")),
     path("", core_views.home, name="home"),
 ]
