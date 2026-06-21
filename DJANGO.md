@@ -63,12 +63,12 @@ DJANGO_DEBUG=false python manage.py collectstatic --noinput   # production stati
 | `DJANGO_CSRF_TRUSTED_ORIGINS` | Comma-separated origins for CSRF |
 | `DATABASE_URL` | SQLite path; accepts the `file:/data/prod.db` form for deploy parity |
 | `ADMIN_EMAILS` | Comma-separated emails granted `role=ADMIN` on every sign-in |
-| `AUTH_GOOGLE_ID` | Google OAuth client ID (shared with Next.js) |
-| `AUTH_GOOGLE_SECRET` | Google OAuth client secret (shared with Next.js) |
-| `AUTH_MICROSOFT_ENTRA_ID_ID` | Microsoft Entra ID client ID (shared with Next.js) |
-| `AUTH_MICROSOFT_ENTRA_ID_SECRET` | Microsoft Entra ID client secret (shared with Next.js) |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID (Django's own OAuth app) |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret (Django's own OAuth app) |
+| `MICROSOFT_CLIENT_ID` | Microsoft Entra ID client ID (Django's own OAuth app) |
+| `MICROSOFT_CLIENT_SECRET` | Microsoft Entra ID client secret (Django's own OAuth app) |
 
-Django reads `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` / `AUTH_MICROSOFT_ENTRA_ID_ID` / `AUTH_MICROSOFT_ENTRA_ID_SECRET` — the same variables used by the Next.js Auth.js integration — so no credential duplication is needed.
+Django uses **its own OAuth client apps**, separate from the Next.js `AUTH_*` credentials. Providers validate redirect URIs per-client, so giving Django dedicated apps lets its `/accounts/.../login/callback/` URIs be registered without modifying the Next.js OAuth apps.
 
 A `.env` file in the project root is loaded automatically via `python-dotenv` (does not override variables already set in the shell environment).
 

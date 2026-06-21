@@ -180,8 +180,8 @@ ADMIN_EMAILS = _admin_emails()
 SOCIALACCOUNT_PROVIDERS = {
     "google": {
         "APP": {
-            "client_id": os.environ.get("AUTH_GOOGLE_ID", ""),
-            "secret": os.environ.get("AUTH_GOOGLE_SECRET", ""),
+            "client_id": os.environ.get("GOOGLE_CLIENT_ID", ""),
+            "secret": os.environ.get("GOOGLE_CLIENT_SECRET", ""),
             "key": "",
         },
         "SCOPE": ["openid", "profile", "email"],
@@ -190,8 +190,8 @@ SOCIALACCOUNT_PROVIDERS = {
     },
     "microsoft": {
         "APP": {
-            "client_id": os.environ.get("AUTH_MICROSOFT_ENTRA_ID_ID", ""),
-            "secret": os.environ.get("AUTH_MICROSOFT_ENTRA_ID_SECRET", ""),
+            "client_id": os.environ.get("MICROSOFT_CLIENT_ID", ""),
+            "secret": os.environ.get("MICROSOFT_CLIENT_SECRET", ""),
             "key": "",
         },
         "TENANT": "common",
