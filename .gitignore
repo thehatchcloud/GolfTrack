@@ -58,3 +58,4 @@ dev.db-journal
 /bin/tailwindcss
 .pytest_cache/
 .ruff_cache/
+*.egg-info/
