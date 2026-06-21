@@ -6,6 +6,10 @@ Auth: django-allauth with Google + Microsoft OAuth (Phase 4, #90).
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv()  # loads .env (does not override vars already set in the environment)
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -176,8 +180,8 @@ ADMIN_EMAILS = _admin_emails()
 SOCIALACCOUNT_PROVIDERS = {
     "google": {
         "APP": {
-            "client_id": os.environ.get("GOOGLE_CLIENT_ID", ""),
-            "secret": os.environ.get("GOOGLE_CLIENT_SECRET", ""),
+            "client_id": os.environ.get("AUTH_GOOGLE_ID", ""),
+            "secret": os.environ.get("AUTH_GOOGLE_SECRET", ""),
             "key": "",
         },
         "SCOPE": ["openid", "profile", "email"],
@@ -186,8 +190,8 @@ SOCIALACCOUNT_PROVIDERS = {
     },
     "microsoft": {
         "APP": {
-            "client_id": os.environ.get("MICROSOFT_CLIENT_ID", ""),
-            "secret": os.environ.get("MICROSOFT_CLIENT_SECRET", ""),
+            "client_id": os.environ.get("AUTH_MICROSOFT_ENTRA_ID_ID", ""),
+            "secret": os.environ.get("AUTH_MICROSOFT_ENTRA_ID_SECRET", ""),
             "key": "",
         },
         "TENANT": "common",
