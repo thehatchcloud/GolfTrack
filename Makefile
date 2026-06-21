@@ -7,7 +7,16 @@ help: ## Show this help
 
 install: ## Create .venv with Python 3.14 and install all dependencies
 	uv venv --python 3.14 .venv
-	uv pip install "django>=6.0,<6.1" django-ninja whitenoise gunicorn uvicorn ruff pytest pytest-django
+	uv pip install \
+		"django>=6.0,<6.1" \
+		"django-ninja>=1.4,<2.0" \
+		"django-allauth[socialaccount]>=65.0" \
+		"whitenoise>=6.7" \
+		"gunicorn>=23.0" \
+		"uvicorn>=0.30" \
+		"ruff>=0.6" \
+		"pytest>=8.3" \
+		"pytest-django>=4.9"
 
 migrate: ## Apply Django migrations (creates db.sqlite3 if it does not exist)
 	python manage.py migrate

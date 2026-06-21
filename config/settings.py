@@ -1,8 +1,7 @@
 """
 Django settings for GolfTrack.
 
-Phase 0 scaffolding for the Django + Django Ninja + Tailwind rewrite (see #85).
-Auth (django-allauth) and the full data model arrive in later phases.
+Auth: django-allauth with Google + Microsoft OAuth (Phase 4, #90).
 """
 import os
 from pathlib import Path
@@ -53,6 +52,13 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django.contrib.sites",
+    # allauth
+    "allauth",
+    "allauth.account",
+    "allauth.socialaccount",
+    "allauth.socialaccount.providers.google",
+    "allauth.socialaccount.providers.microsoft",
     # Local apps
     "accounts",
     "core",
@@ -67,6 +73,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "allauth.account.middleware.AccountMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -134,3 +141,56 @@ AUTH_USER_MODEL = "accounts.User"
 
 # Behind exe.dev's TLS-terminating proxy in production.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# django.contrib.sites — required by allauth
+SITE_ID = 1
+
+AUTHENTICATION_BACKENDS = [
+    "django.contrib.auth.backends.ModelBackend",
+    "allauth.core.auth_backends.AuthenticationBackend",
+]
+
+# allauth core
+LOGIN_URL = "/accounts/login/"
+LOGIN_REDIRECT_URL = "/"
+LOGOUT_REDIRECT_URL = "/"
+ACCOUNT_SIGNUP_FIELDS = ["email*"]
+ACCOUNT_LOGIN_METHODS = {"email"}
+ACCOUNT_EMAIL_VERIFICATION = "none"
+ACCOUNT_DEFAULT_HTTP_PROTOCOL = "http" if DEBUG else "https"
+ACCOUNT_ADAPTER = "accounts.adapters.AccountAdapter"
+SOCIALACCOUNT_ADAPTER = "accounts.adapters.SocialAccountAdapter"
+SOCIALACCOUNT_AUTO_SIGNUP = True
+SOCIALACCOUNT_STORE_TOKENS = False
+SOCIALACCOUNT_ONLY = True
+
+def _admin_emails() -> set[str]:
+    return {
+        e.strip().lower()
+        for e in os.environ.get("ADMIN_EMAILS", "").split(",")
+        if e.strip()
+    }
+
+ADMIN_EMAILS = _admin_emails()
+
+SOCIALACCOUNT_PROVIDERS = {
+    "google": {
+        "APP": {
+            "client_id": os.environ.get("GOOGLE_CLIENT_ID", ""),
+            "secret": os.environ.get("GOOGLE_CLIENT_SECRET", ""),
+            "key": "",
+        },
+        "SCOPE": ["openid", "profile", "email"],
+        "AUTH_PARAMS": {"access_type": "online"},
+        "FETCH_USERINFO": True,
+    },
+    "microsoft": {
+        "APP": {
+            "client_id": os.environ.get("MICROSOFT_CLIENT_ID", ""),
+            "secret": os.environ.get("MICROSOFT_CLIENT_SECRET", ""),
+            "key": "",
+        },
+        "TENANT": "common",
+        "SCOPE": ["openid", "profile", "email"],
+    },
+}

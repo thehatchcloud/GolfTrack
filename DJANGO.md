@@ -62,5 +62,14 @@ DJANGO_DEBUG=false python manage.py collectstatic --noinput   # production stati
 | `DJANGO_ALLOWED_HOSTS` | Comma-separated hostnames |
 | `DJANGO_CSRF_TRUSTED_ORIGINS` | Comma-separated origins for CSRF |
 | `DATABASE_URL` | SQLite path; accepts the `file:/data/prod.db` form for deploy parity |
+| `ADMIN_EMAILS` | Comma-separated emails granted `role=ADMIN` on every sign-in |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
+| `MICROSOFT_CLIENT_ID` | Microsoft Entra ID client ID |
+| `MICROSOFT_CLIENT_SECRET` | Microsoft Entra ID client secret |
 
-Auth-related vars (`ADMIN_EMAILS`, OAuth credentials) are wired in Phase 4.
+OAuth redirect URIs (register these in each provider's console):
+- Google: `{origin}/accounts/google/login/callback/`
+- Microsoft: `{origin}/accounts/microsoft/login/callback/`
+
+> **Phase 8 note:** These paths differ from the Next.js `/api/auth/callback/...` paths. Provider apps will need their redirect URIs updated at cutover.
