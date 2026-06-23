@@ -69,7 +69,7 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<script>
+<script nonce="{{ csp_nonce }}">
 function courseForm(initialCount, existingPars) {
   const DEFAULT_PAR = 4;
   function buildPars(count, existing) {

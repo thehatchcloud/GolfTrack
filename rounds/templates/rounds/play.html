@@ -176,8 +176,8 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<script src="{% static 'js/round-play.js' %}"></script>
-<script>
+<script src="{% static 'js/round-play.js' %}" nonce="{{ csp_nonce }}"></script>
+<script nonce="{{ csp_nonce }}">
 function cancelRoundBar(roundId) {
   return {
     open: false,

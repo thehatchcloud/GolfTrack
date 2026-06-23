@@ -100,7 +100,7 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<script>
+<script nonce="{{ csp_nonce }}">
 function reviewForm(roundId) {
   return {
     note: '',
