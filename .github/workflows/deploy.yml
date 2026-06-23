@@ -17,10 +17,14 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - uses: astral-sh/setup-uv@v5
+      - run: uv python install 3.14
       - run: npm ci
       - run: npm run lint
       - run: npm run build
       - run: npm test
+      - run: make install
+      - run: make test
 
   build:
     name: Build and push image
