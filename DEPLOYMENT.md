@@ -8,11 +8,13 @@ Non-`main` branches deploy to the **dev server** (`golftrack-dev.exe.xyz`) via `
 
 ## Dev server setup (`golftrack-dev.exe.xyz`)
 
-The dev server runs the Django app directly (no Docker) using gunicorn under systemd.
-It uses Python 3.13 until pydantic gains Python 3.14 support.
-OAuth is disabled — sign in with email + password.
+The dev server runs the Django app in Docker (`Dockerfile.django`) — same stack as
+production, without Litestream. OAuth is disabled — sign in with email + password.
+The image is tagged `ghcr.io/<owner>/golftrack:django-dev` and rebuilt on every push.
 
 ### 1. Create the dev VM
+
+Use the `exeuntu` image (includes Docker):
 
 ```bash
 ssh exe.dev new --name golftrack-dev
@@ -29,51 +31,12 @@ The private key (`~/.ssh/golftrack_dev_deploy`) becomes the `DEV_DEPLOY_SSH_KEY`
 
 ### 3. One-time server setup
 
-SSH into the dev VM and run:
-
-```bash
-ssh ubuntu@golftrack-dev.exe.xyz
-
-# Install uv
-curl -LsSf https://astral.sh/uv/install.sh | sh
-source $HOME/.local/bin/env
-
-# Create app directory
-sudo mkdir -p /srv/golftrack
-sudo chown ubuntu:ubuntu /srv/golftrack
-
-# Add systemd service
-sudo tee /etc/systemd/system/golftrack-dev.service > /dev/null <<'EOF'
-[Unit]
-Description=GolfTrack Dev Server
-After=network.target
-
-[Service]
-User=ubuntu
-WorkingDirectory=/srv/golftrack
-EnvironmentFile=/home/ubuntu/golftrack-dev.env
-ExecStart=/srv/golftrack/.venv/bin/gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2 --timeout 60
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl enable golftrack-dev
-
-# Allow ubuntu to restart the service without a password
-echo "ubuntu ALL=(ALL) NOPASSWD: /bin/systemctl restart golftrack-dev, /bin/systemctl start golftrack-dev, /bin/systemctl stop golftrack-dev" \
-  | sudo tee /etc/sudoers.d/golftrack-dev
-```
+None — Docker is already installed on `exeuntu` and the workflow uses a named Docker volume (`golftrack-dev-data`) that Docker creates automatically on first run.
 
 After the first workflow run completes, create a test account:
 
 ```bash
-cd /srv/golftrack
-set -a; source /home/ubuntu/golftrack-dev.env; set +a
-.venv/bin/python manage.py shell -c "
+docker exec -it golftrack-dev python manage.py shell -c "
 from accounts.models import User
 u = User(username='admin', email='your@email.com', role='ADMIN', is_staff=True, is_superuser=True)
 u.set_password('choose-a-password')
@@ -92,19 +55,18 @@ print('Done')
 | `DEV_DEPLOY_SSH_KEY` | Contents of `~/.ssh/golftrack_dev_deploy` (private key) |
 | `DEV_DJANGO_SECRET_KEY` | Generate with `python3 -c "import secrets,base64;print(base64.urlsafe_b64encode(secrets.token_bytes(50)).decode())"` |
 
-`ADMIN_EMAILS` is already set from the production setup — reused as-is.
+`ADMIN_EMAILS` and `GHCR_TOKEN` are already set from the production setup — reused as-is.
 
 ### How it works
 
-Every push to a non-`main` branch (and every PR onto `main`) triggers the workflow:
+Every push to a non-`main` branch triggers the workflow:
 
-1. Rsyncs the working tree to `/srv/golftrack/` on the dev VM (excludes `.git`, `.venv`, databases, built assets)
-2. Installs/updates Python deps with `uv pip install`
-3. Runs `manage.py migrate`
-4. Runs `manage.py collectstatic`
-5. Restarts the gunicorn service
+1. Builds a Docker image from `Dockerfile.django` (Python 3.13, gunicorn, collectstatic baked in)
+2. Pushes to `ghcr.io/<owner>/golftrack:django-dev`
+3. SSHs to the dev VM: pulls the image, stops/removes the old container, starts a new one
+4. The container entrypoint runs `manage.py migrate` then starts gunicorn on port 8000
 
-The dev database (`/srv/golftrack/dev.db`) persists across deploys — branch switches don't wipe it. If you need a clean slate: `sudo systemctl stop golftrack-dev && rm /srv/golftrack/dev.db && sudo systemctl start golftrack-dev`.
+The dev database persists in the `golftrack-dev-data` Docker named volume across deploys — branch switches don't wipe it. For a clean slate: `docker stop golftrack-dev && docker volume rm golftrack-dev-data && docker start golftrack-dev`.
 
 ---
 
