@@ -2,6 +2,72 @@
 
 Pushes to `main` automatically test, build, and deploy to the exe.dev VM via the workflow in `.github/workflows/deploy.yml`.
 
+Non-`main` branches deploy to the **dev server** (`golftrack-dev.exe.xyz`) via `.github/workflows/deploy-dev.yml`. See [Dev server setup](#dev-server-setup-golftrack-devexexyz) below.
+
+---
+
+## Dev server setup (`golftrack-dev.exe.xyz`)
+
+The dev server runs the Django app in Docker (`Dockerfile.django`) — same stack as
+production, without Litestream. OAuth is disabled — sign in with email + password.
+The image is tagged `ghcr.io/<owner>/golftrack:django-dev` and rebuilt on every push.
+
+### 1. Create the dev VM
+
+Use the `exeuntu` image (includes Docker):
+
+```bash
+ssh exe.dev new --name golftrack-dev
+```
+
+### 2. Generate a deploy SSH key
+
+```bash
+ssh-keygen -t ed25519 -C "github-actions-golftrack-dev" -f ~/.ssh/golftrack_dev_deploy
+cat ~/.ssh/golftrack_dev_deploy.pub | ssh exe.dev ssh-key add
+```
+
+The private key (`~/.ssh/golftrack_dev_deploy`) becomes the `DEV_DEPLOY_SSH_KEY` secret.
+
+### 3. One-time server setup
+
+None — Docker is already installed on `exeuntu` and the workflow uses a named Docker volume (`golftrack-dev-data`) that Docker creates automatically on first run.
+
+After the first workflow run completes, create a test account:
+
+```bash
+docker exec -it golftrack-dev python manage.py shell -c "
+from accounts.models import User
+u = User(username='admin', email='your@email.com', role='ADMIN', is_staff=True, is_superuser=True)
+u.set_password('choose-a-password')
+u.save()
+print('Done')
+"
+```
+
+### 4. GitHub Actions secrets for dev
+
+**Settings → Secrets and variables → Actions → New repository secret**
+
+| Secret | Value |
+|--------|-------|
+| `DEV_DEPLOY_HOST` | `golftrack-dev.exe.xyz` |
+| `DEV_DEPLOY_SSH_KEY` | Contents of `~/.ssh/golftrack_dev_deploy` (private key) |
+| `DEV_DJANGO_SECRET_KEY` | Generate with `python3 -c "import secrets,base64;print(base64.urlsafe_b64encode(secrets.token_bytes(50)).decode())"` |
+
+`ADMIN_EMAILS` and `GHCR_TOKEN` are already set from the production setup — reused as-is.
+
+### How it works
+
+Every push to a non-`main` branch triggers the workflow:
+
+1. Builds a Docker image from `Dockerfile.django` (Python 3.13, gunicorn, collectstatic baked in)
+2. Pushes to `ghcr.io/<owner>/golftrack:django-dev`
+3. SSHs to the dev VM: pulls the image, stops/removes the old container, starts a new one
+4. The container entrypoint runs `manage.py migrate` then starts gunicorn on port 8000
+
+The dev database persists in the `golftrack-dev-data` Docker named volume across deploys — branch switches don't wipe it. For a clean slate: `docker stop golftrack-dev && docker volume rm golftrack-dev-data && docker start golftrack-dev`.
+
 ---
 
 ## Deployment model

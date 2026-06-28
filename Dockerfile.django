@@ -1,0 +1,38 @@
+FROM python:3.13-slim
+# pyproject.toml declares requires-python>=3.14, but pydantic 2.x is not yet
+# compatible with Python 3.14. Using 3.13 until that is resolved upstream.
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir uv
+
+# Install deps before copying source so this layer is cached on code-only changes
+COPY pyproject.toml .
+RUN uv pip install --system --no-cache \
+    "django>=6.0,<6.1" \
+    "django-ninja>=1.4,<2.0" \
+    "django-allauth[socialaccount]>=65.0,<66.0" \
+    "python-dotenv>=1.0" \
+    "whitenoise>=6.7" \
+    "gunicorn>=23.0" \
+    "uvicorn>=0.30"
+
+COPY . .
+
+# Collect static files at build time so whitenoise serves them at runtime.
+# DATABASE_URL points at a throwaway path — collectstatic doesn't need the DB.
+RUN DJANGO_SECRET_KEY=build-placeholder \
+    DJANGO_DEBUG=false \
+    DATABASE_URL=/tmp/build.db \
+    python manage.py collectstatic --noinput
+
+RUN groupadd --system --gid 1001 app \
+ && useradd --system --uid 1001 --gid 1001 --no-create-home app \
+ && mkdir -p /data && chown app:app /data
+
+COPY entrypoint-django.sh .
+RUN chmod +x entrypoint-django.sh
+
+USER app
+EXPOSE 8000
+CMD ["./entrypoint-django.sh"]

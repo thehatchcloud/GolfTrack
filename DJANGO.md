@@ -63,13 +63,17 @@ DJANGO_DEBUG=false python manage.py collectstatic --noinput   # production stati
 | `DJANGO_CSRF_TRUSTED_ORIGINS` | Comma-separated origins for CSRF |
 | `DATABASE_URL` | SQLite path; accepts the `file:/data/prod.db` form for deploy parity |
 | `ADMIN_EMAILS` | Comma-separated emails granted `role=ADMIN` on every sign-in |
-| `GOOGLE_CLIENT_ID` | Google OAuth client ID |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
-| `MICROSOFT_CLIENT_ID` | Microsoft Entra ID client ID |
-| `MICROSOFT_CLIENT_SECRET` | Microsoft Entra ID client secret |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID (Django's own OAuth app) |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret (Django's own OAuth app) |
+| `MICROSOFT_CLIENT_ID` | Microsoft Entra ID client ID (Django's own OAuth app) |
+| `MICROSOFT_CLIENT_SECRET` | Microsoft Entra ID client secret (Django's own OAuth app) |
 
-OAuth redirect URIs (register these in each provider's console):
-- Google: `{origin}/accounts/google/login/callback/`
-- Microsoft: `{origin}/accounts/microsoft/login/callback/`
+Django uses **its own OAuth client apps**, separate from the Next.js `AUTH_*` credentials. Providers validate redirect URIs per-client, so giving Django dedicated apps lets its `/accounts/.../login/callback/` URIs be registered without modifying the Next.js OAuth apps.
 
-> **Phase 8 note:** These paths differ from the Next.js `/api/auth/callback/...` paths. Provider apps will need their redirect URIs updated at cutover.
+A `.env` file in the project root is loaded automatically via `python-dotenv` (does not override variables already set in the shell environment).
+
+OAuth redirect URIs — both must be registered in each provider's console during the coexistence period:
+- **Next.js** — Google: `{origin}/api/auth/callback/google` · Microsoft: `{origin}/api/auth/callback/microsoft-entra-id`
+- **Django** — Google: `{origin}/accounts/google/login/callback/` · Microsoft: `{origin}/accounts/microsoft/login/callback/`
+
+> **Phase 8 note:** At cutover the Next.js redirect URIs can be removed from the provider apps.

@@ -6,6 +6,10 @@ Auth: django-allauth with Google + Microsoft OAuth (Phase 4, #90).
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv()  # loads .env (does not override vars already set in the environment)
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -76,6 +80,7 @@ MIDDLEWARE = [
     "allauth.account.middleware.AccountMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "core.middleware.CspMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -91,6 +96,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "core.middleware.csp_nonce",
             ],
         },
     },
