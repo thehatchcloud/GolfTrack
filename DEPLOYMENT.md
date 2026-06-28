@@ -2,6 +2,110 @@
 
 Pushes to `main` automatically test, build, and deploy to the exe.dev VM via the workflow in `.github/workflows/deploy.yml`.
 
+Non-`main` branches deploy to the **dev server** (`golftrack-dev.exe.xyz`) via `.github/workflows/deploy-dev.yml`. See [Dev server setup](#dev-server-setup-golftrack-devexexyz) below.
+
+---
+
+## Dev server setup (`golftrack-dev.exe.xyz`)
+
+The dev server runs the Django app directly (no Docker) using gunicorn under systemd.
+It uses Python 3.13 until pydantic gains Python 3.14 support.
+OAuth is disabled — sign in with email + password.
+
+### 1. Create the dev VM
+
+```bash
+ssh exe.dev new --name golftrack-dev
+```
+
+### 2. Generate a deploy SSH key
+
+```bash
+ssh-keygen -t ed25519 -C "github-actions-golftrack-dev" -f ~/.ssh/golftrack_dev_deploy
+cat ~/.ssh/golftrack_dev_deploy.pub | ssh exe.dev ssh-key add
+```
+
+The private key (`~/.ssh/golftrack_dev_deploy`) becomes the `DEV_DEPLOY_SSH_KEY` secret.
+
+### 3. One-time server setup
+
+SSH into the dev VM and run:
+
+```bash
+ssh ubuntu@golftrack-dev.exe.xyz
+
+# Install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source $HOME/.local/bin/env
+
+# Create app directory
+sudo mkdir -p /srv/golftrack
+sudo chown ubuntu:ubuntu /srv/golftrack
+
+# Add systemd service
+sudo tee /etc/systemd/system/golftrack-dev.service > /dev/null <<'EOF'
+[Unit]
+Description=GolfTrack Dev Server
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/srv/golftrack
+EnvironmentFile=/home/ubuntu/golftrack-dev.env
+ExecStart=/srv/golftrack/.venv/bin/gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2 --timeout 60
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable golftrack-dev
+
+# Allow ubuntu to restart the service without a password
+echo "ubuntu ALL=(ALL) NOPASSWD: /bin/systemctl restart golftrack-dev, /bin/systemctl start golftrack-dev, /bin/systemctl stop golftrack-dev" \
+  | sudo tee /etc/sudoers.d/golftrack-dev
+```
+
+After the first workflow run completes, create a test account:
+
+```bash
+cd /srv/golftrack
+set -a; source /home/ubuntu/golftrack-dev.env; set +a
+.venv/bin/python manage.py shell -c "
+from accounts.models import User
+u = User(username='admin', email='your@email.com', role='ADMIN', is_staff=True, is_superuser=True)
+u.set_password('choose-a-password')
+u.save()
+print('Done')
+"
+```
+
+### 4. GitHub Actions secrets for dev
+
+**Settings → Secrets and variables → Actions → New repository secret**
+
+| Secret | Value |
+|--------|-------|
+| `DEV_DEPLOY_HOST` | `golftrack-dev.exe.xyz` |
+| `DEV_DEPLOY_SSH_KEY` | Contents of `~/.ssh/golftrack_dev_deploy` (private key) |
+| `DEV_DJANGO_SECRET_KEY` | `AULh3zcUcXZxdNi9CKvVVTeuGCaLopWhgBii6qh2nIf5vh1yTCPUQYuzxAOeeLIhZ1M=` |
+
+`ADMIN_EMAILS` is already set from the production setup — reused as-is.
+
+### How it works
+
+Every push to a non-`main` branch (and every PR onto `main`) triggers the workflow:
+
+1. Rsyncs the working tree to `/srv/golftrack/` on the dev VM (excludes `.git`, `.venv`, databases, built assets)
+2. Installs/updates Python deps with `uv pip install`
+3. Runs `manage.py migrate`
+4. Runs `manage.py collectstatic`
+5. Restarts the gunicorn service
+
+The dev database (`/srv/golftrack/dev.db`) persists across deploys — branch switches don't wipe it. If you need a clean slate: `sudo systemctl stop golftrack-dev && rm /srv/golftrack/dev.db && sudo systemctl start golftrack-dev`.
+
 ---
 
 ## Deployment model
