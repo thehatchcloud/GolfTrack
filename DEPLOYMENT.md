@@ -90,7 +90,7 @@ print('Done')
 |--------|-------|
 | `DEV_DEPLOY_HOST` | `golftrack-dev.exe.xyz` |
 | `DEV_DEPLOY_SSH_KEY` | Contents of `~/.ssh/golftrack_dev_deploy` (private key) |
-| `DEV_DJANGO_SECRET_KEY` | `AULh3zcUcXZxdNi9CKvVVTeuGCaLopWhgBii6qh2nIf5vh1yTCPUQYuzxAOeeLIhZ1M=` |
+| `DEV_DJANGO_SECRET_KEY` | Generate with `python3 -c "import secrets,base64;print(base64.urlsafe_b64encode(secrets.token_bytes(50)).decode())"` |
 
 `ADMIN_EMAILS` is already set from the production setup — reused as-is.
 
