@@ -19,6 +19,16 @@ RUN uv pip install --system --no-cache \
 
 COPY . .
 
+# bin/build-css.sh downloads the tailwindcss standalone CLI over HTTPS.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+# Compile the real Tailwind stylesheet — static/css/app.css is committed as a
+# placeholder (see its header comment) so collectstatic has something to find
+# locally without running Tailwind first; this overwrites it with the real build.
+RUN ./bin/build-css.sh
+
 # Collect static files at build time so whitenoise serves them at runtime.
 # DATABASE_URL points at a throwaway path — collectstatic doesn't need the DB.
 RUN DJANGO_SECRET_KEY=build-placeholder \
