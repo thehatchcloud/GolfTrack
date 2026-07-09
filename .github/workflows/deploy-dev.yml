@@ -83,6 +83,7 @@ jobs:
               -e DATABASE_URL="file:/data/dev.db" \
               -e DJANGO_SECRET_KEY="$DJANGO_SECRET_KEY" \
               -e DJANGO_DEBUG=true \
+              -e DJANGO_ALLOW_PASSWORD_LOGIN=true \
               -e DJANGO_ALLOWED_HOSTS="golftrack-dev.exe.xyz" \
               -e DJANGO_CSRF_TRUSTED_ORIGINS="https://golftrack-dev.exe.xyz:8000" \
               -e ADMIN_EMAILS="$ADMIN_EMAILS" \

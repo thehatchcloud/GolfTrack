@@ -67,6 +67,7 @@ DJANGO_DEBUG=false python manage.py collectstatic --noinput   # production stati
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret (Django's own OAuth app) |
 | `MICROSOFT_CLIENT_ID` | Microsoft Entra ID client ID (Django's own OAuth app) |
 | `MICROSOFT_CLIENT_SECRET` | Microsoft Entra ID client secret (Django's own OAuth app) |
+| `DJANGO_ALLOW_PASSWORD_LOGIN` | `true`/`false` (default `false`). Opt into a plain email+password login form for environments without OAuth apps registered (e.g. the dev server) — see `deploy-dev.yml`. Self-service signup stays disabled either way; only pre-created accounts (`docker exec ... manage.py shell`) can sign in this way. |
 
 Django uses **its own OAuth client apps**, separate from the Next.js `AUTH_*` credentials. Providers validate redirect URIs per-client, so giving Django dedicated apps lets its `/accounts/.../login/callback/` URIs be registered without modifying the Next.js OAuth apps.
 
