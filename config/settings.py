@@ -97,6 +97,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "core.middleware.csp_nonce",
+                "core.context_processors.auth_options",
             ],
         },
     },
@@ -160,7 +161,19 @@ AUTHENTICATION_BACKENDS = [
 LOGIN_URL = "/accounts/login/"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"
-ACCOUNT_SIGNUP_FIELDS = ["email*"]
+
+# Environments without OAuth apps registered (e.g. the dev server, per
+# deploy-dev.yml) can opt into plain email+password login for pre-created
+# accounts. Self-service signup stays disabled either way — see
+# AccountAdapter.is_open_for_signup.
+ALLOW_PASSWORD_LOGIN = _bool_env("DJANGO_ALLOW_PASSWORD_LOGIN", default=False)
+SOCIALACCOUNT_ONLY = not ALLOW_PASSWORD_LOGIN
+ACCOUNT_FORMS = {"login": "accounts.forms.StyledLoginForm"}
+
+# allauth's LoginForm only renders a password field when the signup form would
+# also collect one (it assumes login and signup password-ness match), even
+# though self-service signup is disabled here regardless of this setting.
+ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*"] if ALLOW_PASSWORD_LOGIN else ["email*"]
 ACCOUNT_LOGIN_METHODS = {"email"}
 ACCOUNT_EMAIL_VERIFICATION = "none"
 ACCOUNT_DEFAULT_HTTP_PROTOCOL = "http" if DEBUG else "https"
@@ -168,7 +181,6 @@ ACCOUNT_ADAPTER = "accounts.adapters.AccountAdapter"
 SOCIALACCOUNT_ADAPTER = "accounts.adapters.SocialAccountAdapter"
 SOCIALACCOUNT_AUTO_SIGNUP = True
 SOCIALACCOUNT_STORE_TOKENS = False
-SOCIALACCOUNT_ONLY = True
 
 def _admin_emails() -> set[str]:
     return {
