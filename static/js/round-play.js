@@ -1,9 +1,9 @@
 // Alpine.js component for the live round play page.
 function roundPlay(initData) {
   return {
-    round: initData.round,
+    round: initData,
     holes: initData.holes,
-    currentHole: initData.round.currentHole,
+    currentHole: initData.currentHole,
     loading: false,
     error: null,
     editingShot: null,
