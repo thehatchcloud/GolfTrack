@@ -60,6 +60,7 @@ class CourseOut(CamelSchema):
     name: str
     hole_count: int
     total_par: int
+    is_archived: bool
     holes: list[CourseHoleOut]
     created_at: datetime
     updated_at: datetime

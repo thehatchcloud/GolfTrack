@@ -3,7 +3,14 @@ from django.contrib.auth import get_user_model
 
 from core.exceptions import ConflictError, NotFoundError, ValidationError
 from courses.models import Course, CourseHole
-from courses.services import create_course, get_course_by_id, list_courses, update_course
+from courses.services import (
+    archive_course,
+    create_course,
+    get_course_by_id,
+    list_courses,
+    unarchive_course,
+    update_course,
+)
 from rounds.clubs import DEFAULT_CLUBS
 from rounds.models import Round, Shot
 from rounds.round_play import get_current_hole_position, get_round_play_label_from_mode
@@ -396,3 +403,33 @@ def test_update_course_removes_holes(db):
 def test_update_course_not_found_raises(db):
     with pytest.raises(NotFoundError):
         update_course(99999, "X", 9, [])
+
+
+def test_archive_course_excludes_it_from_default_listing(db):
+    course = create_course("Nine", 9, [{"hole_number": 1, "par": 4}])
+    archive_course(course.id)
+    assert course.id not in [c.id for c in list_courses()]
+    assert course.id in [c.id for c in list_courses(include_archived=True)]
+
+
+def test_archive_course_sets_flag(db):
+    course = create_course("Nine", 9, [{"hole_number": 1, "par": 4}])
+    archived = archive_course(course.id)
+    assert archived.is_archived is True
+
+
+def test_archive_course_not_found_raises(db):
+    with pytest.raises(NotFoundError):
+        archive_course(99999)
+
+
+def test_unarchive_course_restores_it_to_default_listing(db):
+    course = create_course("Nine", 9, [{"hole_number": 1, "par": 4}])
+    archive_course(course.id)
+    unarchive_course(course.id)
+    assert course.id in [c.id for c in list_courses()]
+
+
+def test_unarchive_course_not_found_raises(db):
+    with pytest.raises(NotFoundError):
+        unarchive_course(99999)

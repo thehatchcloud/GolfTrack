@@ -4,8 +4,11 @@ from core.exceptions import NotFoundError
 from courses.models import Course, CourseHole
 
 
-def list_courses():
-    return list(Course.objects.prefetch_related("holes").order_by("name"))
+def list_courses(include_archived=False):
+    qs = Course.objects.prefetch_related("holes").order_by("name")
+    if not include_archived:
+        qs = qs.filter(is_archived=False)
+    return list(qs)
 
 
 def get_course_by_id(course_id):
@@ -73,3 +76,23 @@ def update_course(course_id, name, hole_count, holes):
             CourseHole.objects.filter(pk__in=removed_ids).delete()
 
     return Course.objects.prefetch_related("holes").get(pk=course_id)
+
+
+def archive_course(course_id):
+    try:
+        course = Course.objects.get(pk=course_id)
+    except Course.DoesNotExist:
+        raise NotFoundError("Course not found") from None
+    course.is_archived = True
+    course.save(update_fields=["is_archived", "updated_at"])
+    return course
+
+
+def unarchive_course(course_id):
+    try:
+        course = Course.objects.get(pk=course_id)
+    except Course.DoesNotExist:
+        raise NotFoundError("Course not found") from None
+    course.is_archived = False
+    course.save(update_fields=["is_archived", "updated_at"])
+    return course

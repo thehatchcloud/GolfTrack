@@ -8,12 +8,37 @@
     <p class="text-xs font-semibold uppercase tracking-widest text-stone-400">Course</p>
     <h1 class="text-xl font-bold">{{ course.name }}</h1>
     <p class="text-sm text-stone-500">{{ course.hole_count }} holes · par {{ course.total_par }}</p>
+    {% if course.is_archived %}
+      <span class="mt-1 inline-block rounded-lg bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-500">
+        Archived
+      </span>
+    {% endif %}
   </div>
   {% if user.is_admin %}
-    <a href="{% url 'course_edit' pk=course.id %}"
-       class="rounded-lg border border-stone-200 px-3 py-1.5 text-sm font-medium hover:bg-stone-50">
-      Edit
-    </a>
+    <div class="flex shrink-0 gap-2">
+      <a href="{% url 'course_edit' pk=course.id %}"
+         class="rounded-lg border border-stone-200 px-3 py-1.5 text-sm font-medium hover:bg-stone-50">
+        Edit
+      </a>
+      {% if course.is_archived %}
+        <form method="post" action="{% url 'course_unarchive' pk=course.id %}">
+          {% csrf_token %}
+          <button type="submit"
+                  class="rounded-lg border border-stone-200 px-3 py-1.5 text-sm font-medium hover:bg-stone-50">
+            Restore
+          </button>
+        </form>
+      {% else %}
+        <form method="post" action="{% url 'course_archive' pk=course.id %}"
+              onsubmit="return confirm('Archive this course? It will no longer appear when starting a round.');">
+          {% csrf_token %}
+          <button type="submit"
+                  class="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50">
+            Archive
+          </button>
+        </form>
+      {% endif %}
+    </div>
   {% endif %}
 </div>
 

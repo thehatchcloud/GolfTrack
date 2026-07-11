@@ -100,6 +100,15 @@ def test_get_course_detail(client, course):
     res = client.get(f"/api/courses/{course.id}")
     assert res.status_code == 200
     assert res.json()["id"] == course.id
+    assert res.json()["isArchived"] is False
+
+
+def test_list_courses_excludes_archived(client, course):
+    course.is_archived = True
+    course.save(update_fields=["is_archived"])
+    res = client.get("/api/courses/")
+    assert res.status_code == 200
+    assert res.json() == []
 
 
 def test_get_course_not_found(client, db):

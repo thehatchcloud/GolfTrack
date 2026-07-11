@@ -11,6 +11,7 @@ class CourseHoleInline(admin.TabularInline):
 
 @admin.register(Course)
 class CourseAdmin(admin.ModelAdmin):
-    list_display = ("name", "hole_count", "total_par", "created_at")
+    list_display = ("name", "hole_count", "total_par", "is_archived", "created_at")
+    list_filter = ("is_archived",)
     search_fields = ("name",)
     inlines = [CourseHoleInline]
