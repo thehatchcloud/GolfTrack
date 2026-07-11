@@ -1,9 +1,17 @@
 from django.http import Http404
 from django.shortcuts import redirect, render
+from django.views.decorators.http import require_POST
 
 from core.decorators import admin_required
-from core.exceptions import ValidationError
-from courses.services import create_course, get_course_by_id, list_courses, update_course
+from core.exceptions import NotFoundError, ValidationError
+from courses.services import (
+    archive_course,
+    create_course,
+    get_course_by_id,
+    list_courses,
+    unarchive_course,
+    update_course,
+)
 
 MAX_HOLES = 18
 DEFAULT_PAR = 4
@@ -109,3 +117,29 @@ def course_edit(request, pk):
             "editing": True,
         },
     )
+
+
+@admin_required
+def course_archived_list(request):
+    courses = [c for c in list_courses(include_archived=True) if c.is_archived]
+    return render(request, "courses/archived.html", {"courses": courses})
+
+
+@admin_required
+@require_POST
+def course_archive(request, pk):
+    try:
+        archive_course(pk)
+    except NotFoundError:
+        raise Http404 from None
+    return redirect("course_list")
+
+
+@admin_required
+@require_POST
+def course_unarchive(request, pk):
+    try:
+        unarchive_course(pk)
+    except NotFoundError:
+        raise Http404 from None
+    return redirect("course_archived_list")

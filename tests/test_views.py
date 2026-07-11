@@ -20,6 +20,18 @@ def admin_client(admin):
 
 
 @pytest.fixture
+def user(db):
+    return User.objects.create_user(username="alice", password="x")
+
+
+@pytest.fixture
+def auth_client(user):
+    c = Client()
+    c.force_login(user)
+    return c
+
+
+@pytest.fixture
 def course(db):
     c = Course.objects.create(name="Test Valley", hole_count=9)
     for n in range(1, 10):
@@ -65,3 +77,48 @@ def test_course_edit_form_renders_existing_values(admin_client, course):
     content = res.content.decode()
     hole_3_select = content.split('name="hole_3"')[1].split("</select>")[0]
     assert '<option value="5" selected>5</option>' in hole_3_select
+
+
+# --- POST /courses/<id>/archive/ and /unarchive/ ----------------------------
+
+def test_course_archive_as_admin(admin_client, course):
+    res = admin_client.post(f"/courses/{course.id}/archive/")
+    assert res.status_code == 302
+    course.refresh_from_db()
+    assert course.is_archived is True
+
+
+def test_archived_course_disappears_from_course_list(admin_client, course):
+    admin_client.post(f"/courses/{course.id}/archive/")
+    res = admin_client.get("/courses/")
+    assert course.name.encode() not in res.content
+
+
+def test_course_unarchive_as_admin(admin_client, course):
+    admin_client.post(f"/courses/{course.id}/archive/")
+    res = admin_client.post(f"/courses/{course.id}/unarchive/")
+    assert res.status_code == 302
+    course.refresh_from_db()
+    assert course.is_archived is False
+
+
+def test_course_archived_list_shows_archived_courses(admin_client, course):
+    admin_client.post(f"/courses/{course.id}/archive/")
+    res = admin_client.get("/courses/archived/")
+    assert res.status_code == 200
+    assert course.name.encode() in res.content
+
+
+def test_course_archive_requires_admin(auth_client, course):
+    res = auth_client.post(f"/courses/{course.id}/archive/")
+    assert res.status_code == 403
+
+
+def test_course_archive_requires_post(admin_client, course):
+    res = admin_client.get(f"/courses/{course.id}/archive/")
+    assert res.status_code == 405
+
+
+def test_course_archive_not_found(admin_client, db):
+    res = admin_client.post("/courses/99999/archive/")
+    assert res.status_code == 404
