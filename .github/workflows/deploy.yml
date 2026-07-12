@@ -95,6 +95,11 @@ jobs:
             docker rm   golftrack 2>/dev/null || true
 
             mkdir -p /data/golftrack
+            # The container runs as the non-root app user (uid/gid 1001). On a
+            # bind mount the host directory's ownership overrides the image's, so
+            # the app user must own /data/golftrack or SQLite writes fail with
+            # "attempt to write a readonly database" and migrate crashes on boot.
+            sudo chown -R 1001:1001 /data/golftrack
 
             # Host port 3000 keeps the public URL (https://<host>:3000) stable
             # across the Next.js -> Django cutover; gunicorn listens on 8000
