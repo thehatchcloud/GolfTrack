@@ -98,15 +98,17 @@ def test_concurrent_update_and_delete_shot_leaves_consistent_state(user, course)
     add_shot(user, round_.id, 1, "7i")
     shot_id = round_.holes.get(hole_number=1).shots.get(shot_number=1).id
 
-    results = run_concurrently(
+    update_result, delete_result = run_concurrently(
         [
             lambda: update_shot(user, round_.id, 1, shot_id, "5i"),
             lambda: delete_shot(user, round_.id, 1, shot_id),
         ]
     )
 
-    succeeded = [r for r, exc in results if exc is None]
-    assert len(succeeded) >= 1, "at least one operation must succeed"
+    # The delete targets a shot that exists when the race starts, so under
+    # IMMEDIATE serialization it must always win. The concurrent update either
+    # lands first (and is then deleted) or finds the shot already gone.
+    assert delete_result[1] is None, f"delete should succeed: {delete_result[1]}"
 
     hole = round_.holes.get(hole_number=1)
     assert hole.strokes == 1
@@ -143,15 +145,17 @@ def test_concurrent_delete_shot_on_same_shot_allows_only_one_to_succeed(user, co
 def test_concurrent_complete_round_and_add_shot_never_adds_shots_after_finish(user, course):
     round_ = create_round(user, course.id)
 
-    results = run_concurrently(
+    complete_result, add_result = run_concurrently(
         [
             lambda: complete_round(user, round_.id, "Done"),
             lambda: add_shot(user, round_.id, 1, "Driver"),
         ]
     )
 
-    succeeded = [r for r, exc in results if exc is None]
-    assert len(succeeded) >= 1, "at least one operation must succeed"
+    # completing an in-progress round has no precondition that the concurrent
+    # add can invalidate, so it must always succeed. The add either lands first
+    # (shot created before finish) or is rejected once the round is completed.
+    assert complete_result[1] is None, f"complete should succeed: {complete_result[1]}"
 
     final_round = Round.objects.get(pk=round_.id)
     assert final_round.status == Round.Status.COMPLETED

@@ -1,3 +1,5 @@
+import re
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import Client
@@ -127,6 +129,21 @@ def test_course_archive_not_found(admin_client, db):
 
 # --- GET /rounds/<id>/review/ -----------------------------------------------
 
+def _summary_tile_value(content: str, label: str) -> str:
+    """Return the number rendered in the review page's <label> summary tile.
+
+    Anchored to the tile markup (a value <p> immediately after the label <p>)
+    so a bare substring elsewhere on the page — e.g. a matching value in the
+    hole-by-hole list — can't satisfy the assertion.
+    """
+    match = re.search(
+        rf">{re.escape(label)}</p>\s*<p class=\"text-2xl font-bold\">\s*([^<\s][^<]*?)\s*</p>",
+        content,
+    )
+    assert match is not None, f"{label!r} summary tile not found"
+    return match.group(1)
+
+
 def test_round_review_shows_live_totals_before_submission(auth_client, user, course):
     round_ = create_round(user, course.id)
     add_shot(user, round_.id, 1, "Driver")
@@ -135,7 +152,7 @@ def test_round_review_shows_live_totals_before_submission(auth_client, user, cou
     res = auth_client.get(f"/rounds/{round_.id}/review/")
 
     assert res.status_code == 200
-    content = res.content
-    assert b"36" in content  # total par for 9 holes at par 4
-    assert b">2<" in content  # strokes so far
-    assert b"-34" in content  # relative to par
+    content = res.content.decode()
+    assert _summary_tile_value(content, "Par") == "36"  # 9 holes at par 4
+    assert _summary_tile_value(content, "Strokes") == "2"  # two shots on hole 1
+    assert _summary_tile_value(content, "To Par") == "-34"  # 2 - 36
