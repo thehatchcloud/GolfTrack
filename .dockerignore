@@ -1,11 +1,26 @@
+# Next.js (legacy app, still in-tree until the Phase 8 cutover)
 node_modules
 .next
+prisma/dev.db
+prisma/test.db
+
+# Python / Django
+.venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+.coverage
+staticfiles
+db.sqlite3
+test.db
+bin/tailwindcss
+
+# Repo / dev
 .git
 .gitignore
 npm-debug.log*
 coverage
-prisma/dev.db
-prisma/test.db
 tests
 README.md
 .env

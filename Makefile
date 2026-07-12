@@ -27,8 +27,9 @@ lint: ## Lint with ruff
 css: ## Compile Tailwind CSS → static/css/app.css
 	sh ./bin/build-css.sh
 
-collectstatic: ## Collect static files for production
-	DJANGO_DEBUG=false python manage.py collectstatic --noinput
+collectstatic: ## Collect static files for production (compiles CSS first)
+	sh ./bin/build-css.sh
+	DJANGO_DEBUG=false .venv/bin/python manage.py collectstatic --noinput
 
 clean: ## Remove generated artifacts (SQLite db, compiled CSS, __pycache__, staticfiles)
 	rm -f db.sqlite3

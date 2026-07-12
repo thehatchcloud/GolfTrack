@@ -1,11 +1,18 @@
 # Golf Track
 
-A mobile-first golf score tracking web app built with:
-- Next.js
-- TypeScript
-- Tailwind CSS
-- Prisma
-- SQLite
+A mobile-first golf score tracking web app.
+
+> **Rewrite in progress (#85):** GolfTrack is being migrated to **Django + Django
+> Ninja + Tailwind CSS**. The Django app is now what builds and deploys (see
+> `DEPLOYMENT.md`); the legacy Next.js app remains in-tree until the Phase 8
+> cutover (#94). See `DJANGO.md` for the Django app's layout and dev commands.
+
+Stack (Django rewrite):
+- Django + Django Ninja
+- Tailwind CSS (standalone CLI)
+- SQLite + Litestream
+- HTMX + Alpine.js
+- gunicorn + WhiteNoise
 
 ## Features
 
@@ -26,31 +33,31 @@ A mobile-first golf score tracking web app built with:
 ## Local development
 
 ```bash
-npm install
-npm run db:migrate
-npm run dev
+make install     # create .venv (Python 3.14) and install deps
+make migrate     # apply migrations (creates db.sqlite3)
+make dev         # runserver
 ```
 
 Open:
 
 ```text
-http://localhost:3000
+http://localhost:8000
 ```
+
+See `DJANGO.md` for the full command list (CSS build, seeding, tests, lint).
 
 ## Database
 
-Local development uses SQLite.
-
-Default env:
+Local development uses SQLite (`db.sqlite3`). In production, set:
 
 ```env
-DATABASE_URL="file:./dev.db"
+DATABASE_URL="file:/data/prod.db"
 ```
 
 ## Tests
 
 ```bash
-npm test
+make test        # pytest, verbose, with coverage
 ```
 
 ## Production / deployment
@@ -61,14 +68,6 @@ See:
 - `Dockerfile`
 
 Recommended production setup:
-- Docker container
+- Docker container (gunicorn + WhiteNoise + Litestream)
 - persistent volume mounted at `/data`
 - `DATABASE_URL=file:/data/prod.db`
-
-## Prisma commands
-
-```bash
-npm run db:migrate
-npm run db:deploy
-npm run db:seed
-```

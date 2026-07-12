@@ -13,18 +13,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
       - uses: astral-sh/setup-uv@v5
       - run: uv python install 3.14
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run build
-      - run: npm test
       - run: make install
-      - run: make test
+      - name: Lint (ruff)
+        run: make lint
+      - name: Production static build (Tailwind + collectstatic)
+        run: make collectstatic
+      - name: Test (pytest)
+        run: make test
       - name: Coverage summary
         if: always()
         run: |
@@ -76,18 +73,18 @@ jobs:
           LITESTREAM_SECRET_ACCESS_KEY: ${{ secrets.LITESTREAM_SECRET_ACCESS_KEY }}
           LITESTREAM_BUCKET: ${{ secrets.LITESTREAM_BUCKET }}
           LITESTREAM_ENDPOINT: ${{ secrets.LITESTREAM_ENDPOINT }}
-          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
-          AUTH_URL: ${{ secrets.AUTH_URL }}
-          AUTH_GOOGLE_ID: ${{ secrets.AUTH_GOOGLE_ID }}
-          AUTH_GOOGLE_SECRET: ${{ secrets.AUTH_GOOGLE_SECRET }}
-          AUTH_MICROSOFT_ENTRA_ID_ID: ${{ secrets.AUTH_MICROSOFT_ENTRA_ID_ID }}
-          AUTH_MICROSOFT_ENTRA_ID_SECRET: ${{ secrets.AUTH_MICROSOFT_ENTRA_ID_SECRET }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          MICROSOFT_CLIENT_ID: ${{ secrets.MICROSOFT_CLIENT_ID }}
+          MICROSOFT_CLIENT_SECRET: ${{ secrets.MICROSOFT_CLIENT_SECRET }}
           ADMIN_EMAILS: ${{ secrets.ADMIN_EMAILS }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ubuntu
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: GHCR_TOKEN,OWNER,LITESTREAM_ACCESS_KEY_ID,LITESTREAM_SECRET_ACCESS_KEY,LITESTREAM_BUCKET,LITESTREAM_ENDPOINT,AUTH_SECRET,AUTH_URL,AUTH_GOOGLE_ID,AUTH_GOOGLE_SECRET,AUTH_MICROSOFT_ENTRA_ID_ID,AUTH_MICROSOFT_ENTRA_ID_SECRET,ADMIN_EMAILS
+          envs: GHCR_TOKEN,OWNER,LITESTREAM_ACCESS_KEY_ID,LITESTREAM_SECRET_ACCESS_KEY,LITESTREAM_BUCKET,LITESTREAM_ENDPOINT,DEPLOY_HOST,DJANGO_SECRET_KEY,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,MICROSOFT_CLIENT_ID,MICROSOFT_CLIENT_SECRET,ADMIN_EMAILS
           script: |
             IMAGE="ghcr.io/${OWNER}/golftrack:latest"
 
@@ -99,23 +96,26 @@ jobs:
 
             mkdir -p /data/golftrack
 
+            # Host port 3000 keeps the public URL (https://<host>:3000) stable
+            # across the Next.js -> Django cutover; gunicorn listens on 8000
+            # inside the container.
             docker run -d \
               --name golftrack \
               --restart unless-stopped \
-              -p 3000:3000 \
+              -p 3000:8000 \
               -e DATABASE_URL="file:/data/prod.db" \
-              -e NODE_ENV=production \
+              -e DJANGO_SECRET_KEY="$DJANGO_SECRET_KEY" \
+              -e DJANGO_DEBUG=false \
+              -e DJANGO_ALLOWED_HOSTS="$DEPLOY_HOST" \
+              -e DJANGO_CSRF_TRUSTED_ORIGINS="https://$DEPLOY_HOST:3000" \
               -e LITESTREAM_ACCESS_KEY_ID="$LITESTREAM_ACCESS_KEY_ID" \
               -e LITESTREAM_SECRET_ACCESS_KEY="$LITESTREAM_SECRET_ACCESS_KEY" \
               -e LITESTREAM_BUCKET="$LITESTREAM_BUCKET" \
               -e LITESTREAM_ENDPOINT="$LITESTREAM_ENDPOINT" \
-              -e AUTH_SECRET="$AUTH_SECRET" \
-              -e AUTH_URL="$AUTH_URL" \
-              -e AUTH_TRUST_HOST=true \
-              -e AUTH_GOOGLE_ID="$AUTH_GOOGLE_ID" \
-              -e AUTH_GOOGLE_SECRET="$AUTH_GOOGLE_SECRET" \
-              -e AUTH_MICROSOFT_ENTRA_ID_ID="$AUTH_MICROSOFT_ENTRA_ID_ID" \
-              -e AUTH_MICROSOFT_ENTRA_ID_SECRET="$AUTH_MICROSOFT_ENTRA_ID_SECRET" \
+              -e GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID" \
+              -e GOOGLE_CLIENT_SECRET="$GOOGLE_CLIENT_SECRET" \
+              -e MICROSOFT_CLIENT_ID="$MICROSOFT_CLIENT_ID" \
+              -e MICROSOFT_CLIENT_SECRET="$MICROSOFT_CLIENT_SECRET" \
               -e ADMIN_EMAILS="$ADMIN_EMAILS" \
               -v /data/golftrack:/data \
               "$IMAGE"

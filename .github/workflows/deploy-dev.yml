@@ -1,7 +1,8 @@
 name: Dev Deploy
 
-# Builds a Docker image from Dockerfile.django and deploys any non-main branch
-# to golftrack-dev.exe.xyz for testing. No OAuth — sign in with email+password.
+# Builds the Django Docker image (the repo's Dockerfile) and deploys any
+# non-main branch to golftrack-dev.exe.xyz for testing. Runs without Litestream
+# (LITESTREAM_BUCKET unset). No OAuth — sign in with email+password.
 on:
   push:
     branches-ignore: [main]
@@ -46,7 +47,6 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile.django
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/golftrack:django-dev
           cache-from: type=gha
