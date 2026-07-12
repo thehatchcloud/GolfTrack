@@ -89,19 +89,23 @@ The dev database persists in the `golftrack-dev-data` Docker named volume across
 
 Per the rewrite decision (#85: *start fresh, no data migration; Litestream history from the old app is abandoned*), the Django app must come up on a **clean database built from migrations**, not the old Next.js/Prisma SQLite file left on the VM.
 
-Two things keep them separate:
+Three things keep them separate:
 
 - **Fresh replica path.** `litestream.yml` replicates to the `django` path in the bucket, not the Next.js app's `prod` path. The old `prod` objects are orphaned and can be deleted from the bucket whenever convenient.
-- **Wiping the stale local DB.** The persistent volume (`/data/golftrack/`) still holds the old Prisma `prod.db`. Remove it once so the container's entrypoint restores nothing (the `django` replica is empty on first boot) and `migrate` builds the schema from scratch:
+- **Data-directory ownership.** The Django container runs as the non-root `app` user (uid/gid **1001**). On a bind mount (`-v /data/golftrack:/data`) the host directory's ownership wins over the image's, so if `/data/golftrack` is owned by another user the app can't write `/data/prod.db` and `migrate` crashes on boot with `attempt to write a readonly database`. The deploy script now runs `sudo chown -R 1001:1001 /data/golftrack` before `docker run`; the very first Django deploy on a VM that previously ran the Next.js app needs this to reclaim the old files. (This is why the dev server — which uses a Docker **named volume** that inherits the image's ownership — was unaffected.)
+- **Wiping the stale local DB.** The persistent volume (`/data/golftrack/`) still holds the old Prisma `prod.db`. Remove it once so the container's entrypoint restores nothing (the `django` replica is empty on first boot) and `migrate` builds the schema from scratch.
+
+One-time cleanup on the prod VM, then redeploy:
 
 ```bash
 ssh <prod-vmhost>
 docker stop golftrack 2>/dev/null || true
 docker rm   golftrack 2>/dev/null || true
 sudo rm -f /data/golftrack/prod.db /data/golftrack/prod.db-wal /data/golftrack/prod.db-shm
+sudo chown -R 1001:1001 /data/golftrack   # let the container's app user write /data
 ```
 
-Then redeploy (**Actions → CI / Deploy → Run workflow**). The container boots against an empty `django` replica → fresh `/data/prod.db` → `migrate` → gunicorn under Litestream. Because the previous image stays in GHCR, rollback is re-deploying the prior tag; the abandoned `prod` replica is still there if the old app ever needs it.
+Then redeploy (**Actions → CI / Deploy → Run workflow**). The container boots against an empty `django` replica → fresh `/data/prod.db` → `migrate` → gunicorn under Litestream. The deploy's health check confirms the app actually serves before the job goes green. Because the previous image stays in GHCR, rollback is re-deploying the prior tag; the abandoned `prod` replica is still there if the old app ever needs it.
 
 > This is a **maintainer-run** step (SSH + Docker on the VM). The app image itself is validated in CI; wiping the volume is a deliberate, destructive action left to you.
 
