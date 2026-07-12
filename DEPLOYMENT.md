@@ -81,6 +81,29 @@ The dev database persists in the `golftrack-dev-data` Docker named volume across
 - Container restarts automatically when the VM reboots (`--restart unless-stopped`)
 - Migrations (`manage.py migrate`) run automatically inside the container at startup, before gunicorn starts
 - gunicorn listens on port **8000** inside the container; the deploy maps host port **3000 → 8000**, so exe.dev proxies the app at `https://<vmname>.exe.xyz:3000/` (the public URL is unchanged from the Next.js era)
+- The deploy script health-checks `/api/health` inside the container after `docker run` and **fails the deploy (with `docker logs`) if the app doesn't come up** — a crash-looping container no longer reports a green deploy
+
+---
+
+## Cutover from the Next.js app (one-time)
+
+Per the rewrite decision (#85: *start fresh, no data migration; Litestream history from the old app is abandoned*), the Django app must come up on a **clean database built from migrations**, not the old Next.js/Prisma SQLite file left on the VM.
+
+Two things keep them separate:
+
+- **Fresh replica path.** `litestream.yml` replicates to the `django` path in the bucket, not the Next.js app's `prod` path. The old `prod` objects are orphaned and can be deleted from the bucket whenever convenient.
+- **Wiping the stale local DB.** The persistent volume (`/data/golftrack/`) still holds the old Prisma `prod.db`. Remove it once so the container's entrypoint restores nothing (the `django` replica is empty on first boot) and `migrate` builds the schema from scratch:
+
+```bash
+ssh <prod-vmhost>
+docker stop golftrack 2>/dev/null || true
+docker rm   golftrack 2>/dev/null || true
+sudo rm -f /data/golftrack/prod.db /data/golftrack/prod.db-wal /data/golftrack/prod.db-shm
+```
+
+Then redeploy (**Actions → CI / Deploy → Run workflow**). The container boots against an empty `django` replica → fresh `/data/prod.db` → `migrate` → gunicorn under Litestream. Because the previous image stays in GHCR, rollback is re-deploying the prior tag; the abandoned `prod` replica is still there if the old app ever needs it.
+
+> This is a **maintainer-run** step (SSH + Docker on the VM). The app image itself is validated in CI; wiping the volume is a deliberate, destructive action left to you.
 
 ---
 

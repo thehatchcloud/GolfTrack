@@ -90,5 +90,23 @@ jobs:
               -v golftrack-dev-data:/data \
               "$IMAGE"
 
+            # docker run -d returns before the app boots; verify the container
+            # actually serves /api/health and fail loudly with logs if it does not.
+            echo "Waiting for golftrack-dev to become healthy..."
+            healthy=0
+            for _ in $(seq 1 20); do
+              sleep 3
+              if docker exec golftrack-dev curl -fsS -H "Host: golftrack-dev.exe.xyz" \
+                   http://127.0.0.1:8000/api/health >/dev/null 2>&1; then
+                healthy=1
+                break
+              fi
+            done
+            if [ "$healthy" != "1" ]; then
+              echo "::error::golftrack-dev failed its health check after ~60s. Recent logs:"
+              docker logs --tail 120 golftrack-dev 2>&1 || true
+              exit 1
+            fi
+
             docker image prune -f
             echo "Deployed branch '${BRANCH}' — https://golftrack-dev.exe.xyz:8000"
