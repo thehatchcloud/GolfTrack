@@ -40,7 +40,7 @@ old contract. Service-layer exceptions map to 400/401/403/404/409 in
 
 ```bash
 uv venv --python 3.14 .venv && source .venv/bin/activate
-uv pip install "django>=6.0,<6.1" django-ninja whitenoise gunicorn uvicorn ruff pytest pytest-django
+uv pip install "django>=6.0,<6.1" django-ninja whitenoise gunicorn uvicorn ruff pytest pytest-django pytest-cov
 
 python manage.py migrate
 python manage.py runserver        # http://localhost:8000  (and /api/health)
@@ -49,10 +49,15 @@ python manage.py seed             # wipe + reseed with sample data (dev/test DBs
 ./bin/build-css.sh                # compile Tailwind -> static/css/app.css
 
 ruff check .                      # lint
-pytest -q                         # tests
+pytest -v --cov --cov-report=term-missing   # tests, verbose, with coverage (make test runs this)
 
 DJANGO_DEBUG=false python manage.py collectstatic --noinput   # production static build
 ```
+
+`make test` runs the pytest command above and is what CI's `make test` step calls; it also
+writes a markdown coverage table to the job's step summary (`.github/workflows/deploy.yml`).
+Coverage config (source apps, omitted files) lives in `pyproject.toml`
+(`[tool.coverage.run]` / `[tool.coverage.report]`).
 
 ## Testing (Phase 6, #92)
 

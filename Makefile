@@ -18,8 +18,8 @@ dev: ## Start the development server at http://localhost:8000
 shell: ## Open the Django interactive shell
 	python manage.py shell
 
-test: ## Run the full pytest suite
-	.venv/bin/pytest -q
+test: ## Run the full pytest suite, verbose, with coverage
+	.venv/bin/pytest -v --cov --cov-report=term-missing
 
 lint: ## Lint with ruff
 	.venv/bin/ruff check .
@@ -37,6 +37,7 @@ clean: ## Remove generated artifacts (SQLite db, compiled CSS, __pycache__, stat
 	find . \( -path './.venv' -o -path './node_modules' -o -path './.next' \) -prune \
 		-o -type d -name '__pycache__' -exec rm -rf {} +
 	rm -rf .pytest_cache/
+	rm -f .coverage
 
 distclean: clean ## clean + remove the downloaded Tailwind binary and .venv
 	rm -f bin/tailwindcss

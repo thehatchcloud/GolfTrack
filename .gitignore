@@ -60,4 +60,6 @@ test.db-journal
 /bin/tailwindcss
 .pytest_cache/
 .ruff_cache/
+.coverage
+htmlcov/
 *.egg-info/
