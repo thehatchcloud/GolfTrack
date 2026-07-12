@@ -209,6 +209,17 @@ def test_create_round_unauthenticated(client, course):
     assert res.status_code == 401
 
 
+def test_create_round_front9_on_9_hole_course_returns_400(auth_client, db):
+    nine_hole_course = Course.objects.create(name="Nine Hole", hole_count=9)
+    for n in range(1, 10):
+        CourseHole.objects.create(course=nine_hole_course, hole_number=n, par=4)
+    res = post_json(
+        auth_client, "/api/rounds/", {"courseId": nine_hole_course.id, "playMode": "front9"}
+    )
+    assert res.status_code == 400
+    assert "18-hole" in res.json()["error"]
+
+
 # --- GET /api/rounds & in-progress ---------------------------------------
 
 def test_list_completed_rounds(auth_client, user, course):
@@ -260,6 +271,11 @@ def test_get_round_detail_wrong_user(client, user, course):
 
 
 # --- shots ----------------------------------------------------------------
+
+def test_add_shot_round_not_found(auth_client, db):
+    res = post_json(auth_client, "/api/rounds/99999/holes/1/shots", {"club": "Driver"})
+    assert res.status_code == 404
+
 
 def test_add_shot(auth_client, user, course):
     rnd = create_round(user, course.id)
@@ -327,6 +343,11 @@ def test_set_current_hole_invalid(auth_client, user, course):
     assert res.status_code == 400
 
 
+def test_set_current_hole_round_not_found(auth_client, db):
+    res = patch_json(auth_client, "/api/rounds/99999/current-hole", {"currentHole": 1})
+    assert res.status_code == 404
+
+
 def test_complete_round(auth_client, user, course):
     rnd = create_round(user, course.id)
     res = post_json(auth_client, f"/api/rounds/{rnd.id}/complete", {"note": "Good day"})
@@ -341,6 +362,17 @@ def test_complete_round_empty_body(auth_client, user, course):
     rnd = create_round(user, course.id)
     res = post_json(auth_client, f"/api/rounds/{rnd.id}/complete", {})
     assert res.status_code == 200
+
+
+def test_complete_round_note_too_long(auth_client, user, course):
+    rnd = create_round(user, course.id)
+    res = post_json(auth_client, f"/api/rounds/{rnd.id}/complete", {"note": "a" * 1001})
+    assert res.status_code == 400
+
+
+def test_complete_round_not_found(auth_client, db):
+    res = post_json(auth_client, "/api/rounds/99999/complete", {})
+    assert res.status_code == 404
 
 
 def test_cancel_round(auth_client, user, course):

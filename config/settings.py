@@ -110,6 +110,25 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": _sqlite_path(),
+        "OPTIONS": {
+            # Next.js used Prisma's Serializable isolation level for
+            # concurrency-sensitive writes (shot add/undo/delete, round
+            # create). SQLite's default BEGIN DEFERRED only takes a write
+            # lock at the first write statement, so two transactions can
+            # both read stale state before either writes — a lost-update
+            # race. BEGIN IMMEDIATE takes the write lock at transaction
+            # start, serializing concurrent writers the same way. See #85's
+            # "Serializable transactions" risk call-out.
+            "transaction_mode": "IMMEDIATE",
+            "timeout": 10,
+        },
+        "TEST": {
+            # A real file, not sqlite's default in-memory test DB, so
+            # multiple connections (e.g. threads in concurrency tests) see
+            # the same data — mirrors the Next.js suite running against a
+            # real SQLite file (tests/helpers/test-context.ts).
+            "NAME": str(BASE_DIR / "test.db"),
+        },
     }
 }
 

@@ -44,6 +44,7 @@ uv pip install "django>=6.0,<6.1" django-ninja whitenoise gunicorn uvicorn ruff 
 
 python manage.py migrate
 python manage.py runserver        # http://localhost:8000  (and /api/health)
+python manage.py seed             # wipe + reseed with sample data (dev/test DBs only)
 
 ./bin/build-css.sh                # compile Tailwind -> static/css/app.css
 
@@ -52,6 +53,41 @@ pytest -q                         # tests
 
 DJANGO_DEBUG=false python manage.py collectstatic --noinput   # production static build
 ```
+
+## Testing (Phase 6, #92)
+
+pytest + pytest-django, run against a **real SQLite file** (`test.db`, see the
+`TEST.NAME` override in `config/settings.py`) rather than sqlite's default
+in-memory test DB — this matches the Next.js suite's philosophy of testing
+against a real database, and lets concurrency tests open independent
+connections from separate threads that see the same data.
+
+| File | Covers |
+|------|--------|
+| `tests/test_models.py` | Model constraints (unique indexes, cascade/protect deletes) |
+| `tests/test_services.py` | Service-layer logic — scoring, round lifecycle, courses |
+| `tests/test_validation.py` | Ninja/Pydantic schema validation edge cases (course holes, par range, note/club length, play mode) |
+| `tests/test_api.py` | Every `/api/...` route, including the 400/401/403/404/409 contract |
+| `tests/test_concurrency.py` | Real-thread races (concurrent shot add/undo/delete, concurrent round creation) |
+| `tests/test_views.py` | Server-rendered course/round pages |
+| `tests/test_auth.py` | Login page + password-login opt-in |
+| `tests/test_seed.py` | `seed` management command + its guard rules |
+| `tests/test_health.py` | `/api/health`, home page |
+
+**SQLite transaction mode:** the Next.js app used Prisma's Serializable
+isolation for concurrency-sensitive writes (shot add/undo/delete, round
+create). SQLite's default `BEGIN DEFERRED` only takes a write lock at the
+first write statement, so two transactions can both read stale state before
+either writes (a lost-update race). `config/settings.py` sets
+`OPTIONS.transaction_mode = "IMMEDIATE"` so `transaction.atomic()` takes the
+write lock up front instead, serializing concurrent writers the way the old
+app did. `tests/test_concurrency.py` exercises this directly with real
+threads; don't remove that setting without re-verifying those tests.
+
+**Seeding:** `python manage.py seed` ports `prisma/seed.ts` — same guard
+rules (refuses to run unless `DEBUG` is on and the resolved DB path looks
+like a local dev/test database) and the same sample data (a test user, a
+9-hole and an 18-hole course, one completed and one in-progress round).
 
 ## Environment variables (Django)
 
