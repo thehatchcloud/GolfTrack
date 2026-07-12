@@ -40,20 +40,18 @@
 <div class="mb-5 grid grid-cols-3 gap-3">
   <div class="rounded-xl bg-stone-100 p-3 text-center">
     <p class="text-xs font-semibold uppercase tracking-wider text-stone-500">Par</p>
-    <p class="text-2xl font-bold">{{ round.total_par|default:"—" }}</p>
+    <p class="text-2xl font-bold">{{ totals.total_par|default:"—" }}</p>
   </div>
   <div class="rounded-xl bg-stone-100 p-3 text-center">
     <p class="text-xs font-semibold uppercase tracking-wider text-stone-500">Strokes</p>
-    <p class="text-2xl font-bold">{{ round.total_strokes|default:"—" }}</p>
+    <p class="text-2xl font-bold">{{ totals.total_strokes|default:"—" }}</p>
   </div>
   <div class="rounded-xl bg-stone-100 p-3 text-center">
     <p class="text-xs font-semibold uppercase tracking-wider text-stone-500">To Par</p>
     <p class="text-2xl font-bold">
-      {% if round.relative_to_par is not None %}
-        {% if round.relative_to_par == 0 %}E
-        {% elif round.relative_to_par > 0 %}+{{ round.relative_to_par }}
-        {% else %}{{ round.relative_to_par }}{% endif %}
-      {% else %}—{% endif %}
+      {% if totals.relative_to_par == 0 %}E
+      {% elif totals.relative_to_par > 0 %}+{{ totals.relative_to_par }}
+      {% else %}{{ totals.relative_to_par }}{% endif %}
     </p>
   </div>
 </div>

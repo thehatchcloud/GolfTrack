@@ -5,6 +5,7 @@ from core.decorators import login_required_view
 from courses.services import list_courses
 from rounds.clubs import DEFAULT_CLUBS
 from rounds.schemas import RoundDetailOut
+from rounds.scoring import calculate_round_totals
 from rounds.services import (
     get_in_progress_round,
     get_round_by_id,
@@ -67,4 +68,5 @@ def round_review(request, pk):
     round_ = get_round_by_id(request.user, pk)
     if round_ is None:
         raise Http404
-    return render(request, "rounds/review.html", {"round": round_})
+    totals = calculate_round_totals(round_.holes.all())
+    return render(request, "rounds/review.html", {"round": round_, "totals": totals})

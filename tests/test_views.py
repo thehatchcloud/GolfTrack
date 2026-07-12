@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client
 
 from courses.models import Course, CourseHole
+from rounds.services import add_shot, create_round
 
 User = get_user_model()
 
@@ -122,3 +123,19 @@ def test_course_archive_requires_post(admin_client, course):
 def test_course_archive_not_found(admin_client, db):
     res = admin_client.post("/courses/99999/archive/")
     assert res.status_code == 404
+
+
+# --- GET /rounds/<id>/review/ -----------------------------------------------
+
+def test_round_review_shows_live_totals_before_submission(auth_client, user, course):
+    round_ = create_round(user, course.id)
+    add_shot(user, round_.id, 1, "Driver")
+    add_shot(user, round_.id, 1, "Putter")
+
+    res = auth_client.get(f"/rounds/{round_.id}/review/")
+
+    assert res.status_code == 200
+    content = res.content
+    assert b"36" in content  # total par for 9 holes at par 4
+    assert b">2<" in content  # strokes so far
+    assert b"-34" in content  # relative to par
