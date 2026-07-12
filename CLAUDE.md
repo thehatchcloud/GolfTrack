@@ -112,22 +112,31 @@ When Claude writes a PR test plan, items in the first group are ones Claude shou
 
 ## Deployment
 
-Docker-based, single container, SQLite on a persistent volume mounted at `/data`. The container runs [Litestream](https://litestream.io) alongside the app, replicating SQLite to an S3-compatible bucket (DO Spaces in production).
+> **As of Phase 7 (#93)** the deployed artifact is the **Django** app — the root
+> `Dockerfile` is Python/gunicorn/WhiteNoise/Litestream and CI builds it. The
+> details below describe that container. The legacy Next.js app still lives in-tree
+> until the Phase 8 cutover (#94) but is no longer built or deployed. Full docs:
+> `DEPLOYMENT.md`; Django dev commands: `DJANGO.md`.
+
+Docker-based, single container, SQLite on a persistent volume mounted at `/data`. The container runs [Litestream](https://litestream.io) as its supervising process, replicating SQLite to an S3-compatible bucket (DO Spaces in production). gunicorn listens on port 8000 inside the container; the production deploy maps host 3000 → 8000 so the public URL stays `…:3000`.
 
 ```bash
-docker build -t golf-track .
-docker run --rm -p 3000:3000 \
+docker build -t golftrack .
+docker run --rm -p 8000:8000 \
   -e DATABASE_URL="file:/data/prod.db" \
+  -e DJANGO_SECRET_KEY="local-dev-secret" \
+  -e DJANGO_DEBUG=false \
+  -e DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1" \
   -v $(pwd)/data:/data \
-  golf-track
+  golftrack
 ```
 
-Without `LITESTREAM_BUCKET` set, the container skips replication and runs the app standalone — that's the path the command above uses.
+Without `LITESTREAM_BUCKET` set, the container skips replication and runs the app standalone (migrate → gunicorn) — that's the path the command above uses.
 
 ### Container startup contract
 
-`entrypoint.sh` is the container's `CMD`. It is structured so that **`litestream replicate -exec` only ever wraps a single executable, never a shell pipeline.** Litestream v0.5's `-exec` does not invoke `sh -c`, so chaining commands with `&&` inside `-exec` would silently pass them as literal arguments to the first binary. Migrations therefore run as a separate shell step *before* `litestream replicate` starts. Keep this structure when modifying the entrypoint.
+`entrypoint.sh` is the container's `CMD`. It is structured so that **`litestream replicate -exec` only ever wraps a single executable, never a shell pipeline.** Litestream v0.5's `-exec` does not invoke `sh -c`, so chaining commands with `&&` inside `-exec` would silently pass them as literal arguments to the first binary. `manage.py migrate` therefore runs as a separate shell step *before* `litestream replicate -exec "gunicorn …"` starts. Keep this structure when modifying the entrypoint.
 
 If you change the S3-compatible backend (e.g. away from DO Spaces), revisit `litestream.yml` — `force-path-style` is provider-specific (DO Spaces rejects it; B2 requires it). The `LITESTREAM_ENDPOINT` secret must be the region root, not the full bucket URL. Details in `DEPLOYMENT.md`.
 
-Before first boot, run migrations: `npx prisma migrate deploy`. See `DEPLOYMENT.md` for full details.
+Migrations run automatically at container startup (`manage.py migrate`). See `DEPLOYMENT.md` for full details.

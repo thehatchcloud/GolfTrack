@@ -1,16 +1,19 @@
 # Deployment Guide
 
-Pushes to `main` automatically test, build, and deploy to the exe.dev VM via the workflow in `.github/workflows/deploy.yml`.
+Pushes to `main` automatically test, build, and deploy the **Django** app to the exe.dev VM via the workflow in `.github/workflows/deploy.yml`.
 
 Non-`main` branches deploy to the **dev server** (`golftrack-dev.exe.xyz`) via `.github/workflows/deploy-dev.yml`. See [Dev server setup](#dev-server-setup-golftrack-devexexyz) below.
+
+> **Stack note:** As of the Phase 7 rewrite (#93), the deployed artifact is the Django app (`Dockerfile` → Python 3.13, gunicorn, WhiteNoise, Litestream). The legacy Next.js app remains in-tree until the Phase 8 cutover (#94) but is no longer built or deployed. The previous Next.js image stays in GHCR for rollback.
 
 ---
 
 ## Dev server setup (`golftrack-dev.exe.xyz`)
 
-The dev server runs the Django app in Docker (`Dockerfile.django`) — same stack as
-production, without Litestream. OAuth is disabled — sign in with email + password.
-The image is tagged `ghcr.io/<owner>/golftrack:django-dev` and rebuilt on every push.
+The dev server runs the Django app in Docker (the repo's `Dockerfile`) — same image as
+production, but **without Litestream** (`LITESTREAM_BUCKET` unset) and with OAuth
+disabled — sign in with email + password. The image is tagged
+`ghcr.io/<owner>/golftrack:django-dev` and rebuilt on every push.
 
 ### 1. Create the dev VM
 
@@ -61,22 +64,23 @@ print('Done')
 
 Every push to a non-`main` branch triggers the workflow:
 
-1. Builds a Docker image from `Dockerfile.django` (Python 3.13, gunicorn, collectstatic baked in)
+1. Builds the Django Docker image (Python 3.13, gunicorn, collectstatic baked in)
 2. Pushes to `ghcr.io/<owner>/golftrack:django-dev`
 3. SSHs to the dev VM: pulls the image, stops/removes the old container, starts a new one
-4. The container entrypoint runs `manage.py migrate` then starts gunicorn on port 8000
+4. The container entrypoint runs `manage.py migrate` then starts gunicorn on port 8000 (no Litestream, since `LITESTREAM_BUCKET` is unset)
 
 The dev database persists in the `golftrack-dev-data` Docker named volume across deploys — branch switches don't wipe it. For a clean slate: `docker stop golftrack-dev && docker volume rm golftrack-dev-data && docker start golftrack-dev`.
 
 ---
 
-## Deployment model
+## Deployment model (production)
 
-- Next.js standalone output running in a Docker container
-- SQLite database on a persistent directory on the VM (`/data/golftrack/`)
+- Django app served by **gunicorn** (WSGI) inside a Docker container, static files served by **WhiteNoise**
+- SQLite database on a persistent directory on the VM (`/data/golftrack/` → `/data` in the container)
+- **Litestream** runs as the container's supervising process, continuously replicating SQLite to an S3-compatible bucket and restoring it on first boot
 - Container restarts automatically when the VM reboots (`--restart unless-stopped`)
-- Migrations run automatically inside the container at startup before the server process starts
-- exe.dev transparently proxies port 3000 at `https://<vmname>.exe.xyz:3000/`
+- Migrations (`manage.py migrate`) run automatically inside the container at startup, before gunicorn starts
+- gunicorn listens on port **8000** inside the container; the deploy maps host port **3000 → 8000**, so exe.dev proxies the app at `https://<vmname>.exe.xyz:3000/` (the public URL is unchanged from the Next.js era)
 
 ---
 
@@ -125,6 +129,21 @@ In the repository: **Settings → Secrets and variables → Actions → New repo
 | `DEPLOY_HOST` | exe.dev VM hostname, e.g. `golftrack.exe.xyz` |
 | `DEPLOY_SSH_KEY` | Contents of `~/.ssh/golftrack_deploy` (the private key) |
 | `GHCR_TOKEN` | PAT with `read:packages` scope |
+| `DJANGO_SECRET_KEY` | Generate with `python3 -c "import secrets,base64;print(base64.urlsafe_b64encode(secrets.token_bytes(50)).decode())"` |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Django's own Google OAuth client (see [OAuth provider setup](#oauth-provider-setup)) |
+| `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` | Django's own Microsoft Entra ID app |
+| `ADMIN_EMAILS` | Comma-separated emails to grant `ADMIN` role at sign-in |
+| `LITESTREAM_ACCESS_KEY_ID` / `LITESTREAM_SECRET_ACCESS_KEY` / `LITESTREAM_BUCKET` / `LITESTREAM_ENDPOINT` | See [Backups (Litestream)](#backups-litestream) |
+
+`DJANGO_ALLOWED_HOSTS` and `DJANGO_CSRF_TRUSTED_ORIGINS` are not secrets — the
+workflow derives them from `DEPLOY_HOST` (`<host>` and `https://<host>:3000`).
+
+> **Migrating from the Next.js deploy:** The old workflow used `AUTH_SECRET`,
+> `AUTH_URL`, `AUTH_GOOGLE_*`, and `AUTH_MICROSOFT_ENTRA_ID_*`. The Django deploy
+> does **not** use these — add the `DJANGO_SECRET_KEY` and `GOOGLE_*` /
+> `MICROSOFT_*` secrets above before the first Django deploy. Django uses its own
+> OAuth client apps (separate redirect URIs), so the old `AUTH_*` secrets can be
+> left in place for rollback and removed after cutover.
 
 ### 5. Make the GHCR package visible to the VM
 
@@ -138,12 +157,12 @@ pull from it. If you prefer, you can set the package visibility to **Public** in
 
 ## What happens on each push to `main`
 
-1. **Test** — runs `npm test` against a fresh SQLite test database
-2. **Build** — builds the Docker image and pushes to `ghcr.io/<owner>/golftrack:latest`
+1. **Test** — `make install` then ruff lint, Tailwind + `collectstatic` build, and the pytest suite (`make test`) against a fresh SQLite test database
+2. **Build** — builds the Django Docker image and pushes to `ghcr.io/<owner>/golftrack:latest`
 3. **Deploy** — SSHes into the exe.dev VM:
    - pulls the new image
    - stops and removes the old container
-   - starts the new container (migrations run automatically before the server starts)
+   - starts the new container (Litestream restores the DB if missing, migrations run, then gunicorn starts)
    - prunes old images
 
 The workflow also supports manual triggering: **Actions → CI / Deploy → Run workflow**. Use this when you've rotated a secret (e.g. `LITESTREAM_*`) and need to restart the container to pick up the new value without pushing a code change.
@@ -152,92 +171,102 @@ The workflow also supports manual triggering: **Actions → CI / Deploy → Run 
 
 ## Required environment variables
 
+Set directly in the `docker run` command in the deploy workflow — no `.env` file is needed on the VM.
+
 | Variable | Value |
 |----------|-------|
-| `NODE_ENV` | `production` |
-| `PORT` | `3000` |
-| `DATABASE_URL` | `file:/data/prod.db` |
-| `AUTH_SECRET` | 32+ random bytes (generate with `openssl rand -base64 32`) |
-| `AUTH_URL` | Public origin, e.g. `https://golftrack.exe.xyz:3000` |
-| `AUTH_TRUST_HOST` | `true` (exe.dev terminates TLS upstream) |
-| `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | Google OAuth client credentials |
-| `AUTH_MICROSOFT_ENTRA_ID_ID` / `AUTH_MICROSOFT_ENTRA_ID_SECRET` | Microsoft Entra ID app credentials |
+| `DATABASE_URL` | `file:/data/prod.db` (the `file:` form is accepted for parity with the old deploy) |
+| `DJANGO_SECRET_KEY` | 50+ random bytes (see secret-generation command above) |
+| `DJANGO_DEBUG` | `false` |
+| `DJANGO_ALLOWED_HOSTS` | VM hostname, e.g. `golftrack.exe.xyz` |
+| `DJANGO_CSRF_TRUSTED_ORIGINS` | Public origin incl. port, e.g. `https://golftrack.exe.xyz:3000` |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth client credentials |
+| `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` | Microsoft Entra ID app credentials |
 | `ADMIN_EMAILS` | Comma-separated emails to grant `ADMIN` role at sign-in |
+| `LITESTREAM_*` | Replication credentials/endpoint — see [Backups](#backups-litestream) |
 
-These are set directly in the `docker run` command in the deploy workflow. No `.env` file is needed on the VM.
+Django trusts `X-Forwarded-Proto` from exe.dev's TLS-terminating proxy
+(`SECURE_PROXY_SSL_HEADER` in `config/settings.py`), so cookies are marked secure
+even though gunicorn speaks plain HTTP inside the container.
 
 ### OAuth provider setup
 
-Both providers must have the production callback URL registered:
+Django uses **its own OAuth client apps** (via django-allauth), separate from the
+Next.js `AUTH_*` apps. Providers validate redirect URIs per client, so Django's
+`/accounts/.../login/callback/` URIs must be registered on the Django apps:
 
-- **Google** — [GolfTrack OAuth client](https://console.cloud.google.com/apis/credentials?project=prime-agency-199418)
-  Callback URL: `{AUTH_URL}/api/auth/callback/google`
-- **Microsoft Entra ID** — [GolfTrack app registration](https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/Overview/quickStartType~/null/sourceType/Microsoft_AAD_IAM/appId/d75517a5-078b-45b3-87e5-fecdac856e2a/objectId/ca0c6eee-61a4-43cb-949c-bd46b7be3a1f/isMSAApp~/false/defaultBlade/Overview/appSignInAudience/AzureADandPersonalMicrosoftAccount/servicePrincipalCreated~/true)
-  Callback URL: `{AUTH_URL}/api/auth/callback/microsoft-entra-id`
-  Audience: "Accounts in any organizational directory and personal Microsoft accounts" (required for the default `common` issuer to accept both work and personal accounts)
+- **Google** — [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials)
+  Callback URL: `https://golftrack.exe.xyz:3000/accounts/google/login/callback/`
+- **Microsoft Entra ID** — [entra.microsoft.com → App registrations](https://entra.microsoft.com)
+  Callback URL: `https://golftrack.exe.xyz:3000/accounts/microsoft/login/callback/`
+  Audience: "Accounts in any organizational directory and personal Microsoft accounts" (required for the default `common` tenant to accept both work and personal accounts)
 
-For local development, also register `http://localhost:3000/api/auth/callback/{google,microsoft-entra-id}` on the same OAuth clients (or use separate dev-only credentials).
+For local development, also register `http://localhost:8000/accounts/{google,microsoft}/login/callback/` on the same clients (or use separate dev-only credentials).
+
+> **Cutover note (#94):** The old Next.js callback URLs
+> (`/api/auth/callback/google`, `/api/auth/callback/microsoft-entra-id`) can be
+> removed from the provider apps once the Django app is live and verified.
 
 ---
 
 ## Local development
 
 ```bash
-npm install
-npm run db:migrate
-npm run dev
+make install       # create .venv (Python 3.14) and install deps
+make migrate       # apply migrations (creates db.sqlite3)
+make dev           # runserver at http://localhost:8000
 ```
 
-## Local production build
-
-```bash
-npm run build
-npm start
-```
+See `DJANGO.md` for the full command list.
 
 ## Manual Docker run (local testing)
 
+Without `LITESTREAM_BUCKET`, the container runs standalone (migrate → gunicorn, no replication):
+
 ```bash
-docker build -t golf-track .
-docker run --rm -p 3000:3000 \
+docker build -t golftrack .
+docker run --rm -p 8000:8000 \
   -e DATABASE_URL="file:/data/prod.db" \
-  -v $(pwd)/data:/data \
-  golf-track
+  -e DJANGO_SECRET_KEY="local-dev-secret" \
+  -e DJANGO_DEBUG=false \
+  -e DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1" \
+  -e DJANGO_CSRF_TRUSTED_ORIGINS="http://localhost:8000" \
+  -e DJANGO_ALLOW_PASSWORD_LOGIN=true \
+  -v "$(pwd)/data:/data" \
+  golftrack
 ```
 
-## Prisma commands
+Then create an account with `docker exec ... manage.py shell` as shown in the dev-server section, and sign in at `http://localhost:8000/`.
 
-```bash
-npm run db:migrate   # create and apply migration (dev)
-npm run db:deploy    # apply existing migrations (production)
-npm run db:generate  # regenerate client after schema changes
-npm run db:seed      # seed with sample data
-```
+> **Maintainer checks (per `CLAUDE.md`):** verify the image builds, the container
+> runs as the non-root `app` user (`docker exec golftrack whoami` → `app`), and —
+> with `LITESTREAM_*` set — that restore/replicate works end-to-end. These require
+> Docker/live S3 access and are run by the maintainer, not in CI.
 
 ---
 
 ## Backups (Litestream)
 
-The container runs [Litestream](https://litestream.io) alongside the app, continuously streaming SQLite changes to an S3-compatible bucket. Production currently uses **DigitalOcean Spaces**; any S3-compatible provider works (B2, AWS S3, R2, etc.) by adjusting the endpoint.
+The container runs [Litestream](https://litestream.io) as its supervising process, continuously streaming SQLite changes to an S3-compatible bucket. Production currently uses **DigitalOcean Spaces**; any S3-compatible provider works (B2, AWS S3, R2, etc.) by adjusting the endpoint.
 
 ### How it runs in the container
 
 `entrypoint.sh` orchestrates startup:
 
-1. If `LITESTREAM_BUCKET` is unset, runs `prisma migrate deploy` and starts `node server.js` directly (no replication — safe for local dev).
+1. If `LITESTREAM_BUCKET` is unset, runs `manage.py migrate` and starts gunicorn directly (no replication — safe for local dev and the dev server).
 2. If `LITESTREAM_BUCKET` is set:
    - Restores `/data/prod.db` from the replica if it doesn't exist.
-   - Runs `prisma migrate deploy`.
-   - Starts `litestream replicate -exec "node server.js"`, which supervises the Node process and streams WAL changes to the bucket.
+   - Runs `manage.py migrate`.
+   - Starts `litestream replicate -exec "gunicorn …"`, which supervises the gunicorn process and streams WAL changes to the bucket.
 
-> **Litestream v0.5 gotcha:** `-exec` does *not* run the command through `sh -c`. Pass a single executable, not a shell pipeline. Migrations must run as a separate step before `litestream replicate`, not chained inside `-exec` with `&&`.
+> **Litestream v0.5 gotcha:** `-exec` does *not* run the command through `sh -c`. Pass a single executable (gunicorn with its flags), not a shell pipeline. Migrations must run as a separate step before `litestream replicate`, not chained inside `-exec` with `&&`. `entrypoint.sh` keeps this structure — preserve it when editing.
 
 ### One-time bucket setup
 
 Using DigitalOcean Spaces:
 
 1. Create a private Space (e.g. `golftrack-backup`) in the region of your choice.
-2. Create an Spaces access key (**API → Spaces Keys**) with read/write access. Note the **Key**, **Secret**, and **region**.
+2. Create a Spaces access key (**API → Spaces Keys**) with read/write access. Note the **Key**, **Secret**, and **region**.
 
 Other providers work analogously — you just need a bucket, an access key pair, and the S3-compatible endpoint URL.
 
@@ -287,6 +316,7 @@ docker run --rm \
 
 ## Upgrading from SQLite to Postgres
 
-If traffic grows, swap `DATABASE_URL` for a Postgres connection string and update
-`prisma/schema.prisma` to use `provider = "postgresql"`. The rest of the app is
-unchanged.
+If traffic grows, swap the `default` database in `config/settings.py` for a Postgres
+backend (`django.db.backends.postgresql`) and point `DATABASE_URL` at the Postgres
+connection string. Litestream is SQLite-specific, so drop it from the entrypoint and
+use Postgres-native backups instead. The rest of the app is unchanged.
