@@ -87,6 +87,12 @@ Tests use Node's built-in test runner via `tsx --test`. They run against a **rea
 
 `tests/helpers/test-context.ts` exports `setupTestContext()` which provisions the test DB, returns `{ db, courses, rounds, resetDatabase, teardown }`, and cleans up after each suite.
 
+### Notify the requester whenever tests change
+
+**Any time tests are added, modified, or removed, Claude must explicitly notify the requester** — call it out in the chat reply and in the PR description, don't let it ride silently inside a larger diff. The notification must state **what changed** (which test files/cases) and **why** (the behavior now covered, the weakness being fixed, or the reason for a deletion/weakened assertion). This applies even when the test change is incidental to a feature or bug fix.
+
+Reliable tests are our primary defense against automated tools and humans introducing breaking changes, so a weakened, deleted, or skipped test is a material change that the requester must have the chance to review — never quietly loosen an assertion, add a skip/`xfail`, or delete a test to make a suite pass.
+
 ### Testing responsibilities
 
 **Claude runs these automatically** before opening or updating a PR — no user action needed:
