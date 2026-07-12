@@ -76,11 +76,20 @@ def test_calculate_round_totals_even():
     assert totals == {"total_par": 12, "total_strokes": 12, "relative_to_par": 0}
 
 
-def test_calculate_round_totals_over_under():
-    totals = calculate_round_totals([_Hole(4, 5), _Hole(3, 2)])
-    assert totals["total_strokes"] == 7
-    assert totals["total_par"] == 7
-    assert totals["relative_to_par"] == 0
+def test_calculate_round_totals_over_par():
+    # +1 on the par-4, +2 on the par-5, -1 on the par-3 -> net +2 over par
+    totals = calculate_round_totals([_Hole(4, 5), _Hole(5, 7), _Hole(3, 2)])
+    assert totals["total_par"] == 12
+    assert totals["total_strokes"] == 14
+    assert totals["relative_to_par"] == 2
+
+
+def test_calculate_round_totals_under_par():
+    # -1 on the par-4, -2 on the par-5 -> net -3 under par
+    totals = calculate_round_totals([_Hole(4, 3), _Hole(5, 3)])
+    assert totals["total_par"] == 9
+    assert totals["total_strokes"] == 6
+    assert totals["relative_to_par"] == -3
 
 
 def test_format_relative_to_par():
