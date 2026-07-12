@@ -120,4 +120,25 @@ jobs:
               -v /data/golftrack:/data \
               "$IMAGE"
 
+            # docker run -d returns as soon as the container starts, so a crash
+            # on boot still looks like a successful deploy. Poll /api/health from
+            # inside the container (Host header must satisfy ALLOWED_HOSTS) and
+            # fail the deploy with the container logs if it never comes up.
+            echo "Waiting for golftrack to become healthy..."
+            healthy=0
+            for _ in $(seq 1 20); do
+              sleep 3
+              if docker exec golftrack curl -fsS -H "Host: ${DEPLOY_HOST}" \
+                   http://127.0.0.1:8000/api/health >/dev/null 2>&1; then
+                healthy=1
+                break
+              fi
+            done
+            if [ "$healthy" != "1" ]; then
+              echo "::error::golftrack failed its health check after ~60s. Recent logs:"
+              docker logs --tail 120 golftrack 2>&1 || true
+              exit 1
+            fi
+            echo "golftrack is healthy."
+
             docker image prune -f
