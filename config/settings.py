@@ -215,7 +215,6 @@ SOCIALACCOUNT_PROVIDERS = {
         "APP": {
             "client_id": os.environ.get("GOOGLE_CLIENT_ID", ""),
             "secret": os.environ.get("GOOGLE_CLIENT_SECRET", ""),
-            "key": "",
         },
         "SCOPE": ["openid", "profile", "email"],
         "AUTH_PARAMS": {"access_type": "online"},
@@ -225,9 +224,9 @@ SOCIALACCOUNT_PROVIDERS = {
         "APP": {
             "client_id": os.environ.get("MICROSOFT_CLIENT_ID", ""),
             "secret": os.environ.get("MICROSOFT_CLIENT_SECRET", ""),
-            "key": "",
         },
         "TENANT": "common",
         "SCOPE": ["openid", "profile", "email"],
+        "AUTH_PARAMS": {"prompt": "select_account"},
     },
 }
