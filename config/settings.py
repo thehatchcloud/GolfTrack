@@ -226,7 +226,10 @@ SOCIALACCOUNT_PROVIDERS = {
             "secret": os.environ.get("MICROSOFT_CLIENT_SECRET", ""),
         },
         "TENANT": "common",
-        "SCOPE": ["openid", "profile", "email"],
+        # "User.Read" is the Graph API delegated permission the adapter needs
+        # to call https://graph.microsoft.com/v1.0/me after token exchange —
+        # without it that call 401s and sign-in lands on the error page.
+        "SCOPE": ["openid", "profile", "email", "User.Read"],
         "AUTH_PARAMS": {"prompt": "select_account"},
     },
 }
