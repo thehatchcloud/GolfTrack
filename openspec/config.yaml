@@ -1,0 +1,31 @@
+schema: spec-driven
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+# Example:
+#   context: |
+#     Tech stack: TypeScript, React, Node.js
+#     We use conventional commits
+#     Domain: e-commerce platform
+context: |
+  GolfTrack: a golf round-tracking app, mid-migration (#85) from Next.js to
+  Django + Django Ninja + Tailwind CSS. The Django app is the deployed
+  artifact as of Phase 7 (#93); the legacy Next.js app remains in-tree until
+  the Phase 8 cutover (#94) and is described as authoritative for its own
+  code in CLAUDE.md. See CLAUDE.md (Next.js/legacy) and DJANGO.md (Django/
+  current) for architecture, layout, and dev commands. Domain: courses hold
+  holes with par; rounds snapshot course pars into RoundHole at creation and
+  cache stroke counts; shots are sequentially numbered per hole.
+  All changes happen on a feature branch and land via PR — never commit
+  directly to main.
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
