@@ -216,6 +216,47 @@ Django trusts `X-Forwarded-Proto` from exe.dev's TLS-terminating proxy
 (`SECURE_PROXY_SSL_HEADER` in `config/settings.py`), so cookies are marked secure
 even though gunicorn speaks plain HTTP inside the container.
 
+### Changing an environment variable in production
+
+Every variable in the table above is passed to `docker run` by the deploy
+workflow, and Django reads it once at process start. **Editing a GitHub Actions
+secret does not change the running app** — the container keeps the value it was
+started with until it is recreated. Two steps are always required:
+
+1. Update the secret under **Settings → Secrets and variables → Actions**.
+2. Recreate the container — **Actions → CI / Deploy → Run workflow**, or push to
+   `main`.
+
+There is no way to change these values by editing a file in the repo; the
+production values live only in the Actions secrets store.
+
+#### `ADMIN_EMAILS` specifically
+
+`ADMIN_EMAILS` is a **comma-separated list**, not a single address
+(`alice@example.com,bob@example.com`). It is parsed into a lowercased set at
+startup by `_admin_emails()` in `config/settings.py`, so whitespace around the
+commas and letter case do not matter.
+
+The `sync_admin_role` receiver in `accounts/signals.py` runs on **every login**
+and both grants *and* revokes: a user whose email is in the list is promoted to
+`ADMIN`, and any other user is demoted to `USER`. Two consequences worth
+remembering when editing the secret:
+
+- **Replacing the value silently demotes anyone you drop from the list** — they
+  lose `ADMIN` at their next sign-in. To keep an existing admin while adding a
+  new one, append to the list rather than overwriting it.
+- **Changes take effect per user at their next login**, not at deploy time. An
+  already-signed-in admin keeps the role until their session ends and they sign
+  in again.
+
+As a safety valve, an empty `ADMIN_EMAILS` makes the receiver a no-op — it
+leaves existing roles alone instead of demoting every user on the site.
+
+Note that the dev deploy reads the **same** `ADMIN_EMAILS` repository secret
+(see [GitHub Actions secrets for dev](#4-github-actions-secrets-for-dev)), so a
+change applies to `golftrack-dev.exe.xyz` as well once that container is
+recreated.
+
 ### OAuth provider setup
 
 Django uses **its own OAuth client apps** (via django-allauth), separate from the
