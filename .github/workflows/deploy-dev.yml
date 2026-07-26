@@ -52,8 +52,18 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # appleboy/ssh-action fetches its drone-ssh helper from GitHub releases on
+      # every run, so a connection reset on the runner fails the deploy before
+      # it has even reached the server ("Failed to download
+      # drone-ssh-…-linux-amd64", exit 4). That is a transient runner-network
+      # problem, not a deploy problem, so it gets one retry rather than a red
+      # build. bin/deploy-dev.sh is safe to re-run — it stops and replaces the
+      # container — and living in a file is what lets the retry reuse it
+      # instead of duplicating the script.
       - name: SSH deploy
+        id: deploy
         if: steps.check.outputs.skip != 'true'
+        continue-on-error: true
         uses: appleboy/ssh-action@v1
         env:
           OWNER: ${{ github.repository_owner }}
@@ -66,47 +76,20 @@ jobs:
           username: ubuntu
           key: ${{ secrets.DEV_DEPLOY_SSH_KEY }}
           envs: OWNER,GHCR_TOKEN,DJANGO_SECRET_KEY,ADMIN_EMAILS,BRANCH
-          script: |
-            set -e
-            IMAGE="ghcr.io/${OWNER}/golftrack:django-dev"
+          script_file: bin/deploy-dev.sh
 
-            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$OWNER" --password-stdin
-            docker pull "$IMAGE"
-
-            docker stop golftrack-dev 2>/dev/null || true
-            docker rm   golftrack-dev 2>/dev/null || true
-
-            docker run -d \
-              --name golftrack-dev \
-              --restart unless-stopped \
-              -p 8000:8000 \
-              -e DATABASE_URL="file:/data/dev.db" \
-              -e DJANGO_SECRET_KEY="$DJANGO_SECRET_KEY" \
-              -e DJANGO_DEBUG=true \
-              -e DJANGO_ALLOW_PASSWORD_LOGIN=true \
-              -e DJANGO_ALLOWED_HOSTS="golftrack-dev.exe.xyz" \
-              -e DJANGO_CSRF_TRUSTED_ORIGINS="https://golftrack-dev.exe.xyz:8000" \
-              -e ADMIN_EMAILS="$ADMIN_EMAILS" \
-              -v golftrack-dev-data:/data \
-              "$IMAGE"
-
-            # docker run -d returns before the app boots; verify the container
-            # actually serves /api/health and fail loudly with logs if it does not.
-            echo "Waiting for golftrack-dev to become healthy..."
-            healthy=0
-            for _ in $(seq 1 20); do
-              sleep 3
-              if docker exec golftrack-dev curl -fsS -H "Host: golftrack-dev.exe.xyz" \
-                   http://127.0.0.1:8000/api/health >/dev/null 2>&1; then
-                healthy=1
-                break
-              fi
-            done
-            if [ "$healthy" != "1" ]; then
-              echo "::error::golftrack-dev failed its health check after ~60s. Recent logs:"
-              docker logs --tail 120 golftrack-dev 2>&1 || true
-              exit 1
-            fi
-
-            docker image prune -f
-            echo "Deployed branch '${BRANCH}' — https://golftrack-dev.exe.xyz:8000"
+      - name: SSH deploy (retry)
+        if: steps.check.outputs.skip != 'true' && steps.deploy.outcome == 'failure'
+        uses: appleboy/ssh-action@v1
+        env:
+          OWNER: ${{ github.repository_owner }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          DJANGO_SECRET_KEY: ${{ secrets.DEV_DJANGO_SECRET_KEY }}
+          ADMIN_EMAILS: ${{ secrets.ADMIN_EMAILS }}
+          BRANCH: ${{ github.ref_name }}
+        with:
+          host: ${{ secrets.DEV_DEPLOY_HOST }}
+          username: ubuntu
+          key: ${{ secrets.DEV_DEPLOY_SSH_KEY }}
+          envs: OWNER,GHCR_TOKEN,DJANGO_SECRET_KEY,ADMIN_EMAILS,BRANCH
+          script_file: bin/deploy-dev.sh

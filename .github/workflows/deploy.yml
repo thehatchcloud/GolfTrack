@@ -90,7 +90,20 @@ jobs:
     needs: build
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     steps:
+      # Needed for bin/deploy-prod.sh, which the SSH step reads from the runner.
+      - uses: actions/checkout@v6
+
+      # appleboy/ssh-action fetches its drone-ssh helper from GitHub releases on
+      # every run, so a connection reset on the runner fails the deploy before
+      # it has even reached the server ("Failed to download
+      # drone-ssh-…-linux-amd64", exit 4). That is a transient runner-network
+      # problem, not a deploy problem, so it gets one retry rather than a red
+      # build. bin/deploy-prod.sh is safe to re-run — it stops and replaces the
+      # container — and living in a file is what lets the retry reuse it
+      # instead of duplicating the script.
       - name: SSH deploy
+        id: deploy
+        continue-on-error: true
         uses: appleboy/ssh-action@v1
         env:
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
@@ -111,65 +124,28 @@ jobs:
           username: ubuntu
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           envs: GHCR_TOKEN,OWNER,LITESTREAM_ACCESS_KEY_ID,LITESTREAM_SECRET_ACCESS_KEY,LITESTREAM_BUCKET,LITESTREAM_ENDPOINT,DEPLOY_HOST,DJANGO_SECRET_KEY,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,MICROSOFT_CLIENT_ID,MICROSOFT_CLIENT_SECRET,ADMIN_EMAILS
-          script: |
-            IMAGE="ghcr.io/${OWNER}/golftrack:latest"
+          script_file: bin/deploy-prod.sh
 
-            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$OWNER" --password-stdin
-            docker pull "$IMAGE"
-
-            docker stop golftrack 2>/dev/null || true
-            docker rm   golftrack 2>/dev/null || true
-
-            mkdir -p /data/golftrack
-            # The container runs as the non-root app user (uid/gid 1001). On a
-            # bind mount the host directory's ownership overrides the image's, so
-            # the app user must own /data/golftrack or SQLite writes fail with
-            # "attempt to write a readonly database" and migrate crashes on boot.
-            sudo chown -R 1001:1001 /data/golftrack
-
-            # Host port 3000 keeps the public URL (https://<host>:3000) stable
-            # across the Next.js -> Django cutover; gunicorn listens on 8000
-            # inside the container.
-            docker run -d \
-              --name golftrack \
-              --restart unless-stopped \
-              -p 3000:8000 \
-              -e DATABASE_URL="file:/data/prod.db" \
-              -e DJANGO_SECRET_KEY="$DJANGO_SECRET_KEY" \
-              -e DJANGO_DEBUG=false \
-              -e DJANGO_ALLOWED_HOSTS="$DEPLOY_HOST" \
-              -e DJANGO_CSRF_TRUSTED_ORIGINS="https://$DEPLOY_HOST:3000" \
-              -e LITESTREAM_ACCESS_KEY_ID="$LITESTREAM_ACCESS_KEY_ID" \
-              -e LITESTREAM_SECRET_ACCESS_KEY="$LITESTREAM_SECRET_ACCESS_KEY" \
-              -e LITESTREAM_BUCKET="$LITESTREAM_BUCKET" \
-              -e LITESTREAM_ENDPOINT="$LITESTREAM_ENDPOINT" \
-              -e GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID" \
-              -e GOOGLE_CLIENT_SECRET="$GOOGLE_CLIENT_SECRET" \
-              -e MICROSOFT_CLIENT_ID="$MICROSOFT_CLIENT_ID" \
-              -e MICROSOFT_CLIENT_SECRET="$MICROSOFT_CLIENT_SECRET" \
-              -e ADMIN_EMAILS="$ADMIN_EMAILS" \
-              -v /data/golftrack:/data \
-              "$IMAGE"
-
-            # docker run -d returns as soon as the container starts, so a crash
-            # on boot still looks like a successful deploy. Poll /api/health from
-            # inside the container (Host header must satisfy ALLOWED_HOSTS) and
-            # fail the deploy with the container logs if it never comes up.
-            echo "Waiting for golftrack to become healthy..."
-            healthy=0
-            for _ in $(seq 1 20); do
-              sleep 3
-              if docker exec golftrack curl -fsS -H "Host: ${DEPLOY_HOST}" \
-                   http://127.0.0.1:8000/api/health >/dev/null 2>&1; then
-                healthy=1
-                break
-              fi
-            done
-            if [ "$healthy" != "1" ]; then
-              echo "::error::golftrack failed its health check after ~60s. Recent logs:"
-              docker logs --tail 120 golftrack 2>&1 || true
-              exit 1
-            fi
-            echo "golftrack is healthy."
-
-            docker image prune -f
+      - name: SSH deploy (retry)
+        if: steps.deploy.outcome == 'failure'
+        uses: appleboy/ssh-action@v1
+        env:
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          LITESTREAM_ACCESS_KEY_ID: ${{ secrets.LITESTREAM_ACCESS_KEY_ID }}
+          LITESTREAM_SECRET_ACCESS_KEY: ${{ secrets.LITESTREAM_SECRET_ACCESS_KEY }}
+          LITESTREAM_BUCKET: ${{ secrets.LITESTREAM_BUCKET }}
+          LITESTREAM_ENDPOINT: ${{ secrets.LITESTREAM_ENDPOINT }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          MICROSOFT_CLIENT_ID: ${{ secrets.MICROSOFT_CLIENT_ID }}
+          MICROSOFT_CLIENT_SECRET: ${{ secrets.MICROSOFT_CLIENT_SECRET }}
+          ADMIN_EMAILS: ${{ secrets.ADMIN_EMAILS }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ubuntu
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          envs: GHCR_TOKEN,OWNER,LITESTREAM_ACCESS_KEY_ID,LITESTREAM_SECRET_ACCESS_KEY,LITESTREAM_BUCKET,LITESTREAM_ENDPOINT,DEPLOY_HOST,DJANGO_SECRET_KEY,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,MICROSOFT_CLIENT_ID,MICROSOFT_CLIENT_SECRET,ADMIN_EMAILS
+          script_file: bin/deploy-prod.sh
