@@ -8,7 +8,7 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
 
-	"github.com/thehatchcloud/golftrack/pocketbase/internal/hooks"
+	"github.com/thehatchcloud/golftrack/pocketbase/internal/collections"
 )
 
 // Phase 2 (#123) access-rule suite.
@@ -46,19 +46,19 @@ func newFixture(t testing.TB) *fixture {
 	app := newTestApp(t)
 
 	f := &fixture{app: app}
-	f.owner = createUser(t, app, idOwner, "owner@golftrack.test", hooks.UserRoleUser)
-	f.other = createUser(t, app, idOther, "other@golftrack.test", hooks.UserRoleUser)
-	f.admin = createUser(t, app, idAdmin, "admin@golftrack.test", hooks.UserRoleAdmin)
+	f.owner = createUser(t, app, idOwner, "owner@golftrack.test", collections.UserRoleUser)
+	f.other = createUser(t, app, idOther, "other@golftrack.test", collections.UserRoleUser)
+	f.admin = createUser(t, app, idAdmin, "admin@golftrack.test", collections.UserRoleAdmin)
 	f.superuser = createSuperuser(t, app, "super@golftrack.test")
 
 	course := createCourse(t, app, idCourse, "Fixture Links", 18)
 	createCourseHole(t, app, idCourseHole, course, 1, 4)
 
-	ownerRound := createRound(t, app, idOwnerRound, f.owner, course, hooks.RoundStatusInProgress)
+	ownerRound := createRound(t, app, idOwnerRound, f.owner, course, collections.RoundStatusInProgress)
 	ownerHole := createRoundHole(t, app, idOwnerHole, ownerRound, 1, 4)
 	createShot(t, app, idOwnerShot, ownerHole, 1, "Driver")
 
-	otherRound := createRound(t, app, idOtherRound, f.other, course, hooks.RoundStatusInProgress)
+	otherRound := createRound(t, app, idOtherRound, f.other, course, collections.RoundStatusInProgress)
 	otherHole := createRoundHole(t, app, idOtherHole, otherRound, 1, 4)
 	createShot(t, app, idOtherShot, otherHole, 1, "7 Iron")
 
@@ -116,14 +116,14 @@ func TestCoursesAreReadableByAnyAuthenticatedUser(t *testing.T) {
 		run(t, who, tests.ApiScenario{
 			Name:            "list courses as " + name,
 			Method:          http.MethodGet,
-			URL:             recordsURL(hooks.NameCourses),
+			URL:             recordsURL(collections.NameCourses),
 			ExpectedStatus:  200,
 			ExpectedContent: []string{`"totalItems":1`, `"id":"` + idCourse + `"`},
 		})
 		run(t, who, tests.ApiScenario{
 			Name:            "view course hole as " + name,
 			Method:          http.MethodGet,
-			URL:             recordURL(hooks.NameCourseHoles, idCourseHole),
+			URL:             recordURL(collections.NameCourseHoles, idCourseHole),
 			ExpectedStatus:  200,
 			ExpectedContent: []string{`"id":"` + idCourseHole + `"`},
 		})
@@ -134,7 +134,7 @@ func TestCoursesAreHiddenFromAnonymousCallers(t *testing.T) {
 	run(t, anonymous, tests.ApiScenario{
 		Name:               "anonymous course list is empty",
 		Method:             http.MethodGet,
-		URL:                recordsURL(hooks.NameCourses),
+		URL:                recordsURL(collections.NameCourses),
 		ExpectedStatus:     200,
 		ExpectedContent:    []string{`"totalItems":0`},
 		NotExpectedContent: []string{idCourse},
@@ -142,7 +142,7 @@ func TestCoursesAreHiddenFromAnonymousCallers(t *testing.T) {
 	run(t, anonymous, tests.ApiScenario{
 		Name:            "anonymous course view is 404",
 		Method:          http.MethodGet,
-		URL:             recordURL(hooks.NameCourses, idCourse),
+		URL:             recordURL(collections.NameCourses, idCourse),
 		ExpectedStatus:  404,
 		ExpectedContent: []string{`"status":404`},
 	})
@@ -154,7 +154,7 @@ func TestOnlyAdminsCanWriteCourses(t *testing.T) {
 	run(t, asOwner, tests.ApiScenario{
 		Name:            "regular user cannot create a course",
 		Method:          http.MethodPost,
-		URL:             recordsURL(hooks.NameCourses),
+		URL:             recordsURL(collections.NameCourses),
 		Body:            body(newCourse),
 		ExpectedStatus:  400,
 		ExpectedContent: []string{`"status":400`},
@@ -162,7 +162,7 @@ func TestOnlyAdminsCanWriteCourses(t *testing.T) {
 	run(t, anonymous, tests.ApiScenario{
 		Name:            "anonymous caller cannot create a course",
 		Method:          http.MethodPost,
-		URL:             recordsURL(hooks.NameCourses),
+		URL:             recordsURL(collections.NameCourses),
 		Body:            body(newCourse),
 		ExpectedStatus:  400,
 		ExpectedContent: []string{`"status":400`},
@@ -170,7 +170,7 @@ func TestOnlyAdminsCanWriteCourses(t *testing.T) {
 	run(t, asOwner, tests.ApiScenario{
 		Name:            "regular user cannot rename a course",
 		Method:          http.MethodPatch,
-		URL:             recordURL(hooks.NameCourses, idCourse),
+		URL:             recordURL(collections.NameCourses, idCourse),
 		Body:            body(`{"name":"Renamed"}`),
 		ExpectedStatus:  404,
 		ExpectedContent: []string{`"status":404`},
@@ -178,14 +178,14 @@ func TestOnlyAdminsCanWriteCourses(t *testing.T) {
 	run(t, asOwner, tests.ApiScenario{
 		Name:            "regular user cannot delete a course hole",
 		Method:          http.MethodDelete,
-		URL:             recordURL(hooks.NameCourseHoles, idCourseHole),
+		URL:             recordURL(collections.NameCourseHoles, idCourseHole),
 		ExpectedStatus:  404,
 		ExpectedContent: []string{`"status":404`},
 	})
 	run(t, asAdmin, tests.ApiScenario{
 		Name:            "admin can create a course",
 		Method:          http.MethodPost,
-		URL:             recordsURL(hooks.NameCourses),
+		URL:             recordsURL(collections.NameCourses),
 		Body:            body(newCourse),
 		ExpectedStatus:  200,
 		ExpectedContent: []string{`"name":"Written Course"`},
@@ -193,7 +193,7 @@ func TestOnlyAdminsCanWriteCourses(t *testing.T) {
 	run(t, asAdmin, tests.ApiScenario{
 		Name:            "admin can rename a course",
 		Method:          http.MethodPatch,
-		URL:             recordURL(hooks.NameCourses, idCourse),
+		URL:             recordURL(collections.NameCourses, idCourse),
 		Body:            body(`{"name":"Renamed By Admin"}`),
 		ExpectedStatus:  200,
 		ExpectedContent: []string{`"name":"Renamed By Admin"`},
@@ -201,7 +201,7 @@ func TestOnlyAdminsCanWriteCourses(t *testing.T) {
 	run(t, asAdmin, tests.ApiScenario{
 		Name:           "admin can delete a course hole",
 		Method:         http.MethodDelete,
-		URL:            recordURL(hooks.NameCourseHoles, idCourseHole),
+		URL:            recordURL(collections.NameCourseHoles, idCourseHole),
 		ExpectedStatus: 204,
 	})
 }
@@ -214,7 +214,7 @@ func TestRoundsAreScopedToTheirOwner(t *testing.T) {
 	run(t, asOwner, tests.ApiScenario{
 		Name:               "owner lists only their own round",
 		Method:             http.MethodGet,
-		URL:                recordsURL(hooks.NameRounds),
+		URL:                recordsURL(collections.NameRounds),
 		ExpectedStatus:     200,
 		ExpectedContent:    []string{`"totalItems":1`, `"id":"` + idOwnerRound + `"`},
 		NotExpectedContent: []string{idOtherRound},
@@ -222,21 +222,21 @@ func TestRoundsAreScopedToTheirOwner(t *testing.T) {
 	run(t, asOther, tests.ApiScenario{
 		Name:            "another user cannot view someone else's round",
 		Method:          http.MethodGet,
-		URL:             recordURL(hooks.NameRounds, idOwnerRound),
+		URL:             recordURL(collections.NameRounds, idOwnerRound),
 		ExpectedStatus:  404,
 		ExpectedContent: []string{`"status":404`},
 	})
 	run(t, asOther, tests.ApiScenario{
 		Name:            "another user cannot delete someone else's round",
 		Method:          http.MethodDelete,
-		URL:             recordURL(hooks.NameRounds, idOwnerRound),
+		URL:             recordURL(collections.NameRounds, idOwnerRound),
 		ExpectedStatus:  404,
 		ExpectedContent: []string{`"status":404`},
 	})
 	run(t, anonymous, tests.ApiScenario{
 		Name:               "anonymous round list is empty",
 		Method:             http.MethodGet,
-		URL:                recordsURL(hooks.NameRounds),
+		URL:                recordsURL(collections.NameRounds),
 		ExpectedStatus:     200,
 		ExpectedContent:    []string{`"totalItems":0`},
 		NotExpectedContent: []string{idOwnerRound, idOtherRound},
@@ -247,14 +247,14 @@ func TestAdminsReadEveryRound(t *testing.T) {
 	run(t, asAdmin, tests.ApiScenario{
 		Name:            "admin lists every round",
 		Method:          http.MethodGet,
-		URL:             recordsURL(hooks.NameRounds),
+		URL:             recordsURL(collections.NameRounds),
 		ExpectedStatus:  200,
 		ExpectedContent: []string{`"totalItems":2`, `"id":"` + idOwnerRound + `"`, `"id":"` + idOtherRound + `"`},
 	})
 	run(t, asAdmin, tests.ApiScenario{
 		Name:            "admin views another user's round",
 		Method:          http.MethodGet,
-		URL:             recordURL(hooks.NameRounds, idOwnerRound),
+		URL:             recordURL(collections.NameRounds, idOwnerRound),
 		ExpectedStatus:  200,
 		ExpectedContent: []string{`"id":"` + idOwnerRound + `"`},
 	})
@@ -266,7 +266,7 @@ func TestAdminsCannotWriteAnotherUsersRound(t *testing.T) {
 	run(t, asAdmin, tests.ApiScenario{
 		Name:            "admin cannot update another user's round",
 		Method:          http.MethodPatch,
-		URL:             recordURL(hooks.NameRounds, idOwnerRound),
+		URL:             recordURL(collections.NameRounds, idOwnerRound),
 		Body:            body(`{"current_hole":7}`),
 		ExpectedStatus:  404,
 		ExpectedContent: []string{`"status":404`},
@@ -274,14 +274,14 @@ func TestAdminsCannotWriteAnotherUsersRound(t *testing.T) {
 	run(t, asAdmin, tests.ApiScenario{
 		Name:            "admin cannot delete another user's round",
 		Method:          http.MethodDelete,
-		URL:             recordURL(hooks.NameRounds, idOwnerRound),
+		URL:             recordURL(collections.NameRounds, idOwnerRound),
 		ExpectedStatus:  404,
 		ExpectedContent: []string{`"status":404`},
 	})
 	run(t, asAdmin, tests.ApiScenario{
 		Name:            "admin cannot delete another user's shot",
 		Method:          http.MethodDelete,
-		URL:             recordURL(hooks.NameShots, idOwnerShot),
+		URL:             recordURL(collections.NameShots, idOwnerShot),
 		ExpectedStatus:  404,
 		ExpectedContent: []string{`"status":404`},
 	})
@@ -291,7 +291,7 @@ func TestRoundsCannotBeCreatedOrReassignedForAnotherUser(t *testing.T) {
 	run(t, asOwner, tests.ApiScenario{
 		Name:   "cannot create a round owned by someone else",
 		Method: http.MethodPost,
-		URL:    recordsURL(hooks.NameRounds),
+		URL:    recordsURL(collections.NameRounds),
 		Body: body(`{"user":"` + idOther + `","course":"` + idCourse +
 			`","status":"in_progress","play_mode":"full","started_at":"2026-07-26 10:00:00.000Z","current_hole":1}`),
 		ExpectedStatus:  400,
@@ -300,7 +300,7 @@ func TestRoundsCannotBeCreatedOrReassignedForAnotherUser(t *testing.T) {
 	run(t, asOwner, tests.ApiScenario{
 		Name:            "cannot hand an existing round to another user",
 		Method:          http.MethodPatch,
-		URL:             recordURL(hooks.NameRounds, idOwnerRound),
+		URL:             recordURL(collections.NameRounds, idOwnerRound),
 		Body:            body(`{"user":"` + idOther + `"}`),
 		ExpectedStatus:  404,
 		ExpectedContent: []string{`"status":404`},
@@ -308,7 +308,7 @@ func TestRoundsCannotBeCreatedOrReassignedForAnotherUser(t *testing.T) {
 	run(t, asOwner, tests.ApiScenario{
 		Name:            "owner can still update their own round",
 		Method:          http.MethodPatch,
-		URL:             recordURL(hooks.NameRounds, idOwnerRound),
+		URL:             recordURL(collections.NameRounds, idOwnerRound),
 		Body:            body(`{"current_hole":5}`),
 		ExpectedStatus:  200,
 		ExpectedContent: []string{`"current_hole":5`},
@@ -323,7 +323,7 @@ func TestRoundHolesFollowTheirRound(t *testing.T) {
 	run(t, asOwner, tests.ApiScenario{
 		Name:               "owner lists only their own holes",
 		Method:             http.MethodGet,
-		URL:                recordsURL(hooks.NameRoundHoles),
+		URL:                recordsURL(collections.NameRoundHoles),
 		ExpectedStatus:     200,
 		ExpectedContent:    []string{`"totalItems":1`, `"id":"` + idOwnerHole + `"`},
 		NotExpectedContent: []string{idOtherHole},
@@ -331,14 +331,14 @@ func TestRoundHolesFollowTheirRound(t *testing.T) {
 	run(t, asOther, tests.ApiScenario{
 		Name:            "another user cannot view someone else's hole",
 		Method:          http.MethodGet,
-		URL:             recordURL(hooks.NameRoundHoles, idOwnerHole),
+		URL:             recordURL(collections.NameRoundHoles, idOwnerHole),
 		ExpectedStatus:  404,
 		ExpectedContent: []string{`"status":404`},
 	})
 	run(t, asOther, tests.ApiScenario{
 		Name:            "another user cannot add a hole to someone else's round",
 		Method:          http.MethodPost,
-		URL:             recordsURL(hooks.NameRoundHoles),
+		URL:             recordsURL(collections.NameRoundHoles),
 		Body:            body(`{"round":"` + idOwnerRound + `","hole_number":2,"par":4,"strokes":0}`),
 		ExpectedStatus:  400,
 		ExpectedContent: []string{`"status":400`},
@@ -346,7 +346,7 @@ func TestRoundHolesFollowTheirRound(t *testing.T) {
 	run(t, asOwner, tests.ApiScenario{
 		Name:            "owner can add a hole to their own round",
 		Method:          http.MethodPost,
-		URL:             recordsURL(hooks.NameRoundHoles),
+		URL:             recordsURL(collections.NameRoundHoles),
 		Body:            body(`{"round":"` + idOwnerRound + `","hole_number":2,"par":4,"strokes":0}`),
 		ExpectedStatus:  200,
 		ExpectedContent: []string{`"hole_number":2`},
@@ -354,7 +354,7 @@ func TestRoundHolesFollowTheirRound(t *testing.T) {
 	run(t, asAdmin, tests.ApiScenario{
 		Name:            "admin reads every hole",
 		Method:          http.MethodGet,
-		URL:             recordsURL(hooks.NameRoundHoles),
+		URL:             recordsURL(collections.NameRoundHoles),
 		ExpectedStatus:  200,
 		ExpectedContent: []string{`"totalItems":2`},
 	})
@@ -366,7 +366,7 @@ func TestShotsFollowTheirRoundThroughTwoRelations(t *testing.T) {
 	run(t, asOwner, tests.ApiScenario{
 		Name:               "owner lists only their own shots",
 		Method:             http.MethodGet,
-		URL:                recordsURL(hooks.NameShots),
+		URL:                recordsURL(collections.NameShots),
 		ExpectedStatus:     200,
 		ExpectedContent:    []string{`"totalItems":1`, `"id":"` + idOwnerShot + `"`},
 		NotExpectedContent: []string{idOtherShot},
@@ -374,14 +374,14 @@ func TestShotsFollowTheirRoundThroughTwoRelations(t *testing.T) {
 	run(t, asOther, tests.ApiScenario{
 		Name:            "another user cannot view someone else's shot",
 		Method:          http.MethodGet,
-		URL:             recordURL(hooks.NameShots, idOwnerShot),
+		URL:             recordURL(collections.NameShots, idOwnerShot),
 		ExpectedStatus:  404,
 		ExpectedContent: []string{`"status":404`},
 	})
 	run(t, asOther, tests.ApiScenario{
 		Name:            "another user cannot re-club someone else's shot",
 		Method:          http.MethodPatch,
-		URL:             recordURL(hooks.NameShots, idOwnerShot),
+		URL:             recordURL(collections.NameShots, idOwnerShot),
 		Body:            body(`{"club":"Putter"}`),
 		ExpectedStatus:  404,
 		ExpectedContent: []string{`"status":404`},
@@ -389,7 +389,7 @@ func TestShotsFollowTheirRoundThroughTwoRelations(t *testing.T) {
 	run(t, asOther, tests.ApiScenario{
 		Name:            "another user cannot add a shot to someone else's hole",
 		Method:          http.MethodPost,
-		URL:             recordsURL(hooks.NameShots),
+		URL:             recordsURL(collections.NameShots),
 		Body:            body(`{"round_hole":"` + idOwnerHole + `","shot_number":2,"club":"Wedge"}`),
 		ExpectedStatus:  400,
 		ExpectedContent: []string{`"status":400`},
@@ -397,7 +397,7 @@ func TestShotsFollowTheirRoundThroughTwoRelations(t *testing.T) {
 	run(t, asOwner, tests.ApiScenario{
 		Name:            "owner can re-club their own shot",
 		Method:          http.MethodPatch,
-		URL:             recordURL(hooks.NameShots, idOwnerShot),
+		URL:             recordURL(collections.NameShots, idOwnerShot),
 		Body:            body(`{"club":"Putter"}`),
 		ExpectedStatus:  200,
 		ExpectedContent: []string{`"club":"Putter"`},
@@ -405,13 +405,13 @@ func TestShotsFollowTheirRoundThroughTwoRelations(t *testing.T) {
 	run(t, asOwner, tests.ApiScenario{
 		Name:           "owner can delete their own shot",
 		Method:         http.MethodDelete,
-		URL:            recordURL(hooks.NameShots, idOwnerShot),
+		URL:            recordURL(collections.NameShots, idOwnerShot),
 		ExpectedStatus: 204,
 	})
 	run(t, asAdmin, tests.ApiScenario{
 		Name:            "admin reads every shot",
 		Method:          http.MethodGet,
-		URL:             recordsURL(hooks.NameShots),
+		URL:             recordsURL(collections.NameShots),
 		ExpectedStatus:  200,
 		ExpectedContent: []string{`"totalItems":2`},
 	})
@@ -425,7 +425,7 @@ func TestUsersSeeOnlyThemselvesUnlessAdmin(t *testing.T) {
 	run(t, asOwner, tests.ApiScenario{
 		Name:               "user lists only their own record",
 		Method:             http.MethodGet,
-		URL:                recordsURL(hooks.NameUsers),
+		URL:                recordsURL(collections.NameUsers),
 		ExpectedStatus:     200,
 		ExpectedContent:    []string{`"totalItems":1`, `"id":"` + idOwner + `"`},
 		NotExpectedContent: []string{idOther, idAdmin},
@@ -433,28 +433,28 @@ func TestUsersSeeOnlyThemselvesUnlessAdmin(t *testing.T) {
 	run(t, asOwner, tests.ApiScenario{
 		Name:            "user cannot view another user",
 		Method:          http.MethodGet,
-		URL:             recordURL(hooks.NameUsers, idOther),
+		URL:             recordURL(collections.NameUsers, idOther),
 		ExpectedStatus:  404,
 		ExpectedContent: []string{`"status":404`},
 	})
 	run(t, asOwner, tests.ApiScenario{
 		Name:            "user cannot delete another user",
 		Method:          http.MethodDelete,
-		URL:             recordURL(hooks.NameUsers, idOther),
+		URL:             recordURL(collections.NameUsers, idOther),
 		ExpectedStatus:  404,
 		ExpectedContent: []string{`"status":404`},
 	})
 	run(t, asAdmin, tests.ApiScenario{
 		Name:            "admin lists every user",
 		Method:          http.MethodGet,
-		URL:             recordsURL(hooks.NameUsers),
+		URL:             recordsURL(collections.NameUsers),
 		ExpectedStatus:  200,
 		ExpectedContent: []string{`"totalItems":3`, `"id":"` + idOwner + `"`, `"id":"` + idOther + `"`},
 	})
 	run(t, anonymous, tests.ApiScenario{
 		Name:               "anonymous user list is empty",
 		Method:             http.MethodGet,
-		URL:                recordsURL(hooks.NameUsers),
+		URL:                recordsURL(collections.NameUsers),
 		ExpectedStatus:     200,
 		ExpectedContent:    []string{`"totalItems":0`},
 		NotExpectedContent: []string{idOwner, idAdmin},
@@ -469,24 +469,24 @@ func TestRoleIsNotSelfAssignable(t *testing.T) {
 	run(t, asOwner, tests.ApiScenario{
 		Name:            "user cannot promote themselves to ADMIN",
 		Method:          http.MethodPatch,
-		URL:             recordURL(hooks.NameUsers, idOwner),
+		URL:             recordURL(collections.NameUsers, idOwner),
 		Body:            body(`{"role":"ADMIN"}`),
 		ExpectedStatus:  404,
 		ExpectedContent: []string{`"status":404`},
 		AfterTestFunc: func(t testing.TB, app *tests.TestApp, _ *http.Response) {
-			record, err := app.FindRecordById(hooks.NameUsers, idOwner)
+			record, err := app.FindRecordById(collections.NameUsers, idOwner)
 			if err != nil {
 				t.Fatalf("reload owner: %v", err)
 			}
-			if got := record.GetString(hooks.FieldRole); got != hooks.UserRoleUser {
-				t.Fatalf("owner role = %q, want %q", got, hooks.UserRoleUser)
+			if got := record.GetString(collections.FieldRole); got != collections.UserRoleUser {
+				t.Fatalf("owner role = %q, want %q", got, collections.UserRoleUser)
 			}
 		},
 	})
 	run(t, asOwner, tests.ApiScenario{
 		Name:            "user cannot demote an admin",
 		Method:          http.MethodPatch,
-		URL:             recordURL(hooks.NameUsers, idAdmin),
+		URL:             recordURL(collections.NameUsers, idAdmin),
 		Body:            body(`{"role":"USER"}`),
 		ExpectedStatus:  404,
 		ExpectedContent: []string{`"status":404`},
@@ -494,7 +494,7 @@ func TestRoleIsNotSelfAssignable(t *testing.T) {
 	run(t, asOwner, tests.ApiScenario{
 		Name:            "user can still edit their own profile",
 		Method:          http.MethodPatch,
-		URL:             recordURL(hooks.NameUsers, idOwner),
+		URL:             recordURL(collections.NameUsers, idOwner),
 		Body:            body(`{"display_name":"Owner McOwnerface"}`),
 		ExpectedStatus:  200,
 		ExpectedContent: []string{`"display_name":"Owner McOwnerface"`},
@@ -502,7 +502,7 @@ func TestRoleIsNotSelfAssignable(t *testing.T) {
 	run(t, asOwner, tests.ApiScenario{
 		Name:            "resending the unchanged role is accepted",
 		Method:          http.MethodPatch,
-		URL:             recordURL(hooks.NameUsers, idOwner),
+		URL:             recordURL(collections.NameUsers, idOwner),
 		Body:            body(`{"role":"USER","display_name":"Owner"}`),
 		ExpectedStatus:  200,
 		ExpectedContent: []string{`"display_name":"Owner"`},
@@ -518,7 +518,7 @@ func TestSignupIsOAuth2Only(t *testing.T) {
 	run(t, anonymous, tests.ApiScenario{
 		Name:            "anonymous password sign-up is rejected",
 		Method:          http.MethodPost,
-		URL:             recordsURL(hooks.NameUsers),
+		URL:             recordsURL(collections.NameUsers),
 		Body:            body(`{"email":"walkin@golftrack.test","password":"averylongpassword","passwordConfirm":"averylongpassword"}`),
 		ExpectedStatus:  400,
 		ExpectedContent: []string{`"status":400`},
@@ -526,7 +526,7 @@ func TestSignupIsOAuth2Only(t *testing.T) {
 	run(t, asOwner, tests.ApiScenario{
 		Name:            "an authenticated user cannot mint an admin account",
 		Method:          http.MethodPost,
-		URL:             recordsURL(hooks.NameUsers),
+		URL:             recordsURL(collections.NameUsers),
 		Body:            body(`{"email":"minted@golftrack.test","password":"averylongpassword","passwordConfirm":"averylongpassword","role":"ADMIN"}`),
 		ExpectedStatus:  400,
 		ExpectedContent: []string{`"status":400`},
@@ -542,12 +542,12 @@ func TestSuperusersBypassEveryRule(t *testing.T) {
 		collection string
 		totalItems int
 	}{
-		{hooks.NameUsers, 3},
-		{hooks.NameCourses, 1},
-		{hooks.NameCourseHoles, 1},
-		{hooks.NameRounds, 2},
-		{hooks.NameRoundHoles, 2},
-		{hooks.NameShots, 2},
+		{collections.NameUsers, 3},
+		{collections.NameCourses, 1},
+		{collections.NameCourseHoles, 1},
+		{collections.NameRounds, 2},
+		{collections.NameRoundHoles, 2},
+		{collections.NameShots, 2},
 	} {
 		run(t, asSuperuser, tests.ApiScenario{
 			Name:            "superuser lists " + tc.collection,
@@ -561,7 +561,7 @@ func TestSuperusersBypassEveryRule(t *testing.T) {
 	run(t, asSuperuser, tests.ApiScenario{
 		Name:            "superuser views another user's round",
 		Method:          http.MethodGet,
-		URL:             recordURL(hooks.NameRounds, idOwnerRound),
+		URL:             recordURL(collections.NameRounds, idOwnerRound),
 		ExpectedStatus:  200,
 		ExpectedContent: []string{`"id":"` + idOwnerRound + `"`},
 	})
@@ -570,7 +570,7 @@ func TestSuperusersBypassEveryRule(t *testing.T) {
 	run(t, asSuperuser, tests.ApiScenario{
 		Name:            "superuser can set a role",
 		Method:          http.MethodPatch,
-		URL:             recordURL(hooks.NameUsers, idOther),
+		URL:             recordURL(collections.NameUsers, idOther),
 		Body:            body(`{"role":"ADMIN"}`),
 		ExpectedStatus:  200,
 		ExpectedContent: []string{`"role":"ADMIN"`},
@@ -587,7 +587,7 @@ func TestSuperusersBypassEveryRule(t *testing.T) {
 func TestEveryCollectionHasExplicitRules(t *testing.T) {
 	app := newTestApp(t)
 
-	for _, name := range hooks.CollectionNames {
+	for _, name := range collections.Names {
 		collection, err := app.FindCollectionByNameOrId(name)
 		if err != nil {
 			t.Fatalf("find collection %q: %v", name, err)

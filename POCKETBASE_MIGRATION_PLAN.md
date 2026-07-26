@@ -119,6 +119,11 @@ Rules 7–11 were implicit in the original list; `pocketbase/ARCHITECTURE.md` ca
 - `roundholes` — minimal initialization
 - `scoring` — calculateRoundTotals logic (pure functions, unit-tested)
 
+The vocabulary and error helpers these share moved out of `internal/hooks` into
+`internal/collections` and `internal/apierr`, joined by `internal/records` for
+the lookups more than one package needs. `internal/hooks` imports every domain
+package in order to register it, so the shared pieces cannot live there.
+
 #### Custom API Routes:
 - `POST /api/rounds/` — creation snapshots holes, so the generated create is not enough
 - `POST /api/rounds/{id}/holes/{n}/shots` — maintains the stroke cache
@@ -137,14 +142,21 @@ Bind `apis.RequireAuth()` on these — it is what makes an anonymous call return
 - Hook-behaviour tests extending the Phase 2 harness in `pocketbase/testapp_test.go` — note that each `tests.ApiScenario` needs its own app, which is why the fixture record ids are fixed strings
 
 #### Validation Gate:
-- [ ] All domain packages created and compiling (`go build ./...`)
-- [ ] Course lifecycle works end-to-end
-- [ ] Shot lifecycle: add → edit → delete with correct strokes/numbering
-- [ ] Renumbering test covers the ordering explicitly
-- [ ] Concurrency tests pass — a rejected concurrent `add_shot`, not a duplicated shot number
-- [ ] Custom API routes functional
-- [ ] 409 returned where Django returns 409 (round already in progress, round already completed)
-- [ ] `make pb-test` green
+- [x] All domain packages created and compiling (`go build ./...`)
+- [x] Course lifecycle works end-to-end — `pocketbase/domain_test.go`, plus the derived `total_par` in `routes_test.go`
+- [x] Shot lifecycle: add → edit → delete with correct strokes/numbering — `domain_test.go`, `routes_test.go`
+- [x] Renumbering test covers the ordering explicitly — `TestDeleteShotRenumbersSubsequentShots` asserts the surviving *clubs*, not just the count
+- [x] Concurrency tests pass — `pocketbase/concurrency_test.go`
+- [x] Custom API routes functional — `pocketbase/routes_test.go`, every route including its anonymous 401
+- [x] 409 returned where Django returns 409 — round already in progress, round already completed, cancelling a finished round
+- [x] `make pb-test` green
+
+*Delivered in #124. Two deviations from this section, both recorded in
+`pocketbase/README.md` § "Deviations": the error helpers live in
+`internal/apierr` rather than `internal/hooks/errors.go` (an import cycle
+otherwise), and the "holes number exactly `hole_count`" half of rule 8 is
+checked at round creation, because PocketBase creates a course and its holes as
+separate records and that is the first point the set is read as a whole.*
 
 ---
 
@@ -191,6 +203,8 @@ Password login is not purely additive: Phase 2 set the `users` create rule to `@
 5. Validate error responses (200/201/400/401/403/404/409)
 
 `API.md` records seven parity gaps, and closing or consciously deferring each of them is the substance of "response bodies match Django contract": camelCase field naming, unset numbers returning `0`/`""` instead of `null`, 15-character string ids vs. integers, relations as ids plus `expand` rather than inline objects, error body shape, 400 instead of 409 on constraint violations, and — new in Phase 2 — anonymous callers getting 200/404/400 where Django returns 401/403.
+
+Phase 3 closed three of those *on the custom routes it built* — camelCase, the error body shape, and both the 409s and the anonymous 401. What is left for this phase is the generated endpoints, which none of those fixes reach, plus the four gaps that were never route-local (null vs. `0`, record ids, relation expansion, and the `GET` response shapes).
 
 #### Deliverables:
 - Parity tests added to the existing Go suite in `pocketbase/` (`go test ./...`, using PocketBase's `tests` package for full-app tests)

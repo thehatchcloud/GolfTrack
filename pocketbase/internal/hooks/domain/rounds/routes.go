@@ -1,0 +1,103 @@
+package rounds
+
+import (
+	"net/http"
+
+	"github.com/pocketbase/pocketbase/apis"
+	"github.com/pocketbase/pocketbase/core"
+
+	"github.com/thehatchcloud/golftrack/pocketbase/internal/apierr"
+	"github.com/thehatchcloud/golftrack/pocketbase/internal/collections"
+)
+
+// The round routes PocketBase's generated CRUD cannot cover, because each one
+// spans more than one collection in a single request. Paths, request field
+// names and status codes are the current contract's (rounds/api.py), so the
+// frontend does not have to learn a second one.
+//
+// apis.RequireAuth() is what makes an anonymous call return 401 here rather than
+// the 200-with-empty-list or 404 the rule-filtered generated endpoints give.
+// Ownership is then enforced in the handlers, because collection API rules do
+// not apply to hook code.
+func registerRoutes(app core.App) {
+	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
+		// Both spellings of the collection path are bound: the current contract
+		// posts to /api/rounds/, and {$} keeps that an exact match rather than a
+		// subtree that would swallow every unmatched /api/rounds/... request.
+		se.Router.POST("/api/rounds", apierr.Handler(create)).Bind(apis.RequireAuth())
+		se.Router.POST("/api/rounds/{$}", apierr.Handler(create)).Bind(apis.RequireAuth())
+
+		se.Router.POST("/api/rounds/{id}/complete", apierr.Handler(complete)).Bind(apis.RequireAuth())
+		se.Router.POST("/api/rounds/{id}/cancel", apierr.Handler(cancel)).Bind(apis.RequireAuth())
+		se.Router.PATCH("/api/rounds/{id}/current-hole", apierr.Handler(patchCurrentHole)).Bind(apis.RequireAuth())
+
+		return se.Next()
+	})
+}
+
+// POST /api/rounds/ — Django StartRoundIn, response IdOut with 201.
+func create(e *core.RequestEvent) error {
+	payload := struct {
+		CourseID string `json:"courseId" form:"courseId"`
+		PlayMode string `json:"playMode" form:"playMode"`
+	}{}
+	if err := e.BindBody(&payload); err != nil {
+		return apierr.Validation("Invalid request body")
+	}
+
+	round, err := Create(e.App, e.Auth.Id, payload.CourseID, payload.PlayMode)
+	if err != nil {
+		return err
+	}
+
+	return e.JSON(http.StatusCreated, map[string]any{"id": round.Id})
+}
+
+// POST /api/rounds/{id}/complete — Django CompleteRoundIn, response IdOut.
+func complete(e *core.RequestEvent) error {
+	payload := struct {
+		Note string `json:"note" form:"note"`
+	}{}
+	if err := e.BindBody(&payload); err != nil {
+		return apierr.Validation("Invalid request body")
+	}
+
+	round, err := Complete(e.App, e.Auth.Id, e.Request.PathValue("id"), payload.Note)
+	if err != nil {
+		return err
+	}
+
+	return e.JSON(http.StatusOK, map[string]any{"id": round.Id})
+}
+
+// POST /api/rounds/{id}/cancel — response CancelOut.
+func cancel(e *core.RequestEvent) error {
+	roundID := e.Request.PathValue("id")
+
+	if err := Cancel(e.App, e.Auth.Id, roundID); err != nil {
+		return err
+	}
+
+	return e.JSON(http.StatusOK, map[string]any{"id": roundID, "cancelled": true})
+}
+
+// PATCH /api/rounds/{id}/current-hole — Django SetCurrentHoleIn, response
+// CurrentHoleOut.
+func patchCurrentHole(e *core.RequestEvent) error {
+	payload := struct {
+		CurrentHole int `json:"currentHole" form:"currentHole"`
+	}{}
+	if err := e.BindBody(&payload); err != nil {
+		return apierr.Validation("Invalid request body")
+	}
+
+	round, err := SetCurrentHole(e.App, e.Auth.Id, e.Request.PathValue("id"), payload.CurrentHole)
+	if err != nil {
+		return err
+	}
+
+	return e.JSON(http.StatusOK, map[string]any{
+		"id":          round.Id,
+		"currentHole": round.GetInt(collections.FieldCurrentHole),
+	})
+}

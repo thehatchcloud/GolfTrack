@@ -1,6 +1,10 @@
 package hooks
 
-import "github.com/pocketbase/pocketbase/core"
+import (
+	"github.com/pocketbase/pocketbase/core"
+
+	"github.com/thehatchcloud/golftrack/pocketbase/internal/collections"
+)
 
 // registerUserDefaults fills in `users.role` on create.
 //
@@ -19,9 +23,9 @@ import "github.com/pocketbase/pocketbase/core"
 // ADMIN_EMAILS environment variable is Phase 4's `OnRecordAuthWithOAuth2Request`
 // hook, and it deliberately does not live here.
 func registerUserDefaults(app core.App) {
-	app.OnRecordCreate(NameUsers).BindFunc(func(e *core.RecordEvent) error {
-		if e.Record.GetString(FieldRole) == "" {
-			e.Record.Set(FieldRole, UserRoleUser)
+	app.OnRecordCreate(collections.NameUsers).BindFunc(func(e *core.RecordEvent) error {
+		if e.Record.GetString(collections.FieldRole) == "" {
+			e.Record.Set(collections.FieldRole, collections.UserRoleUser)
 		}
 		return e.Next()
 	})
