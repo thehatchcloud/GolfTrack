@@ -33,6 +33,32 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
+  pocketbase:
+    name: PocketBase (Go)
+    runs-on: ubuntu-latest
+    # The PocketBase app in pocketbase/ is not the deployed artifact yet (that
+    # is still the Django image below), so this job runs alongside `test`
+    # rather than gating the build. It keeps the schema, its access rules and
+    # the hooks honest while the migration in #121 is in progress.
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: pocketbase/go.mod
+          cache-dependency-path: pocketbase/go.sum
+      - name: Check formatting (gofmt)
+        working-directory: pocketbase
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - name: Vet
+        working-directory: pocketbase
+        run: go vet ./...
+      - name: Build
+        working-directory: pocketbase
+        run: go build ./...
+      - name: Test (schema, access rules, hooks)
+        working-directory: pocketbase
+        run: go test ./...
+
   build:
     name: Build and push image
     runs-on: ubuntu-latest

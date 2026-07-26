@@ -19,17 +19,20 @@ import (
 // behaviour.
 var domainModules = []string{}
 
-// Register binds every GolfTrack hook onto the app. Phase 1 registers no
-// domain behaviour — see pocketbase/ARCHITECTURE.md for the modules Phase 3
-// adds and the hooks each one binds.
+// Register binds every GolfTrack hook onto the app. Phase 2 registers only the
+// `users.role` field default (users.go); the domain behaviour proper arrives in
+// Phase 3 — see pocketbase/ARCHITECTURE.md for the modules it adds and the
+// hooks each one binds.
 func Register(app core.App) {
+	registerUserDefaults(app)
+
 	app.OnBootstrap().BindFunc(func(e *core.BootstrapEvent) error {
 		// Let PocketBase finish booting before touching the app.
 		if err := e.Next(); err != nil {
 			return err
 		}
 
-		modules := "(none — Phase 1)"
+		modules := "(none — Phase 2)"
 		if len(domainModules) > 0 {
 			modules = strings.Join(domainModules, ",")
 		}

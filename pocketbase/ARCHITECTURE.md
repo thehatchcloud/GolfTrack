@@ -35,14 +35,20 @@ deterministic startup path the phase needs.
 ```
 pocketbase/
 ├── main.go              application entrypoint: schema sync + hook registration
+├── schema.go            go:embed of pb_schema.json + the sync itself
 ├── go.mod / go.sum      module definition, PocketBase version pin
-├── pb_schema.json       collection schema, embedded into the binary
+├── pb_schema.json       collection schema and access rules, embedded into the binary
 └── internal/hooks/
     ├── hooks.go         Register() — the only place hooks are bound
-    ├── collections.go   collection names/ids and enum values
+    ├── collections.go   collection names/ids, field names and enum values
+    ├── users.go         users.role field default
     ├── errors.go        error-contract helpers for custom routes
     └── domain/          Phase 3 domain packages land here
 ```
+
+`schema.go` holds the embed rather than `main.go` so that `syncSchema` is a
+callable seam: the tests build a bare PocketBase app and apply the committed
+schema through the same function the binary runs at startup.
 
 `internal/hooks.Register` — called once from `main.go` — is deliberately the
 single registration point. Domain packages expose a `Register(app core.App)`
@@ -66,6 +72,19 @@ point of this document.
 | Status and play mode value sets | `select` field values |
 | Deleting a round removes its holes and shots | `cascadeDelete: true` on the relations |
 | A course with rounds cannot be deleted | `cascadeDelete: false` on a required `rounds.course` |
+| A user only reaches their own rounds, holes and shots | collection API rules (Phase 2, #123) |
+| Only admins write courses; only owners write rounds | collection API rules |
+| `role` is not self-assignable | `users` update rule guards `@request.body.role` |
+
+The rules themselves, and the reasoning behind each, are in `README.md` under
+"Access rules"; `acl_test.go` asserts them over HTTP.
+
+Worth stating explicitly, because it shapes everything below: **API rules do not
+apply to hook code.** They gate the generated endpoints and PocketBase's own
+request handlers. A hook or custom route that goes through `app.Save`, `app.Delete`
+or `RunInTransaction` writes as the application, so the rules in the table above
+protect the *client*, not the domain logic — every invariant Phase 3 implements
+still has to be enforced in the hook itself.
 
 ### Needs a hook (Phase 3)
 
@@ -168,6 +187,13 @@ layers:
 - pure logic (scoring, renumbering arithmetic) as plain `go test` unit tests;
 - hook behaviour against a real database via PocketBase's `tests` package
   (`tests.NewTestApp`), which runs the full app core in-process.
+
+Phase 2 (#123) built the second layer already, for the access rules — see
+`testapp_test.go` for the seeded-app harness and fixture builders, and
+`README.md` under "Tests" for how it is wired. Phase 3 should extend those
+rather than start a second harness; in particular, `tests.ApiScenario` is how a
+custom route gets tested end to end, and the note there about needing a fresh
+app per scenario applies to any new suite.
 
 The existing Django tests under `rounds/` and `courses/` are the
 specification for both — they encode the behaviour this migration is required

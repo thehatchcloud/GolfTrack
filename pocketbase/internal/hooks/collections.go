@@ -31,6 +31,12 @@ var CollectionNames = []string{
 	NameShots,
 }
 
+// Field names referenced by hook code. Only the fields hooks actually touch
+// are named here; the full field list lives in pb_schema.json.
+const (
+	FieldRole = "role"
+)
+
 // Enum values, kept in sync with the `select` fields in pb_schema.json.
 const (
 	RoundStatusInProgress = "in_progress"

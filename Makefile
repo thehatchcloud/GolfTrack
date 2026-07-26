@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help install migrate dev shell test lint css collectstatic clean distclean
+.PHONY: help install migrate dev shell test lint css collectstatic clean distclean pb-test
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -23,6 +23,9 @@ test: ## Run the full pytest suite, verbose, with coverage
 
 lint: ## Lint with ruff
 	.venv/bin/ruff check .
+
+pb-test: ## Vet and test the PocketBase app (pocketbase/, Go)
+	cd pocketbase && go vet ./... && go test ./...
 
 css: ## Compile Tailwind CSS → static/css/app.css
 	sh ./bin/build-css.sh
