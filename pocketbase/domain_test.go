@@ -459,6 +459,58 @@ func TestTheStrokeCacheSurvivesTheGeneratedEndpoints(t *testing.T) {
 	}
 }
 
+// TestRenumberingIsIndependentOfInsertionOrder pins the fix for a bug the test
+// above could only find by luck.
+//
+// Renumbering is a single `SET shot_number = shot_number - 1` sweep, and SQLite
+// checks the unique (round_hole, shot_number) index per row, in the order its
+// scan visits them — insertion order, not shot_number order. So `3 -> 2` ahead
+// of `2 -> 1` failed with a UNIQUE constraint violation, reachable whenever a
+// shot was written out of order straight through the generated record endpoint,
+// which the round's owner is allowed to do.
+//
+// TestTheStrokeCacheSurvivesTheGeneratedEndpoints inserts its three shots by
+// ranging over a map, so Go's randomised iteration order hit the bad case
+// roughly a quarter of the time and the suite failed intermittently. This
+// spells the orders out instead.
+func TestRenumberingIsIndependentOfInsertionOrder(t *testing.T) {
+	for name, order := range map[string][]int{
+		"ascending":                     {1, 2, 3},
+		"descending":                    {3, 2, 1},
+		"highest first, then ascending": {3, 1, 2},
+		"lowest last":                   {2, 3, 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			g := newGame(t)
+			round := g.start(t)
+			hole := g.hole(t, round, 1)
+
+			clubs := map[int]string{1: "Driver", 2: "7i", 3: "PW"}
+			for _, number := range order {
+				saveAs(t, g.app, newRecord(t, g.app, collections.NameShots, "", map[string]any{
+					"round_hole": hole.Id, "shot_number": number, "club": clubs[number],
+				}))
+			}
+
+			shotList, err := records.HoleShots(g.app, hole.Id)
+			if err != nil {
+				t.Fatalf("list shots: %v", err)
+			}
+			if err := g.app.Delete(shotList[0]); err != nil {
+				t.Fatalf("delete the first shot: %v", err)
+			}
+
+			strokes, numbers, gotClubs := holeState(t, g.app, hole.Id)
+			if strokes != 2 || !equalInts(numbers, []int{1, 2}) {
+				t.Errorf("strokes=%d numbers=%v, want 2 [1 2]", strokes, numbers)
+			}
+			if len(gotClubs) != 2 || gotClubs[0] != "7i" || gotClubs[1] != "PW" {
+				t.Errorf("clubs = %v, want [7i PW] — the survivors must keep their order", gotClubs)
+			}
+		})
+	}
+}
+
 // -----------------------------------------------------------------------------
 // set_current_hole
 // -----------------------------------------------------------------------------

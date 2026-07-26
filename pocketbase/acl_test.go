@@ -8,6 +8,7 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
 
+	"github.com/thehatchcloud/golftrack/pocketbase/internal/authenv"
 	"github.com/thehatchcloud/golftrack/pocketbase/internal/collections"
 )
 
@@ -509,11 +510,22 @@ func TestRoleIsNotSelfAssignable(t *testing.T) {
 	})
 }
 
-// TestSignupIsOAuth2Only pins the users create rule. Sign-up is OAuth2-only
-// (Phase 4, #125), so the rule is `@request.context = "oauth2"` — a context no
-// direct API create can produce. Closing password sign-up also closes the
-// second half of the escalation path: a walk-in account created with
-// `"role":"ADMIN"`.
+// TestSignupIsOAuth2Only pins the users create rule and, with it, Phase 4's
+// (#125) recorded answer to the password-login question: **self-service
+// registration stays closed, in every environment.** The rule remains
+// `@request.context = "oauth2"` — a context no direct API create can produce —
+// so accounts come from an OAuth provider or from an operator, and the second
+// half of the escalation path (a walk-in account created with `"role":"ADMIN"`)
+// stays closed with it.
+//
+// What Phase 4 did add is password *authentication* for accounts that already
+// exist, behind GOLFTRACK_ALLOW_PASSWORD_LOGIN and off by default. That is a
+// different switch — `passwordAuth.enabled`, applied from the environment by
+// internal/hooks/authconfig.go — and it does not touch this rule: an
+// environment with password login on still cannot be signed up to. See
+// TestPasswordLoginIsOffByDefault and
+// TestPasswordLoginCanBeEnabledForProvisionedAccounts in auth_test.go, and
+// "The password-login decision" in pocketbase/AUTH.md.
 func TestSignupIsOAuth2Only(t *testing.T) {
 	run(t, anonymous, tests.ApiScenario{
 		Name:            "anonymous password sign-up is rejected",
@@ -528,6 +540,18 @@ func TestSignupIsOAuth2Only(t *testing.T) {
 		Method:          http.MethodPost,
 		URL:             recordsURL(collections.NameUsers),
 		Body:            body(`{"email":"minted@golftrack.test","password":"averylongpassword","passwordConfirm":"averylongpassword","role":"ADMIN"}`),
+		ExpectedStatus:  400,
+		ExpectedContent: []string{`"status":400`},
+	})
+
+	// The two switches are independent: turning password *authentication* on
+	// does not open registration.
+	t.Setenv(authenv.EnvAllowPasswordLogin, "true")
+	run(t, anonymous, tests.ApiScenario{
+		Name:            "sign-up stays closed with password login enabled",
+		Method:          http.MethodPost,
+		URL:             recordsURL(collections.NameUsers),
+		Body:            body(`{"email":"walkin@golftrack.test","password":"averylongpassword","passwordConfirm":"averylongpassword"}`),
 		ExpectedStatus:  400,
 		ExpectedContent: []string{`"status":400`},
 	})

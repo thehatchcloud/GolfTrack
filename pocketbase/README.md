@@ -1,7 +1,7 @@
 # GolfTrack on PocketBase
 
-Phases 1 (#122), 2 (#123) and 3 (#124) of the Django → PocketBase migration
-tracked in epic #121. The overall plan lives in
+Phases 1 (#122), 2 (#123), 3 (#124) and 4 (#125) of the Django → PocketBase
+migration tracked in epic #121. The overall plan lives in
 [`POCKETBASE_MIGRATION_PLAN.md`](../POCKETBASE_MIGRATION_PLAN.md).
 
 **Nothing in this directory is wired into the deployed app.** The Django app in
@@ -11,9 +11,10 @@ directory is a parallel, local-only environment until the Phase 9/10 cutover.
 
 What is here so far: a PocketBase application you can build and run locally, the
 six collections defined and reproducible from a committed schema file, their
-access rules, and the domain logic — the round and shot lifecycle, the stroke
-cache, the scoring — as compiled-in Go hooks with the custom routes the
-generated CRUD cannot cover. Authentication is still to come (Phase 4, #125).
+access rules, the domain logic — the round and shot lifecycle, the stroke cache,
+the scoring — as compiled-in Go hooks with the custom routes the generated CRUD
+cannot cover, and OAuth sign-in with the admin role assigned from
+`ADMIN_EMAILS`.
 
 ## One Go binary
 
@@ -37,7 +38,9 @@ pocketbase/
 ├── pb_schema.json        # source of truth for the six collections (embedded)
 ├── ARCHITECTURE.md       # hook / business-logic architecture
 ├── API.md                # PocketBase endpoints vs. the current Django contract
+├── AUTH.md               # sign-in, OAuth setup, ADMIN_EMAILS, the auth env vars
 ├── acl_test.go           # access rules, over HTTP, with real auth tokens
+├── auth_test.go          # sign-in and the admin role, over the real OAuth path
 ├── schema_test.go        # indexes, field validation, delete behaviour
 ├── domain_test.go        # the business rules, against a real database
 ├── routes_test.go        # the custom routes, over HTTP
@@ -46,10 +49,13 @@ pocketbase/
 ├── internal/
 │   ├── collections/      # collection names/ids, field names, enum values
 │   ├── apierr/           # the {"error": …} contract + the route wrapper
+│   ├── authenv/          # the auth configuration, read from the environment
 │   ├── records/          # record lookups the domain packages share
 │   └── hooks/
 │       ├── hooks.go      # Register() — the only place hooks are bound
 │       ├── users.go      # users.role field default
+│       ├── authconfig.go # OAuth2 providers + password login, from the env
+│       ├── adminrole.go  # users.role from ADMIN_EMAILS, on OAuth2 sign-in
 │       └── domain/       # one package per aggregate (see its README)
 ├── scripts/
 │   ├── dev.sh            # build the binary + run the dev server
@@ -87,6 +93,23 @@ Then open the Admin UI at <http://127.0.0.1:8090/_/> and log in with
 `pocketbase/.local/`, so deleting that directory resets the environment
 completely.
 
+It also passes the environment through, so a local instance you can actually
+sign in to is a matter of exporting the auth variables first:
+
+```bash
+# OAuth against a real provider (see AUTH.md for the redirect URI to register)
+GOOGLE_CLIENT_ID=… GOOGLE_CLIENT_SECRET=… \
+ADMIN_EMAILS=you@example.com \
+pocketbase/scripts/dev.sh
+
+# or, with no OAuth app to hand: password login for an account you create
+# yourself in the Admin UI
+GOLFTRACK_ALLOW_PASSWORD_LOGIN=true pocketbase/scripts/dev.sh
+```
+
+With none of them set the app has no sign-in method and says so at startup;
+the Admin UI still opens, because superusers are a separate collection.
+
 ## Collections
 
 Six collections, mapped from the Django models they replace. `users` is
@@ -112,7 +135,7 @@ and are not length-limited, so they can spell the collection name out in full.
 
 | Field | Type | Notes |
 |---|---|---|
-| `role` | `select` | `USER` / `ADMIN`, required. Assigned from `ADMIN_EMAILS` at login in Phase 4 (#125). |
+| `role` | `select` | `USER` / `ADMIN`, required. Defaults to `USER`; assigned from `ADMIN_EMAILS` on OAuth sign-in (Phase 4 — see `AUTH.md`). |
 | `display_name` | `text` | max 150. Distinct from PocketBase's built-in `name`, which OAuth providers write to. |
 
 **`courses`**
@@ -236,9 +259,14 @@ Without the second clause any user could `PATCH` themselves to `ADMIN` and
 inherit read access to every round in the database. The other half of that path
 — registering a fresh account with `"role": "ADMIN"` — is closed by the create
 rule, `@request.context = "oauth2"`: sign-up happens through an OAuth provider
-(Phase 4, #125) and nothing else. Superusers bypass rules entirely, so role
-changes stay possible from the Admin UI until Phase 4 automates them from
-`ADMIN_EMAILS`.
+and nothing else, in every environment. Superusers bypass rules entirely, so
+role changes remain possible from the Admin UI; Phase 4 automates them from
+`ADMIN_EMAILS` on sign-in.
+
+The create rule restricts the *context* of an account creation, not its
+contents, which is why Phase 4 also discards the `createData` a client may send
+with an OAuth2 sign-in — otherwise `{"role": "ADMIN"}` would walk straight
+through it. See "What a caller may not smuggle in" in `AUTH.md`.
 
 That create rule is also why `internal/hooks/users.go` exists. `role` is
 required and PocketBase select fields carry no default, so an OAuth2 sign-up —
@@ -307,6 +335,38 @@ returns — both are recorded in `API.md` for Phase 5 (#126) and Phase 6 (#127).
 | Cancelling a completed round | `409 {"error": "Only in-progress rounds can be cancelled"}` |
 | A play mode, club, note or hole number the rules reject | `400` with the Django message |
 
+## Authentication
+
+Added in Phase 4 (#125). Full detail — provider registration, the redirect URIs
+to add, the `createData` guard, and what the Phase 7 frontend can build against
+— is in [`AUTH.md`](AUTH.md); the short version:
+
+- **Sign-in is OAuth2**, Google and Microsoft Entra ID, as in the shipped app.
+- **Sign-up is OAuth2 and nothing else**, in every environment. Password
+  *authentication* for accounts that already exist can be switched on for
+  environments with no OAuth apps registered; self-service registration cannot.
+  That is Phase 4's recorded decision — see "The password-login decision".
+- **`users.role` is synced from `ADMIN_EMAILS` on every OAuth sign-in**,
+  granting *and* revoking, with an empty list deliberately doing nothing.
+
+None of it is committed, because none of it can be: client secrets are secrets
+and the rest differs per environment. `pb_schema.json` holds the closed
+baseline and `internal/hooks/authconfig.go` applies the environment over it at
+startup.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | unset | registers the Google provider |
+| `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` | unset | registers the Microsoft Entra ID provider |
+| `ADMIN_EMAILS` | unset | comma-separated addresses granted `role = ADMIN` |
+| `GOLFTRACK_ALLOW_PASSWORD_LOGIN` | `false` | email+password login for existing accounts |
+
+The names are Django's, so a host that already sets them needs no new secrets
+when the Phase 9 (#130) container arrives; `DEPLOYMENT.md` notes that changing
+an environment variable means recreating the container, which applies here too.
+A fresh instance with none of them set has no way to sign in to the *app* and
+says so at startup — the Admin UI is a separate collection and still opens.
+
 ## Validation gate
 
 The Phase 1 (#122) and Phase 2 (#123) gates, and how each item is checked:
@@ -334,6 +394,31 @@ The Phase 3 (#124) gate:
 | 409 where Django returns 409 | `routes_test.go` — round already in progress, round already completed, cancelling a finished round |
 | `make pb-test` green | it is |
 
+The Phase 4 (#125) gate:
+
+| Gate item | How |
+|---|---|
+| OAuth flow completes end-to-end for both providers | `auth_test.go` drives the real `/auth-with-oauth2` endpoint with a fake provider registered under Google's name — everything past the token exchange is the production path. The exchange itself needs live credentials: **owner-verified**, see below. |
+| Users created on first successful OAuth sign-in, and updated on subsequent ones | `TestFirstOAuth2SignInCreatesTheUserWithRoleUser`, `TestSecondOAuth2SignInUpdatesTheExistingUser` |
+| A first-time sign-in lands with `role = USER` through the real OAuth path | `TestFirstOAuth2SignInCreatesTheUserWithRoleUser` — the record does not exist before the request |
+| Admin role assigned from `ADMIN_EMAILS`, including a user who was already `USER` | `TestAdminEmailsGrantsAdminOnFirstSignIn`, `TestAdminEmailsPromotesAnExistingUser`; revocation and the empty-list valve are covered too |
+| A non-admin still cannot self-assign `ADMIN` — `acl_test.go` still green | it is; `TestRoleIsNotSelfAssignable` is unchanged, and `TestOAuth2CreateDataCannotMintAnAdmin` closes the new path OAuth2 sign-up opened |
+| Password-login decision recorded, and `acl_test.go` reflects it | "The password-login decision" in `AUTH.md`; `TestSignupIsOAuth2Only` gained a case proving sign-up stays closed *with* password login enabled |
+| Frontend auth cookies validated | **not met, and deferred to Phase 7 (#128)** — see below |
+
+Two items need the owner rather than the suite:
+
+- **The live token exchange.** Whether Google and Microsoft accept the
+  registered redirect URI and return a usable profile cannot be tested without
+  real client credentials and a browser. `AUTH.md` lists the URI to add to each
+  OAuth app.
+- **Frontend auth cookies.** There is no PocketBase-facing frontend yet — #125
+  scopes its task 5 to "the auth slice only", coordinated with Phase 7 (#128),
+  which owns the frontend adaptation. PocketBase's session is a token the
+  client holds rather than a server-set cookie, so "auth cookies validated"
+  becomes a Phase 7 decision about where that token is stored; the contract and
+  the trade-offs are written up in `AUTH.md` § "For the frontend".
+
 #123's gate item "all 6 collections defined in Admin UI" is met a phase
 differently than it was written: collections are defined in `pb_schema.json`,
 embedded into the binary and reconciled at startup, so they appear in the Admin
@@ -356,6 +441,8 @@ that could drift from it.
 | File | Covers |
 |---|---|
 | `acl_test.go` | every rule, over HTTP, as anonymous / user / other user / admin / superuser |
+| `auth_test.go` | sign-in over the real OAuth path: record creation, the `ADMIN_EMAILS` sync, the `createData` guard, the password-login switch |
+| `internal/authenv/authenv_test.go` | the environment parsing, as plain unit tests |
 | `schema_test.go` | unique indexes, field bounds and enums, cascade and restrict deletes, the `role` default |
 | `domain_test.go` | the business rules — snapshotting, the stroke cache, renumbering, totals, cancellation |
 | `routes_test.go` | the custom routes end to end, including their 401s, 404s and 409s |
@@ -408,6 +495,14 @@ To change the schema:
 Export strips collection-level `created`/`updated` timestamps and sorts keys,
 so sync → export round-trips byte-for-byte and diffs stay readable.
 
+It also leaves the `users` collection's `oauth2` and `passwordAuth` blocks as
+committed. Those come from the environment at startup (see "Authentication"),
+so a running instance carries the deployment's client ids and password-login
+state — exporting them would commit a per-environment provider list, and one
+that no longer imports, since PocketBase redacts client secrets on the way out.
+To change *those*, change the environment; `pb_schema.json` only holds their
+closed baseline.
+
 There are deliberately no `pb_migrations` files: with the schema reconciled
 from one committed document at startup, per-change migration files would be a
 second, orderable-only-by-filename source of truth. (The prebuilt-binary
@@ -455,10 +550,27 @@ Phase 3 adds two, against #124:
   set is read as a whole. The per-record half of the rule (a hole fits its
   course) is enforced on every `course_holes` write. See `ARCHITECTURE.md`.
 
+Phase 4 adds two, against #125:
+
+- **OAuth provider configuration is not in `pb_schema.json`.** The plan's
+  wording ("configure PocketBase OAuth providers") reads as a schema or Admin
+  UI change. Client secrets cannot be committed, and a schema file with
+  per-environment client ids in it would have to be edited per deployment, so
+  the providers are applied from environment variables at every startup instead
+  — `internal/hooks/authconfig.go`. The committed schema holds the closed
+  baseline. The same mechanism carries `passwordAuth.enabled`.
+- **The OAuth2 sign-in hook does more than assign a role.** #125 asks for admin
+  detection; it also discards the caller-supplied `createData`. Enabling OAuth2
+  sign-up is what makes that map reachable, and the `users` create rule
+  restricts only the *context* of an account creation, not its contents — so
+  `{"role": "ADMIN"}` would have walked through the rule Phase 2 added
+  specifically to stop it. Closing it belongs in the phase that opens it. See
+  `AUTH.md`.
+
 ## Next phases
 
 | Phase | Issue | Adds |
 |---|---|---|
-| 4 — Auth & OAuth | #125 | Google / Microsoft Entra ID providers, `role` assignment from `ADMIN_EMAILS` |
 | 5 — API parity | #126 | The endpoint contract, including the anonymous-caller status codes noted in `API.md` |
 | 6 — Data migration | #127 | The Django database imported, and the record-id question in `API.md` decided |
+| 7 — Frontend | #128 | The frontend against this API, including where the auth token lives (`AUTH.md` § "For the frontend") |

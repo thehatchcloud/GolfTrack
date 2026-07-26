@@ -41,10 +41,13 @@ pocketbase/
 └── internal/
     ├── collections/     collection names/ids, field names and enum values
     ├── apierr/          the {"error": …} contract: typed errors + the route wrapper
+    ├── authenv/         the authentication configuration, read from the environment
     ├── records/         record lookups the domain packages share
     └── hooks/
         ├── hooks.go     Register() — the only place hooks are bound
         ├── users.go     users.role field default
+        ├── authconfig.go  OAuth2 providers + password login, applied on OnServe
+        ├── adminrole.go   users.role from ADMIN_EMAILS, on OAuth2 sign-in
         └── domain/      one package per aggregate
             ├── courses/     course and hole validation, derived total_par
             ├── rounds/      round lifecycle + its custom routes
@@ -184,8 +187,22 @@ on serialization, so the value appears on the generated list and view endpoints
 as well as anywhere a custom route returns a course.
 
 **Admin role assignment.** Set `users.role` from the `ADMIN_EMAILS`
-environment variable on OAuth login, via `OnRecordAuthWithOAuth2Request`.
-Deferred to Phase 4 (#125).
+environment variable on OAuth login, via `OnRecordAuthWithOAuth2Request`. Built
+in Phase 4 (#125): `internal/hooks/adminrole.go`, a port of Django's
+`sync_admin_role` receiver down to its two easily-missed halves — it revokes as
+well as grants, and an empty list is a no-op rather than a mass demotion. The
+same hook discards the caller-supplied `createData` of an OAuth2 sign-in, which
+is otherwise a way to write `role`, `password` or `email` onto a brand-new
+account. Full reasoning: `AUTH.md`.
+
+**Authentication configuration.** OAuth client credentials are secrets and the
+password-login switch differs per environment, so neither can live in
+`pb_schema.json`. The committed schema holds the closed baseline — no
+providers, OAuth2 disabled, password authentication disabled — and
+`internal/hooks/authconfig.go` reconciles the `users` collection to the
+environment on `OnServe`, in the same one-authoritative-source-applied-on-boot
+shape as the schema sync. It must stay bound *after* that sync, which imports
+the collection wholesale and would otherwise reset the options it just wrote.
 
 ## Transactions
 

@@ -39,11 +39,17 @@ var domainModules = []struct {
 }
 
 // Register binds every GolfTrack hook onto the app: the users.role field
-// default (users.go) and the Phase 3 domain modules — record hooks and the
-// custom routes each one owns. See pocketbase/ARCHITECTURE.md for which rule
-// lives where.
+// default (users.go), the Phase 4 authentication hooks (authconfig.go,
+// adminrole.go), and the Phase 3 domain modules — record hooks and the custom
+// routes each one owns. See pocketbase/ARCHITECTURE.md for which rule lives
+// where.
+//
+// registerAuthConfig binds to OnServe and must stay downstream of the schema
+// sync main.go binds first — see its comment.
 func Register(app core.App) {
 	registerUserDefaults(app)
+	registerAuthConfig(app)
+	registerOAuth2SignIn(app)
 
 	names := make([]string, 0, len(domainModules))
 	for _, module := range domainModules {
