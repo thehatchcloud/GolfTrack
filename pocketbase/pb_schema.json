@@ -15,8 +15,8 @@
       "body": "<p>Hello,</p>\n<p>Click on the button below to confirm your new email address.</p>\n<p>\n  <a class=\"btn\" href=\"{APP_URL}/_/#/auth/confirm-email-change/{TOKEN}\" target=\"_blank\" rel=\"noopener\">Confirm new email</a>\n</p>\n<p><i>If you didn't ask to change your email address, please ignore this email.</i></p>\n<p>\n  Thanks,<br/>\n  {APP_NAME} team\n</p>",
       "subject": "Confirm your {APP_NAME} new email address"
     },
-    "createRule": "",
-    "deleteRule": "id = @request.auth.id",
+    "createRule": "@request.context = \"oauth2\"",
+    "deleteRule": "@request.auth.id != \"\" && id = @request.auth.id",
     "emailChangeToken": {
       "duration": 1800
     },
@@ -192,7 +192,7 @@
       "CREATE UNIQUE INDEX `idx_tokenKey__pb_users_auth_` ON `users` (`tokenKey`)",
       "CREATE UNIQUE INDEX `idx_email__pb_users_auth_` ON `users` (`email`) WHERE `email` != ''"
     ],
-    "listRule": "id = @request.auth.id",
+    "listRule": "@request.auth.id != \"\" && (id = @request.auth.id || @request.auth.role = \"ADMIN\")",
     "manageRule": null,
     "mfa": {
       "duration": 600,
@@ -234,7 +234,7 @@
     },
     "system": false,
     "type": "auth",
-    "updateRule": "id = @request.auth.id",
+    "updateRule": "@request.auth.id != \"\" && id = @request.auth.id && (@request.body.role:isset = false || @request.body.role = role)",
     "verificationTemplate": {
       "body": "<p>Hello,</p>\n<p>Thank you for joining us at {APP_NAME}.</p>\n<p>Click on the button below to verify your email address.</p>\n<p>\n  <a class=\"btn\" href=\"{APP_URL}/_/#/auth/confirm-verification/{TOKEN}\" target=\"_blank\" rel=\"noopener\">Verify</a>\n</p>\n<p><i>If you didn't recently register, please ignore this email.</i></p>\n<p>\n  Thanks,<br/>\n  {APP_NAME} team\n</p>",
       "subject": "Verify your {APP_NAME} email"
@@ -242,11 +242,11 @@
     "verificationToken": {
       "duration": 86400
     },
-    "viewRule": "id = @request.auth.id"
+    "viewRule": "@request.auth.id != \"\" && (id = @request.auth.id || @request.auth.role = \"ADMIN\")"
   },
   {
-    "createRule": null,
-    "deleteRule": null,
+    "createRule": "@request.auth.id != \"\" && @request.auth.role = \"ADMIN\"",
+    "deleteRule": "@request.auth.id != \"\" && @request.auth.role = \"ADMIN\"",
     "fields": [
       {
         "autogeneratePattern": "[a-z0-9]{15}",
@@ -326,16 +326,16 @@
     "indexes": [
       "CREATE INDEX `idx_courses_name` ON `courses` (`name`)"
     ],
-    "listRule": null,
+    "listRule": "@request.auth.id != \"\"",
     "name": "courses",
     "system": false,
     "type": "base",
-    "updateRule": null,
-    "viewRule": null
+    "updateRule": "@request.auth.id != \"\" && @request.auth.role = \"ADMIN\"",
+    "viewRule": "@request.auth.id != \"\""
   },
   {
-    "createRule": null,
-    "deleteRule": null,
+    "createRule": "@request.auth.id != \"\" && @request.auth.role = \"ADMIN\"",
+    "deleteRule": "@request.auth.id != \"\" && @request.auth.role = \"ADMIN\"",
     "fields": [
       {
         "autogeneratePattern": "[a-z0-9]{15}",
@@ -398,16 +398,16 @@
       "CREATE UNIQUE INDEX `idx_course_holes_course_hole_number` ON `course_holes` (`course`, `hole_number`)",
       "CREATE INDEX `idx_course_holes_course` ON `course_holes` (`course`)"
     ],
-    "listRule": null,
+    "listRule": "@request.auth.id != \"\"",
     "name": "course_holes",
     "system": false,
     "type": "base",
-    "updateRule": null,
-    "viewRule": null
+    "updateRule": "@request.auth.id != \"\" && @request.auth.role = \"ADMIN\"",
+    "viewRule": "@request.auth.id != \"\""
   },
   {
-    "createRule": null,
-    "deleteRule": null,
+    "createRule": "@request.auth.id != \"\" && user = @request.auth.id",
+    "deleteRule": "@request.auth.id != \"\" && user = @request.auth.id",
     "fields": [
       {
         "autogeneratePattern": "[a-z0-9]{15}",
@@ -602,16 +602,16 @@
       "CREATE INDEX `idx_rounds_course` ON `rounds` (`course`)",
       "CREATE UNIQUE INDEX `idx_rounds_one_in_progress_per_user` ON `rounds` (`user`) WHERE `status` = 'in_progress'"
     ],
-    "listRule": null,
+    "listRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"ADMIN\")",
     "name": "rounds",
     "system": false,
     "type": "base",
-    "updateRule": null,
-    "viewRule": null
+    "updateRule": "@request.auth.id != \"\" && user = @request.auth.id && (@request.body.user:isset = false || @request.body.user = @request.auth.id)",
+    "viewRule": "@request.auth.id != \"\" && (user = @request.auth.id || @request.auth.role = \"ADMIN\")"
   },
   {
-    "createRule": null,
-    "deleteRule": null,
+    "createRule": "@request.auth.id != \"\" && round.user = @request.auth.id",
+    "deleteRule": "@request.auth.id != \"\" && round.user = @request.auth.id",
     "fields": [
       {
         "autogeneratePattern": "[a-z0-9]{15}",
@@ -707,16 +707,16 @@
       "CREATE UNIQUE INDEX `idx_round_holes_round_hole_number` ON `round_holes` (`round`, `hole_number`)",
       "CREATE INDEX `idx_round_holes_round` ON `round_holes` (`round`)"
     ],
-    "listRule": null,
+    "listRule": "@request.auth.id != \"\" && (round.user = @request.auth.id || @request.auth.role = \"ADMIN\")",
     "name": "round_holes",
     "system": false,
     "type": "base",
-    "updateRule": null,
-    "viewRule": null
+    "updateRule": "@request.auth.id != \"\" && round.user = @request.auth.id",
+    "viewRule": "@request.auth.id != \"\" && (round.user = @request.auth.id || @request.auth.role = \"ADMIN\")"
   },
   {
-    "createRule": null,
-    "deleteRule": null,
+    "createRule": "@request.auth.id != \"\" && round_hole.round.user = @request.auth.id",
+    "deleteRule": "@request.auth.id != \"\" && round_hole.round.user = @request.auth.id",
     "fields": [
       {
         "autogeneratePattern": "[a-z0-9]{15}",
@@ -791,11 +791,11 @@
       "CREATE UNIQUE INDEX `idx_shots_round_hole_shot_number` ON `shots` (`round_hole`, `shot_number`)",
       "CREATE INDEX `idx_shots_round_hole` ON `shots` (`round_hole`)"
     ],
-    "listRule": null,
+    "listRule": "@request.auth.id != \"\" && (round_hole.round.user = @request.auth.id || @request.auth.role = \"ADMIN\")",
     "name": "shots",
     "system": false,
     "type": "base",
-    "updateRule": null,
-    "viewRule": null
+    "updateRule": "@request.auth.id != \"\" && round_hole.round.user = @request.auth.id",
+    "viewRule": "@request.auth.id != \"\" && (round_hole.round.user = @request.auth.id || @request.auth.role = \"ADMIN\")"
   }
 ]

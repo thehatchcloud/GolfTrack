@@ -130,11 +130,24 @@ should confirm which shape the probe expects.
 
 ## Access rules
 
-The five new collections have `null` API rules, so every generated endpoint on
-them is superuser-only — an unauthenticated list returns:
+Set in Phase 2 (#123); the rule set and its rationale are in `README.md`, and
+`acl_test.go` asserts each rule over HTTP. What matters for parity is the status
+codes they produce, because they do not line up with the Django contract:
 
-```
-403 {"data":{},"message":"Only superusers can perform this action.","status":403}
-```
+| Situation | Django | PocketBase |
+|---|---|---|
+| Unauthenticated list | `401 {"error": "Unauthorized"}` | `200 {"items":[],"totalItems":0}` — a list rule filters rather than gates |
+| Unauthenticated view of an existing record | `401` | `404` |
+| Authenticated but not permitted (e.g. a non-admin writing a course) | `403 {"error": "Forbidden"}` | `404` on update/delete, `400` on create |
+| Another user's round | `404 {"error": "Round not found"}` | `404` — the one that already matches |
 
-`users` keeps PocketBase's defaults. Phase 2 (#123) replaces both.
+None of these leak data, and the 404-instead-of-403 choice is deliberate on
+PocketBase's side: a response cannot be used to probe whether a record id
+exists. But a frontend that keys off `401` to redirect to sign-in would see an
+empty list instead. Closing that is Phase 5 (#126) work, and the custom routes
+`errors.go` already backs are where the contract's codes can be restored;
+`apis.RequireAuth()` on those routes is what turns an anonymous call back into a
+`401`.
+
+This is a seventh parity gap on top of the six above, and the only one Phase 2
+introduces.
