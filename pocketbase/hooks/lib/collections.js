@@ -15,11 +15,11 @@ const NAMES = {
 
 const IDS = {
     USERS: "_pb_users_auth_",
-    COURSES: "golftrack_crses",
-    COURSE_HOLES: "golftrack_chls",
-    ROUNDS: "golftrack_rnds",
-    ROUND_HOLES: "golftrack_rhls",
-    SHOTS: "golftrack_shts",
+    COURSES: "golftrack_courses",
+    COURSE_HOLES: "golftrack_course_holes",
+    ROUNDS: "golftrack_rounds",
+    ROUND_HOLES: "golftrack_round_holes",
+    SHOTS: "golftrack_shots",
 };
 
 /** Enum values, kept in sync with the `select` fields in pb_schema.json. */

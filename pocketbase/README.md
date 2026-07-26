@@ -58,17 +58,19 @@ environment completely.
 
 Six collections, mapped from the Django models they replace. `users` is
 PocketBase's built-in auth collection with two fields added; the other five are
-new base collections with fixed, readable ids (`golftrack_*`) so that relation
-targets in `pb_schema.json` are legible in review.
+new base collections with explicit `golftrack_<collection>` ids so that relation
+targets in `pb_schema.json` are legible in review. Unlike *record* ids — which
+are fixed at 15 characters — collection ids only have to match `[A-Za-z0-9_]+`
+and are not length-limited, so they can spell the collection name out in full.
 
 | Collection | Id | Django model |
 |---|---|---|
 | `users` | `_pb_users_auth_` | `accounts.User` |
-| `courses` | `golftrack_crses` | `courses.Course` |
-| `course_holes` | `golftrack_chls` | `courses.CourseHole` |
-| `rounds` | `golftrack_rnds` | `rounds.Round` |
-| `round_holes` | `golftrack_rhls` | `rounds.RoundHole` |
-| `shots` | `golftrack_shts` | `rounds.Shot` |
+| `courses` | `golftrack_courses` | `courses.Course` |
+| `course_holes` | `golftrack_course_holes` | `courses.CourseHole` |
+| `rounds` | `golftrack_rounds` | `rounds.Round` |
+| `round_holes` | `golftrack_round_holes` | `rounds.RoundHole` |
+| `shots` | `golftrack_shots` | `rounds.Shot` |
 
 ### Field mapping
 

@@ -322,7 +322,7 @@
         "type": "autodate"
       }
     ],
-    "id": "golftrack_crses",
+    "id": "golftrack_courses",
     "indexes": [
       "CREATE INDEX `idx_courses_name` ON `courses` (`name`)"
     ],
@@ -354,7 +354,7 @@
       },
       {
         "cascadeDelete": true,
-        "collectionId": "golftrack_crses",
+        "collectionId": "golftrack_courses",
         "help": "",
         "hidden": false,
         "id": "relation379482041",
@@ -393,7 +393,7 @@
         "type": "number"
       }
     ],
-    "id": "golftrack_chls",
+    "id": "golftrack_course_holes",
     "indexes": [
       "CREATE UNIQUE INDEX `idx_course_holes_course_hole_number` ON `course_holes` (`course`, `hole_number`)",
       "CREATE INDEX `idx_course_holes_course` ON `course_holes` (`course`)"
@@ -440,7 +440,7 @@
       },
       {
         "cascadeDelete": false,
-        "collectionId": "golftrack_crses",
+        "collectionId": "golftrack_courses",
         "help": "",
         "hidden": false,
         "id": "relation379482041",
@@ -595,7 +595,7 @@
         "type": "autodate"
       }
     ],
-    "id": "golftrack_rnds",
+    "id": "golftrack_rounds",
     "indexes": [
       "CREATE INDEX `idx_rounds_user` ON `rounds` (`user`)",
       "CREATE INDEX `idx_rounds_status` ON `rounds` (`status`)",
@@ -630,7 +630,7 @@
       },
       {
         "cascadeDelete": true,
-        "collectionId": "golftrack_rnds",
+        "collectionId": "golftrack_rounds",
         "help": "",
         "hidden": false,
         "id": "relation3320769076",
@@ -702,7 +702,7 @@
         "type": "autodate"
       }
     ],
-    "id": "golftrack_rhls",
+    "id": "golftrack_round_holes",
     "indexes": [
       "CREATE UNIQUE INDEX `idx_round_holes_round_hole_number` ON `round_holes` (`round`, `hole_number`)",
       "CREATE INDEX `idx_round_holes_round` ON `round_holes` (`round`)"
@@ -735,7 +735,7 @@
       },
       {
         "cascadeDelete": true,
-        "collectionId": "golftrack_rhls",
+        "collectionId": "golftrack_round_holes",
         "help": "",
         "hidden": false,
         "id": "relation3447335985",
@@ -786,7 +786,7 @@
         "type": "autodate"
       }
     ],
-    "id": "golftrack_shts",
+    "id": "golftrack_shots",
     "indexes": [
       "CREATE UNIQUE INDEX `idx_shots_round_hole_shot_number` ON `shots` (`round_hole`, `shot_number`)",
       "CREATE INDEX `idx_shots_round_hole` ON `shots` (`round_hole`)"
