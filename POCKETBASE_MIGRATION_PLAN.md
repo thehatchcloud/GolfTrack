@@ -6,7 +6,7 @@ GolfTrack is transitioning from Django + Django Ninja backend to Pocketbase. Thi
 
 **Key Strategic Decisions:**
 - Use Pocketbase's built-in REST API and auth system (eliminating Django/django-allauth)
-- Implement domain logic via Pocketbase's JavaScript/Go hooks
+- Implement domain logic as Go hooks — PocketBase is consumed as a Go framework, built into a single portable binary (decision revised in #122 review; originally JavaScript hooks on the prebuilt binary)
 - Maintain SQLite as the database (leveraging Pocketbase's native support)
 - Preserve Litestream S3 replication for production resilience
 - Migrate data in-place (no "clean slate")
@@ -91,7 +91,7 @@ GolfTrack is transitioning from Django + Django Ninja backend to Pocketbase. Thi
 
 ### PHASE 3: Business Logic Hooks (2 weeks)
 
-**Objective:** Implement domain rules via Pocketbase JavaScript hooks
+**Objective:** Implement domain rules via Go hooks compiled into the golftrack-pb binary
 
 #### Core Domain Rules to Implement:
 1. **Course Snapshotting:** When a round is created, copy par values from CourseHole into RoundHole
@@ -101,12 +101,12 @@ GolfTrack is transitioning from Django + Django Ninja backend to Pocketbase. Thi
 5. **One Active Round:** Partial unique index on (user, status=in_progress)
 6. **Play Modes:** 18-hole courses support full/front9/back9; 9-hole courses only full
 
-#### Hook Files to Create:
-- `pocketbase/hooks/courses.js` — course creation/update validation
-- `pocketbase/hooks/rounds.js` — round lifecycle (create, update, validate)
-- `pocketbase/hooks/shots.js` — shot add/undo/delete with renumbering
-- `pocketbase/hooks/round_holes.js` — minimal initialization
-- `pocketbase/hooks/scoring.js` — calculateRoundTotals logic
+#### Hook Packages to Create (under `pocketbase/internal/hooks/domain/`):
+- `courses` — course creation/update validation
+- `rounds` — round lifecycle (create, update, validate)
+- `shots` — shot add/undo/delete with renumbering
+- `roundholes` — minimal initialization
+- `scoring` — calculateRoundTotals logic (pure functions, unit-tested)
 
 #### Custom API Routes:
 - `POST /api/rounds/{id}/complete` — calculate totals, set status
@@ -116,12 +116,12 @@ GolfTrack is transitioning from Django + Django Ninja backend to Pocketbase. Thi
 - `PATCH/DELETE /api/rounds/{id}/holes/{n}/shots/{id}` — edit/delete shot
 
 #### Deliverables:
-- All hook files in `pocketbase/hooks/`
-- Custom route implementations (Go SDK or hook-based)
+- All domain packages under `pocketbase/internal/hooks/domain/`
+- Custom route implementations (registered on the router in `OnServe`)
 - Unit tests for scoring logic
 
 #### Validation Gate:
-- [ ] All hook files created and compiling
+- [ ] All domain packages created and compiling (`go build ./...`)
 - [ ] Course lifecycle works end-to-end
 - [ ] Shot lifecycle: add → edit → delete with correct strokes/numbering
 - [ ] Concurrency tests pass (no race conditions)
@@ -141,7 +141,7 @@ GolfTrack is transitioning from Django + Django Ninja backend to Pocketbase. Thi
 5. Update frontend to use Pocketbase auth
 
 #### Deliverables:
-- `pocketbase/hooks/auth.js` — OAuth and admin role assignment
+- `pocketbase/internal/hooks/domain/auth` — OAuth and admin role assignment
 - Updated environment variables documentation
 - Frontend auth integration
 
@@ -165,7 +165,7 @@ GolfTrack is transitioning from Django + Django Ninja backend to Pocketbase. Thi
 5. Validate error responses (200/201/400/401/403/404/409)
 
 #### Deliverables:
-- `pocketbase/tests/api_test.go` (or JavaScript test suite)
+- Go test suite (`go test ./...` plus PocketBase's `tests` package for full-app tests)
 - `pocketbase/api_contract.md` — all endpoints documented
 - Performance baseline vs. Django
 
@@ -390,9 +390,9 @@ GolfTrack is transitioning from Django + Django Ninja backend to Pocketbase. Thi
 
 1. `pocketbase/collections/users.json` — User collection schema with role field
 2. `pocketbase/collections/rounds.json` — Round collection with partial unique index
-3. `pocketbase/hooks/rounds.js` — Round lifecycle logic
-4. `pocketbase/hooks/shots.js` — Shot creation, deletion, renumbering
-5. `pocketbase/hooks/scoring.js` — Round total calculation
+3. `pocketbase/internal/hooks/domain/rounds` — Round lifecycle logic
+4. `pocketbase/internal/hooks/domain/shots` — Shot creation, deletion, renumbering
+5. `pocketbase/internal/hooks/domain/scoring` — Round total calculation
 6. `pocketbase/main.go` — Custom API routes and Litestream integration
 7. `Dockerfile` — Pocketbase container with Litestream
 8. `migration/import.js` — Data migration from Django to Pocketbase
@@ -403,7 +403,7 @@ GolfTrack is transitioning from Django + Django Ninja backend to Pocketbase. Thi
 
 ## Key Architectural Decisions
 
-1. **Hook Language:** JavaScript for Phase 3-8 (faster iteration), migrate to Go if performance critical
+1. **Hook Language:** Go from the start — PocketBase as a Go framework, one portable binary embedding server, schema and hooks. *(Revised during #122 review; the original decision was JavaScript hooks for Phase 3-8 with a possible later Go migration.)*
 2. **Frontend Framework:** Keep HTMX + Alpine.js (lightweight), or revert to Next.js (separate concern)
 3. **Data Migration:** In-place migration (preserves history), not "clean slate"
 4. **Deployment Model:** Single container, SQLite + Litestream (same as Django)
