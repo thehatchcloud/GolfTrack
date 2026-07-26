@@ -8,41 +8,56 @@ the repository root is still the only thing built and shipped (see
 [`DJANGO.md`](../DJANGO.md) and [`DEPLOYMENT.md`](../DEPLOYMENT.md)). This
 directory is a parallel, local-only environment until the Phase 9/10 cutover.
 
-What Phase 1 delivers: a PocketBase instance you can run locally, the six
-collections defined and reproducible from a committed schema file, and the hook
-directory structure that Phase 3 will fill in. No business logic and no access
-rules yet — those are Phases 2–3.
+What Phase 1 delivers: a PocketBase application you can build and run locally,
+the six collections defined and reproducible from a committed schema file, and
+the hook package structure that Phase 3 will fill in. No business logic and no
+access rules yet — those are Phases 2–3.
+
+## One Go binary
+
+PocketBase is consumed as a **Go framework**
+(`github.com/pocketbase/pocketbase`), not as a downloaded prebuilt binary.
+`go build` in this directory produces a single portable executable
+(`golftrack-pb`) that embeds the PocketBase server, its standard CLI (`serve`,
+`superuser`, …), the collection schema (`pb_schema.json` via `go:embed`), and
+— from Phase 3 on — the domain hooks as compiled Go code. This is an explicit
+owner decision, reversing the plan doc's original "JavaScript hooks first"
+choice: one artifact to build and ship, and domain logic that is type-checked
+and `go test`-able. Rationale and hook architecture: `ARCHITECTURE.md`.
 
 ## Layout
 
 ```
 pocketbase/
-├── pb_schema.json        # source of truth for the six collections
+├── main.go               # entrypoint: schema sync at startup + hook registration
+├── go.mod / go.sum       # module definition, PocketBase version pin
+├── pb_schema.json        # source of truth for the six collections (embedded)
 ├── ARCHITECTURE.md       # hook / business-logic architecture
 ├── API.md                # PocketBase endpoints vs. the current Django contract
-├── hooks/
-│   ├── main.pb.js        # the only file PocketBase auto-loads
-│   ├── lib/              # shared infrastructure (collection constants, errors)
-│   └── domain/           # Phase 3 domain modules land here
+├── internal/hooks/
+│   ├── hooks.go          # Register() — the only place hooks are bound
+│   ├── collections.go    # collection names/ids and enum values
+│   ├── errors.go         # error-contract helpers for custom routes
+│   └── domain/           # Phase 3 domain packages land here
 ├── scripts/
-│   ├── dev.sh            # download the pinned binary + run the dev server
-│   ├── apply_schema.py   # pb_schema.json  ->  running instance
+│   ├── dev.sh            # build the binary + run the dev server
+│   ├── apply_schema.py   # pb_schema.json  ->  running instance (reconcile)
 │   ├── export_schema.py  # running instance ->  pb_schema.json
 │   └── verify_schema.py  # assert the Phase 1 validation gate
-└── .local/               # gitignored: binary, pb_data, pb_migrations
+└── .local/               # gitignored: compiled binary, pb_data
 ```
 
 ## Quick start
 
-Requires `curl`, `unzip` and Python 3 (no virtualenv — the scripts use only the
-standard library).
+Requires a Go toolchain (`go.mod` pins the language version; `go` fetches the
+matching toolchain itself if the installed one is older) and Python 3 for the
+scripts (standard library only).
 
 ```bash
-# terminal 1 — downloads PocketBase 0.39.9 on first run, then serves
+# terminal 1 — builds golftrack-pb, syncs the schema, serves
 pocketbase/scripts/dev.sh
 
-# terminal 2 — create the collections, then check them
-python3 pocketbase/scripts/apply_schema.py
+# terminal 2 — collections already exist (embedded schema); just check them
 python3 pocketbase/scripts/verify_schema.py
 ```
 
@@ -50,9 +65,9 @@ Then open the Admin UI at <http://127.0.0.1:8090/_/> and log in with
 `dev@golftrack.local` / `devdevdevdev` (override with `PB_SUPERUSER_EMAIL` /
 `PB_SUPERUSER_PASSWORD`).
 
-`dev.sh` honours `PB_VERSION`, `PB_HOST` and `PB_PORT`. Everything it writes
-lands in `pocketbase/.local/`, so deleting that directory resets the
-environment completely.
+`dev.sh` honours `PB_HOST` and `PB_PORT`. Everything it writes lands in
+`pocketbase/.local/`, so deleting that directory resets the environment
+completely.
 
 ## Collections
 
@@ -190,32 +205,38 @@ re-run. 24 checks as of this phase.
 
 ## Schema changes
 
-`pb_schema.json` is the source of truth, and `apply_schema.py` pushes it through
-PocketBase's collection import endpoint (an upsert by collection id — safe to
-re-run, and it reconciles a drifted dev instance).
+`pb_schema.json` is the source of truth. It is embedded into the binary and
+imported at every startup (an upsert by collection id — idempotent, and it
+reconciles a drifted dev database). This is also the deterministic startup
+path the Phase 9 (#130) container will rely on.
 
-To change the schema, either edit `pb_schema.json` and apply it, or edit in the
-Admin UI and export:
+To change the schema:
 
-```bash
-python3 pocketbase/scripts/export_schema.py   # instance -> pb_schema.json
-git diff pocketbase/pb_schema.json
-```
+- **Edit `pb_schema.json`**, then restart (`dev.sh`) — the startup sync
+  applies it. To apply without a restart, `python3
+  pocketbase/scripts/apply_schema.py` pushes the file over HTTP instead.
+- **Edit in the Admin UI**, then export it back **before restarting**:
 
-Export strips collection-level `created`/`updated` timestamps and sorts keys, so
-apply → export round-trips byte-for-byte and diffs stay readable.
+  ```bash
+  python3 pocketbase/scripts/export_schema.py   # instance -> pb_schema.json
+  git diff pocketbase/pb_schema.json
+  ```
 
-`dev.sh` runs the server with `--automigrate=0` on purpose. With automigration
-on, PocketBase writes a `pb_migrations/*.js` file for every Admin UI change —
-and when several collections are created within the same second, those files
-share a timestamp prefix and replay in *alphabetical* order, which puts
-`created_course_holes` before `created_courses` and fails on the missing
-relation target. Since `pb_schema.json` is the source of truth here, the
-simplest fix is to not generate those files at all.
+  The order matters: on restart the startup sync reverts any Admin UI change
+  that wasn't exported (the binary embeds the file as committed — rebuild
+  picks up edits since `dev.sh` always rebuilds). Set
+  `GOLFTRACK_SCHEMA_SYNC=0` to serve without the sync while experimenting.
 
-Phase 9 (#130) revisits this: a production container needs a deterministic way
-to apply the schema at startup, which is likely a single hand-ordered migration
-generated from `pb_schema.json` rather than an HTTP import.
+Export strips collection-level `created`/`updated` timestamps and sorts keys,
+so sync → export round-trips byte-for-byte and diffs stay readable.
+
+There are deliberately no `pb_migrations` files: with the schema reconciled
+from one committed document at startup, per-change migration files would be a
+second, orderable-only-by-filename source of truth. (The prebuilt-binary
+prototype hit exactly that: JS migration files created within the same second
+share a timestamp prefix, replay alphabetically, and `created_course_holes`
+loaded before `created_courses`.) Data-shape migrations, when Phase 6 needs
+them, will be Go migrations compiled into the binary.
 
 ## Deviations from `POCKETBASE_MIGRATION_PLAN.md`
 

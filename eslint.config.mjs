@@ -12,9 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
-    // PocketBase hooks run in PocketBase's embedded Goja runtime, not Node or
-    // the browser, so the Next/TypeScript rules here do not apply to them.
-    "pocketbase/**",
+    // The PocketBase app is Go; only its gitignored .local/ scratch dir could
+    // ever hold JS-ish artifacts (e.g. generated .d.ts), so keep that out.
+    "pocketbase/.local/**",
   ]),
 ]);
 

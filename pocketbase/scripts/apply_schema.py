@@ -6,6 +6,11 @@ collections. This script pushes it through PocketBase's collection import
 endpoint, which upserts by collection id — so re-running it is safe and will
 reconcile a dev instance back to the committed schema.
 
+Normally this is unnecessary: the golftrack-pb binary embeds pb_schema.json
+and performs the same import at startup. Use this script to reconcile a
+running instance mid-session (after editing pb_schema.json) without a
+restart, or when serving with GOLFTRACK_SCHEMA_SYNC=0.
+
 Usage:
     python3 pocketbase/scripts/apply_schema.py \
         --url http://127.0.0.1:8090 \

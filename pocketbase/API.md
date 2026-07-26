@@ -114,14 +114,14 @@ round → holes → shots may need either multiple requests or a custom route th
 assembles the payload.
 
 **5. Error bodies.** The contract is `{"error": "<message>"}`; PocketBase returns
-`{"data": {…}, "message": "…", "status": 400}`. `hooks/lib/errors.js` already
-constructs errors in the contract's shape, so custom routes are covered —
+`{"data": {…}, "message": "…", "status": 400}`. `internal/hooks/errors.go`
+already writes responses in the contract's shape, so custom routes are covered —
 built-in validation failures on the generated endpoints are not.
 
 **6. Status codes for constraint violations.** Django returns 409 for "a round is
 already in progress" and "round is already completed". A unique-index violation
-on a generated endpoint surfaces as 400. Custom routes can raise 409 explicitly
-via `errors.js`.
+on a generated endpoint surfaces as 400. Custom routes can return 409 explicitly
+via `errors.go`.
 
 Also worth noting, though not a gap in the same sense: `GET /api/health` returns
 `{"message": "API is healthy.", "code": 200, "data": {}}` rather than
