@@ -1,7 +1,7 @@
 # GolfTrack on PocketBase
 
-Phases 1 (#122) and 2 (#123) of the Django → PocketBase migration tracked in
-epic #121. The overall plan lives in
+Phases 1 (#122), 2 (#123) and 3 (#124) of the Django → PocketBase migration
+tracked in epic #121. The overall plan lives in
 [`POCKETBASE_MIGRATION_PLAN.md`](../POCKETBASE_MIGRATION_PLAN.md).
 
 **Nothing in this directory is wired into the deployed app.** The Django app in
@@ -11,8 +11,9 @@ directory is a parallel, local-only environment until the Phase 9/10 cutover.
 
 What is here so far: a PocketBase application you can build and run locally, the
 six collections defined and reproducible from a committed schema file, their
-access rules, and the hook package structure that Phase 3 will fill in. The
-business logic is still to come.
+access rules, and the domain logic — the round and shot lifecycle, the stroke
+cache, the scoring — as compiled-in Go hooks with the custom routes the
+generated CRUD cannot cover. Authentication is still to come (Phase 4, #125).
 
 ## One Go binary
 
@@ -38,13 +39,18 @@ pocketbase/
 ├── API.md                # PocketBase endpoints vs. the current Django contract
 ├── acl_test.go           # access rules, over HTTP, with real auth tokens
 ├── schema_test.go        # indexes, field validation, delete behaviour
+├── domain_test.go        # the business rules, against a real database
+├── routes_test.go        # the custom routes, over HTTP
+├── concurrency_test.go   # the races: two writers on one hole or one player
 ├── testapp_test.go       # test harness: seeded in-process app + fixtures
-├── internal/hooks/
-│   ├── hooks.go          # Register() — the only place hooks are bound
-│   ├── collections.go    # collection names/ids, field names, enum values
-│   ├── users.go          # users.role field default
-│   ├── errors.go         # error-contract helpers for custom routes
-│   └── domain/           # Phase 3 domain packages land here
+├── internal/
+│   ├── collections/      # collection names/ids, field names, enum values
+│   ├── apierr/           # the {"error": …} contract + the route wrapper
+│   ├── records/          # record lookups the domain packages share
+│   └── hooks/
+│       ├── hooks.go      # Register() — the only place hooks are bound
+│       ├── users.go      # users.role field default
+│       └── domain/       # one package per aggregate (see its README)
 ├── scripts/
 │   ├── dev.sh            # build the binary + run the dev server
 │   ├── apply_schema.py   # pb_schema.json  ->  running instance (reconcile)
@@ -52,6 +58,12 @@ pocketbase/
 │   └── verify_schema.py  # assert the Phase 1 validation gate
 └── .local/               # gitignored: compiled binary, pb_data
 ```
+
+`internal/collections` and `internal/apierr` were `internal/hooks/collections.go`
+and `internal/hooks/errors.go` until Phase 3. They moved down a level because
+`internal/hooks` is the single hook registration point and therefore imports
+every domain package, while the domain packages need the collection vocabulary
+and the error contract — the dependency cannot run both ways.
 
 ## Quick start
 
@@ -244,6 +256,57 @@ the only form the import endpoint and the Admin UI accept. A second file would
 have to be merged into the schema before it could be applied, which is exactly
 the "two sources of truth" problem the embedded-schema design avoids.
 
+## Domain rules and custom routes
+
+Added in Phase 3 (#124). The rules are ported from the Django service layer
+(`rounds/services.py`, `courses/services.py`, `rounds/scoring.py`), which is
+itself a port of the earlier Next.js `lib/` — behaviour is not supposed to
+change again in this migration. `ARCHITECTURE.md` has the full split of which
+rule is enforced by the schema, by an access rule, or by a hook; the domain
+packages themselves are described in `internal/hooks/domain/README.md`.
+
+The one thing worth repeating here, because it decides where every rule lives:
+**API rules do not apply to hook code.** They gate the generated endpoints and
+PocketBase's own request handlers. Anything going through `app.Save`,
+`app.Delete` or `RunInTransaction` writes as the application, so a custom route
+enforces ownership itself, and any invariant a client could otherwise break is
+bound to a record hook rather than to a route.
+
+### Custom routes
+
+| Method | Path | Does |
+|---|---|---|
+| `POST` | `/api/rounds/` | create a round, snapshotting the course's holes by play mode |
+| `POST` | `/api/rounds/{id}/complete` | sum the holes into the round's totals and finish it |
+| `POST` | `/api/rounds/{id}/cancel` | delete an in-progress round and everything under it |
+| `PATCH` | `/api/rounds/{id}/current-hole` | move to a hole this round is playing |
+| `POST` | `/api/rounds/{id}/holes/{n}/shots` | add a shot, maintaining the stroke cache |
+| `POST` | `/api/rounds/{id}/holes/{n}/undo` | remove the hole's highest-numbered shot |
+| `PATCH` | `/api/rounds/{id}/holes/{n}/shots/{shotId}` | re-club a shot |
+| `DELETE` | `/api/rounds/{id}/holes/{n}/shots/{shotId}` | delete a shot and close the numbering gap |
+
+Every one of them is bound with `apis.RequireAuth()`, which is what restores the
+`401` an anonymous caller gets from the current API — a generated endpoint would
+answer `200` with an empty list, because a list rule filters rather than gates.
+
+These paths, their request field names (`courseId`, `playMode`, `club`, `note`,
+`currentHole`) and their status codes are the current contract's, so the
+frontend does not have to learn a second one. Responses are camelCase for the
+same reason. What is *not* yet reconciled is the generated endpoints, and record
+ids, which are 15-character strings rather than the integers the current API
+returns — both are recorded in `API.md` for Phase 5 (#126) and Phase 6 (#127).
+
+### Where a request can still be refused
+
+| Situation | Response |
+|---|---|
+| No auth | `401` |
+| A round or hole belonging to someone else | `404` — ownership collapses into the lookup, as it does in Django |
+| A round already in progress | `409 {"error": "A round is already in progress"}` |
+| A round already completed | `409 {"error": "Round is already completed"}` |
+| Cancelling a completed round | `409 {"error": "Only in-progress rounds can be cancelled"}` |
+| A play mode, club, note or hole number the rules reject | `400` with the Django message |
+
 ## Validation gate
 
 The Phase 1 (#122) and Phase 2 (#123) gates, and how each item is checked:
@@ -257,6 +320,19 @@ The Phase 1 (#122) and Phase 2 (#123) gates, and how each item is checked:
 | ACL rules enforced (permission denied tests pass) | `acl_test.go` |
 | Unique indexes working | `schema_test.go`, plus `verify_schema.py` |
 | Field validation working | `schema_test.go`, plus `verify_schema.py` |
+
+The Phase 3 (#124) gate:
+
+| Gate item | How |
+|---|---|
+| All domain packages created and compiling | `go build ./...`, run by `make pb-test` and CI |
+| Course lifecycle works end-to-end | `domain_test.go` — `hole_count`, hole bounds, derived `total_par` (`routes_test.go`) |
+| Shot lifecycle: add → edit → delete with correct strokes/numbering | `domain_test.go`, `routes_test.go` |
+| Renumbering test covers the ordering explicitly | `TestDeleteShotRenumbersSubsequentShots` — asserts the surviving clubs, not just the count |
+| Concurrency tests pass | `concurrency_test.go` — a rejected concurrent write, never a duplicate shot number |
+| Custom API routes functional | `routes_test.go`, every route including its 401 |
+| 409 where Django returns 409 | `routes_test.go` — round already in progress, round already completed, cancelling a finished round |
+| `make pb-test` green | it is |
 
 #123's gate item "all 6 collections defined in Admin UI" is met a phase
 differently than it was written: collections are defined in `pb_schema.json`,
@@ -281,7 +357,15 @@ that could drift from it.
 |---|---|
 | `acl_test.go` | every rule, over HTTP, as anonymous / user / other user / admin / superuser |
 | `schema_test.go` | unique indexes, field bounds and enums, cascade and restrict deletes, the `role` default |
+| `domain_test.go` | the business rules — snapshotting, the stroke cache, renumbering, totals, cancellation |
+| `routes_test.go` | the custom routes end to end, including their 401s, 404s and 409s |
+| `concurrency_test.go` | two writers on one hole, one player starting two rounds, delete racing delete |
+| `internal/hooks/domain/scoring/scoring_test.go` | the totals arithmetic, as plain unit tests |
 | `testapp_test.go` | the harness: seeded app, fixture builders, auth tokens |
+
+The domain and concurrency suites are ports of `tests/test_services.py` and
+`tests/test_concurrency.py`, which are the specification for behaviour this
+migration has to preserve.
 
 `acl_test.go` drives `tests.ApiScenario`, which builds a router and triggers
 `OnServe` per scenario. PocketBase's UI extension routes re-register on every
@@ -358,10 +442,23 @@ Phase 2 adds one more, against #123 rather than the plan doc:
 - **There is no `pocketbase/rules.json`.** PocketBase has no separate ACL
   document; rules are properties of a collection. See "Where the rules live".
 
+Phase 3 adds two, against #124:
+
+- **`errors.go` is `internal/apierr`, not `internal/hooks/errors.go`**, and the
+  collection vocabulary moved with it into `internal/collections`. The issue
+  names the original paths; keeping them there would have made
+  `internal/hooks` — which imports every domain package so that registration
+  stays one reviewable list — an import cycle. See "Layout".
+- **Course hole-set completeness is checked at round creation**, not on a course
+  write. Django validates a course and its holes as a single payload; PocketBase
+  splits them across two collections, and round creation is the first place the
+  set is read as a whole. The per-record half of the rule (a hole fits its
+  course) is enforced on every `course_holes` write. See `ARCHITECTURE.md`.
+
 ## Next phases
 
 | Phase | Issue | Adds |
 |---|---|---|
-| 3 — Business logic hooks | #124 | Domain modules under `hooks/domain/`, custom routes |
 | 4 — Auth & OAuth | #125 | Google / Microsoft Entra ID providers, `role` assignment from `ADMIN_EMAILS` |
 | 5 — API parity | #126 | The endpoint contract, including the anonymous-caller status codes noted in `API.md` |
+| 6 — Data migration | #127 | The Django database imported, and the record-id question in `API.md` decided |

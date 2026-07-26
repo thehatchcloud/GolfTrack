@@ -4,8 +4,9 @@ What PocketBase generates for the collections in `pb_schema.json`, how it lines
 up with the REST contract the frontend uses today, and what has to be built to
 close the gap.
 
-Written in Phase 1 (#122) from a live 0.39.9 instance. The formal parity suite
-is Phase 5 (#126); this is the design input for it.
+Written in Phase 1 (#122) from a live 0.39.9 instance, and updated in Phase 3
+(#124) once the custom routes existed. The formal parity suite is Phase 5
+(#126); this is the design input for it.
 
 The current contract is defined by `config/api.py`, `courses/api.py` and
 `rounds/api.py` — itself a port of the Next.js route handlers it replaced, so
@@ -57,20 +58,32 @@ GET /api/collections/rounds/records?expand=course&filter=(status='in_progress')
 | `GET /api/courses/{id}` | `GET /api/collections/courses/records/{id}` |
 | `PUT /api/courses/{id}` | `PATCH` + hole reconciliation |
 | `GET /api/rounds/` | `GET /api/collections/rounds/records?filter=(status='completed')` |
-| `POST /api/rounds/` | custom route — creation snapshots holes |
+| `POST /api/rounds/` | **built (Phase 3)** — same path; creation snapshots holes |
 | `GET /api/rounds/in-progress` | `GET …/records?filter=(status='in_progress')&perPage=1` |
 | `GET /api/rounds/{id}` | `GET …/records/{id}?expand=…` |
-| `POST /api/rounds/{id}/complete` | **custom route** |
-| `POST /api/rounds/{id}/cancel` | `DELETE …/records/{id}`, or a custom route for the `{id, cancelled}` body |
-| `PATCH /api/rounds/{id}/current-hole` | `PATCH …/records/{id}` with validation |
-| `POST /api/rounds/{id}/holes/{n}/shots` | **custom route** — stroke cache |
-| `POST /api/rounds/{id}/holes/{n}/undo` | **custom route** |
-| `PATCH /api/rounds/{id}/holes/{n}/shots/{shotId}` | `PATCH /api/collections/shots/records/{id}` |
-| `DELETE /api/rounds/{id}/holes/{n}/shots/{shotId}` | **custom route** — renumbering |
+| `POST /api/rounds/{id}/complete` | **built (Phase 3)** — same path |
+| `POST /api/rounds/{id}/cancel` | **built (Phase 3)** — same path, returning the `{id, cancelled}` body |
+| `PATCH /api/rounds/{id}/current-hole` | **built (Phase 3)** — same path |
+| `POST /api/rounds/{id}/holes/{n}/shots` | **built (Phase 3)** — same path; stroke cache |
+| `POST /api/rounds/{id}/holes/{n}/undo` | **built (Phase 3)** — same path |
+| `PATCH /api/rounds/{id}/holes/{n}/shots/{shotId}` | **built (Phase 3)** — same path |
+| `DELETE /api/rounds/{id}/holes/{n}/shots/{shotId}` | **built (Phase 3)** — same path; renumbering |
 
-The rows marked *custom route* are the ones where the generated CRUD is not
-enough on its own, because a single request has to touch more than one
-collection atomically. `ARCHITECTURE.md` covers what each does.
+The rows marked *built* are the ones where the generated CRUD was not enough on
+its own, because a single request has to touch more than one collection
+atomically, or because the path addresses a shot by `(round, hole_number)`.
+`ARCHITECTURE.md` covers what each does; `routes_test.go` exercises them.
+
+The `PATCH …/shots/{shotId}` row was originally listed as coverable by
+`PATCH /api/collections/shots/records/{id}`. It is built as a custom route
+anyway, so that the whole nested path space behaves consistently — the same
+401 for an anonymous caller, the same `{"error": …}` body, the same
+`(round, hole_number)` addressing — rather than one verb in the group behaving
+like a PocketBase endpoint and the rest like GolfTrack ones.
+
+The `GET` rows are still generated endpoints. Phase 3 built only what the
+generated CRUD could not express; assembling `RoundDetailOut`-shaped read
+responses is Phase 5/7 work.
 
 Note that the nested paths carry a hole number the generated endpoints have no
 concept of — `POST /api/rounds/12/holes/3/shots` addresses a shot by
@@ -82,17 +95,26 @@ otherwise have to make itself.
 
 Six differences between the generated responses and the current contract. Each
 needs a decision in Phase 5 (#126) / Phase 7 (#128) — flagging them here so the
-choice is deliberate rather than discovered late.
+choice is deliberate rather than discovered late. Phase 3 closed three of them
+for the custom routes; the status line on each records where it stands.
 
-**1. Field naming.** The API returns camelCase (`holeCount`, `isArchived`,
+**1. Field naming.** *Closed on the custom routes; open on the generated ones.*
+The API returns camelCase (`holeCount`, `isArchived`,
 `playMode`, `currentHole`, `totalStrokes`, `relativeToPar`); PocketBase returns
 whatever the field is called, which here is snake_case. The collections are
-named to match the *Django models*, per this phase's brief, mirroring Django's
+named to match the *Django models*, per Phase 1's brief, mirroring Django's
 own split between snake_case model fields and a camelCase serialisation layer
 (`core/schemas.py`). Two ways to close it: rename the schema fields to camelCase
-and give up model parity, or transform in the response layer. Custom routes can
-do the latter for free; generated CRUD endpoints cannot, which argues for
-routing the frontend through custom routes wherever the shape matters.
+and give up model parity, or transform in the response layer. Phase 3 took the
+latter on the routes it built — they read `courseId`, `playMode`, `currentHole`
+and return `holeNumber`, `shotNumber` — which argues for routing the frontend
+through custom routes wherever the shape matters. Generated CRUD endpoints
+cannot do it, so a course still lists as `hole_count` and `is_archived`.
+
+One field is worth calling out: `total_par` on a course *is* returned by the
+generated endpoints, in snake_case, because it is derived per response through
+`OnRecordEnrich` rather than being a column. If gap 1 is closed by renaming, it
+renames with the rest.
 
 **2. Unset numbers come back as `0`, not `null`.** A fresh in-progress round
 returns `"total_strokes": 0, "total_par": 0, "relative_to_par": 0`, where the
@@ -113,15 +135,21 @@ PocketBase returns `"course": "yceuliutpkhlhls"` and puts the record under
 round → holes → shots may need either multiple requests or a custom route that
 assembles the payload.
 
-**5. Error bodies.** The contract is `{"error": "<message>"}`; PocketBase returns
-`{"data": {…}, "message": "…", "status": 400}`. `internal/hooks/errors.go`
-already writes responses in the contract's shape, so custom routes are covered —
-built-in validation failures on the generated endpoints are not.
+**5. Error bodies.** *Closed on the custom routes; open on the generated ones.*
+The contract is `{"error": "<message>"}`; PocketBase returns
+`{"data": {…}, "message": "…", "status": 400}`. `internal/apierr` writes
+responses in the contract's shape and every custom route returns its failures
+through it, so those are covered — built-in validation failures on the generated
+endpoints are not.
 
-**6. Status codes for constraint violations.** Django returns 409 for "a round is
-already in progress" and "round is already completed". A unique-index violation
-on a generated endpoint surfaces as 400. Custom routes can return 409 explicitly
-via `errors.go`.
+**6. Status codes for constraint violations.** *Closed on the custom routes.*
+Django returns 409 for "a round is already in progress" and "round is already
+completed". A unique-index violation on a generated endpoint surfaces as 400.
+The custom routes return 409 explicitly, including when the conflict is only
+detected as a lost race — `rounds.Create` re-reads the player's in-progress
+round after a failed save so that the partial unique index is reported as the
+conflict it is rather than as a 400. `routes_test.go` asserts each of the three
+409s.
 
 Also worth noting, though not a gap in the same sense: `GET /api/health` returns
 `{"message": "API is healthy.", "code": 200, "data": {}}` rather than
@@ -144,10 +172,16 @@ codes they produce, because they do not line up with the Django contract:
 None of these leak data, and the 404-instead-of-403 choice is deliberate on
 PocketBase's side: a response cannot be used to probe whether a record id
 exists. But a frontend that keys off `401` to redirect to sign-in would see an
-empty list instead. Closing that is Phase 5 (#126) work, and the custom routes
-`errors.go` already backs are where the contract's codes can be restored;
-`apis.RequireAuth()` on those routes is what turns an anonymous call back into a
-`401`.
+empty list instead.
 
-This is a seventh parity gap on top of the six above, and the only one Phase 2
-introduces.
+This is a seventh parity gap on top of the six above, the only one Phase 2
+introduces — and it is *closed on the custom routes*, which are all bound with
+`apis.RequireAuth()`. `TestCustomRoutesRequireAuth` walks every one of them
+anonymously and asserts the `401`. The generated endpoints still behave as the
+table describes, so a frontend that reaches them directly sees the old codes;
+that remainder is Phase 5 (#126) work.
+
+Ownership on the custom routes is a related note rather than a gap: collection
+API rules do not apply to hook code, so the handlers enforce it themselves,
+and they do it the way Django does — another player's round is `404 {"error":
+"Round not found"}`, never `403`.

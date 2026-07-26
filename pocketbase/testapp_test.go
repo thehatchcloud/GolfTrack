@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"strconv"
 	"strings"
@@ -10,7 +11,10 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
 
+	"github.com/thehatchcloud/golftrack/pocketbase/internal/apierr"
+	"github.com/thehatchcloud/golftrack/pocketbase/internal/collections"
 	"github.com/thehatchcloud/golftrack/pocketbase/internal/hooks"
+	"github.com/thehatchcloud/golftrack/pocketbase/internal/records"
 )
 
 // Shared harness for the Phase 2 (#123) suites.
@@ -112,9 +116,9 @@ func createUser(t testing.TB, app core.App, id, email, role string) *core.Record
 
 	data := map[string]any{"email": email, "verified": true}
 	if role != "" {
-		data[hooks.FieldRole] = role
+		data[collections.FieldRole] = role
 	}
-	record := newRecord(t, app, hooks.NameUsers, id, data)
+	record := newRecord(t, app, collections.NameUsers, id, data)
 	record.SetPassword(testPassword)
 	return saveAs(t, app, record)
 }
@@ -129,7 +133,7 @@ func createSuperuser(t testing.TB, app core.App, email string) *core.Record {
 
 func createCourse(t testing.TB, app core.App, id, name string, holeCount int) *core.Record {
 	t.Helper()
-	return saveAs(t, app, newRecord(t, app, hooks.NameCourses, id, map[string]any{
+	return saveAs(t, app, newRecord(t, app, collections.NameCourses, id, map[string]any{
 		"name":       name,
 		"hole_count": holeCount,
 	}))
@@ -137,7 +141,7 @@ func createCourse(t testing.TB, app core.App, id, name string, holeCount int) *c
 
 func createCourseHole(t testing.TB, app core.App, id string, course *core.Record, holeNumber, par int) *core.Record {
 	t.Helper()
-	return saveAs(t, app, newRecord(t, app, hooks.NameCourseHoles, id, map[string]any{
+	return saveAs(t, app, newRecord(t, app, collections.NameCourseHoles, id, map[string]any{
 		"course":      course.Id,
 		"hole_number": holeNumber,
 		"par":         par,
@@ -146,11 +150,11 @@ func createCourseHole(t testing.TB, app core.App, id string, course *core.Record
 
 func createRound(t testing.TB, app core.App, id string, user, course *core.Record, status string) *core.Record {
 	t.Helper()
-	return saveAs(t, app, newRecord(t, app, hooks.NameRounds, id, map[string]any{
+	return saveAs(t, app, newRecord(t, app, collections.NameRounds, id, map[string]any{
 		"user":         user.Id,
 		"course":       course.Id,
 		"status":       status,
-		"play_mode":    hooks.PlayModeFull,
+		"play_mode":    collections.PlayModeFull,
 		"started_at":   time.Now().UTC(),
 		"current_hole": 1,
 	}))
@@ -158,7 +162,7 @@ func createRound(t testing.TB, app core.App, id string, user, course *core.Recor
 
 func createRoundHole(t testing.TB, app core.App, id string, round *core.Record, holeNumber, par int) *core.Record {
 	t.Helper()
-	return saveAs(t, app, newRecord(t, app, hooks.NameRoundHoles, id, map[string]any{
+	return saveAs(t, app, newRecord(t, app, collections.NameRoundHoles, id, map[string]any{
 		"round":       round.Id,
 		"hole_number": holeNumber,
 		"par":         par,
@@ -168,7 +172,7 @@ func createRoundHole(t testing.TB, app core.App, id string, round *core.Record, 
 
 func createShot(t testing.TB, app core.App, id string, roundHole *core.Record, shotNumber int, club string) *core.Record {
 	t.Helper()
-	return saveAs(t, app, newRecord(t, app, hooks.NameShots, id, map[string]any{
+	return saveAs(t, app, newRecord(t, app, collections.NameShots, id, map[string]any{
 		"round_hole":  roundHole.Id,
 		"shot_number": shotNumber,
 		"club":        club,
@@ -194,3 +198,77 @@ func authHeader(t testing.TB, record *core.Record) map[string]string {
 // itoa keeps the expected-content strings in the scenarios free of strconv
 // noise.
 func itoa(n int) string { return strconv.Itoa(n) }
+
+// -----------------------------------------------------------------------------
+// Phase 3 (#124) additions
+// -----------------------------------------------------------------------------
+
+// seedCourse creates a course with a complete hole set: holeCount holes of the
+// given par, numbered 1..holeCount.
+//
+// Phase 2's fixture course carries a single hole, which is all an access rule
+// needs. Phase 3 rules read the set as a whole — a round snapshots it, and
+// create rejects a course that is missing holes — so its fixtures need a whole
+// course.
+func seedCourse(t testing.TB, app core.App, id, name string, holeCount, par int) *core.Record {
+	t.Helper()
+
+	course := createCourse(t, app, id, name, holeCount)
+	for number := 1; number <= holeCount; number++ {
+		createCourseHole(t, app, "", course, number, par)
+	}
+
+	return course
+}
+
+// wantAPIError asserts that err is the *apierr.Error a route would turn into a
+// {"error": …} response with the given status.
+func wantAPIError(t testing.TB, err error, status int, message string) {
+	t.Helper()
+
+	var apiErr *apierr.Error
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("error = %v (%T), want an *apierr.Error with status %d", err, err, status)
+	}
+	if apiErr.Status != status {
+		t.Errorf("error status = %d (%q), want %d", apiErr.Status, apiErr.Message, status)
+	}
+	if apiErr.Message != message {
+		t.Errorf("error message = %q, want %q", apiErr.Message, message)
+	}
+}
+
+// holeState reads back a round hole's cached stroke count and the shot numbers
+// actually stored against it — the two halves of the stroke-cache invariant.
+func holeState(t testing.TB, app core.App, roundHoleID string) (strokes int, shotNumbers []int, clubs []string) {
+	t.Helper()
+
+	hole, err := app.FindRecordById(collections.NameRoundHoles, roundHoleID)
+	if err != nil {
+		t.Fatalf("reload round hole %q: %v", roundHoleID, err)
+	}
+
+	shots, err := records.HoleShots(app, roundHoleID)
+	if err != nil {
+		t.Fatalf("list shots of round hole %q: %v", roundHoleID, err)
+	}
+
+	for _, shot := range shots {
+		shotNumbers = append(shotNumbers, shot.GetInt(collections.FieldShotNumber))
+		clubs = append(clubs, shot.GetString(collections.FieldClub))
+	}
+
+	return hole.GetInt(collections.FieldStrokes), shotNumbers, clubs
+}
+
+func equalInts(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
