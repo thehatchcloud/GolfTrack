@@ -31,7 +31,7 @@ GolfTrack is transitioning from Django + Django Ninja backend to Pocketbase. Thi
 
 #### Deliverables:
 - `pocketbase/pb_schema.json` (collection definitions)
-- `pocketbase/hooks/` directory structure
+- `pocketbase/internal/hooks/` package structure (Go; the original `pocketbase/hooks/*.js` layout was dropped with the JavaScript decision in #122)
 - `pocketbase/README.md` (setup and local dev)
 
 #### Validation Gate:
@@ -79,13 +79,15 @@ GolfTrack is transitioning from Django + Django Ninja backend to Pocketbase. Thi
 
 #### Deliverables:
 - `pocketbase/pb_schema.json` with full ACL rules
-- `pocketbase/rules.json` (Pocketbase record ACL format)
+- ~~`pocketbase/rules.json` (Pocketbase record ACL format)~~ — *not created. PocketBase has no separate ACL document; rules are properties of a collection, and that is the only form the import endpoint and the Admin UI accept. See `pocketbase/README.md` § "Where the rules live".*
 
 #### Validation Gate:
-- [ ] All 6 collections defined in Admin UI
-- [ ] ACL rules enforced (permission denied tests pass)
-- [ ] Unique indexes working
-- [ ] Field validation working
+- [x] All 6 collections defined — from the embedded `pb_schema.json`, applied by the startup sync, rather than by hand in the Admin UI (a hand edit there is reverted on the next restart)
+- [x] ACL rules enforced (permission denied tests pass) — `pocketbase/acl_test.go`
+- [x] Unique indexes working — `pocketbase/schema_test.go`
+- [x] Field validation working — `pocketbase/schema_test.go`
+
+*Delivered in #123. The rule set, and the reasoning behind `role` not being self-assignable and sign-up being OAuth2-only, are in `pocketbase/README.md` § "Access rules".*
 
 ---
 
@@ -96,10 +98,19 @@ GolfTrack is transitioning from Django + Django Ninja backend to Pocketbase. Thi
 #### Core Domain Rules to Implement:
 1. **Course Snapshotting:** When a round is created, copy par values from CourseHole into RoundHole
 2. **Stroke Cache:** RoundHole.strokes = number of shots; update in same transaction as shot add/delete
-3. **Shot Numbering:** Sequential within hole; delete mid-round shot renumbers all subsequent shots
+3. **Shot Numbering:** Sequential within hole; delete mid-round shot renumbers all subsequent shots. Issue this as a single `UPDATE ... WHERE shot_number > n` — a per-record loop collides with the unique index on the first row
 4. **Undo Semantics:** Remove only the last shot (highest shotNumber) on current hole
-5. **One Active Round:** Partial unique index on (user, status=in_progress)
+5. **One Active Round:** ~~Partial unique index on (user, status=in_progress)~~ — *the index shipped in Phase 1 and is tested in Phase 2. What remains here is the status code: an index violation surfaces as 400, where Django returns 409*
 6. **Play Modes:** 18-hole courses support full/front9/back9; 9-hole courses only full
+7. **Exact `hole_count`:** the schema bounds it 9–18; the rule is "9 or 18"
+8. **Course hole-set validity:** holes number exactly `hole_count`, unique, sequential from 1
+9. **Round mutable only while in progress:** shot and current-hole mutations reject with 409 once completed
+10. **Completion totals:** sum par and strokes into `total_par` / `total_strokes` / `relative_to_par`, set `status` and `finished_at`
+11. **Derived `total_par` on courses:** a Django property, not a column — compute per response
+
+Rules 7–11 were implicit in the original list; `pocketbase/ARCHITECTURE.md` carries the full split of schema-enforced vs. hook-enforced, and is the working reference for this phase.
+
+**API rules do not apply to hook code.** The Phase 2 access rules gate the generated endpoints and PocketBase's own request handlers. Anything going through `app.Save`, `app.Delete` or `RunInTransaction` writes as the application, so every invariant above still has to be enforced in the hook itself.
 
 #### Hook Packages to Create (under `pocketbase/internal/hooks/domain/`):
 - `courses` — course creation/update validation
@@ -109,23 +120,31 @@ GolfTrack is transitioning from Django + Django Ninja backend to Pocketbase. Thi
 - `scoring` — calculateRoundTotals logic (pure functions, unit-tested)
 
 #### Custom API Routes:
+- `POST /api/rounds/` — creation snapshots holes, so the generated create is not enough
+- `POST /api/rounds/{id}/holes/{n}/shots` — maintains the stroke cache
 - `POST /api/rounds/{id}/complete` — calculate totals, set status
 - `POST /api/rounds/{id}/cancel` — delete round
 - `PATCH /api/rounds/{id}/current-hole` — update current hole
 - `POST /api/rounds/{id}/holes/{n}/undo` — remove last shot
 - `PATCH/DELETE /api/rounds/{id}/holes/{n}/shots/{id}` — edit/delete shot
 
+Bind `apis.RequireAuth()` on these — it is what makes an anonymous call return 401 rather than the 200/404 the generated endpoints give.
+
 #### Deliverables:
-- All domain packages under `pocketbase/internal/hooks/domain/`
-- Custom route implementations (registered on the router in `OnServe`)
+- All domain packages under `pocketbase/internal/hooks/domain/`, each exposing `Register(app core.App)` and wired up from `internal/hooks.Register` (never as an import side effect)
+- Custom route implementations (registered on the router in `OnServe`), with failures written through `internal/hooks/errors.go`
 - Unit tests for scoring logic
+- Hook-behaviour tests extending the Phase 2 harness in `pocketbase/testapp_test.go` — note that each `tests.ApiScenario` needs its own app, which is why the fixture record ids are fixed strings
 
 #### Validation Gate:
 - [ ] All domain packages created and compiling (`go build ./...`)
 - [ ] Course lifecycle works end-to-end
 - [ ] Shot lifecycle: add → edit → delete with correct strokes/numbering
-- [ ] Concurrency tests pass (no race conditions)
+- [ ] Renumbering test covers the ordering explicitly
+- [ ] Concurrency tests pass — a rejected concurrent `add_shot`, not a duplicated shot number
 - [ ] Custom API routes functional
+- [ ] 409 returned where Django returns 409 (round already in progress, round already completed)
+- [ ] `make pb-test` green
 
 ---
 
@@ -135,20 +154,27 @@ GolfTrack is transitioning from Django + Django Ninja backend to Pocketbase. Thi
 
 #### Tasks:
 1. Configure Pocketbase OAuth providers (Google, Microsoft Entra ID)
-2. Extend Pocketbase user schema with `role` field
-3. Implement admin detection hook (check `ADMIN_EMAILS` env var)
-4. Create optional password-login toggle
-5. Update frontend to use Pocketbase auth
+2. ~~Extend Pocketbase user schema with `role` field~~ — *done in Phase 1; Phase 2 added the access rules over it*
+3. Implement admin detection (check `ADMIN_EMAILS` env var) via `OnRecordAuthWithOAuth2Request`
+4. Decide the password-login question — see below; this is a decision, not just a toggle
+5. Update frontend to use Pocketbase auth — coordinate with Phase 7, which owns frontend adaptation generally
+
+`pocketbase/internal/hooks/users.go` already defaults `users.role` to `USER` on create — the field default Django writes as `default=Role.USER`, needed because `role` is required and an OAuth2 sign-up supplies only email, name and avatar. This phase adds the *promotion* on top of it.
+
+Password login is not purely additive: Phase 2 set the `users` create rule to `@request.context = "oauth2"`, which closes the account-minting half of a privilege-escalation path. Enabling password *sign-up* means relaxing that rule while keeping `role` unsettable by the client; password *authentication* for an already-provisioned account is governed by `authRule` and needs no change. Either way `pocketbase/acl_test.go` has to be updated to match — `TestSignupIsOAuth2Only` asserts the current behaviour.
 
 #### Deliverables:
-- `pocketbase/internal/hooks/domain/auth` — OAuth and admin role assignment
-- Updated environment variables documentation
+- Admin role assignment in `pocketbase/internal/hooks/` (Go), registered from `hooks.Register`
+- Updated environment variables documentation (`ADMIN_EMAILS`, provider client ids/secrets)
 - Frontend auth integration
+- A recorded decision on password login, with `acl_test.go` matching it
 
 #### Validation Gate:
-- [ ] OAuth flow completes end-to-end
+- [ ] OAuth flow completes end-to-end for both providers
 - [ ] Users created/updated on successful OAuth
-- [ ] Admin role assigned correctly
+- [ ] A first-time sign-in lands with `role = USER` through the real OAuth path
+- [ ] Admin role assigned correctly from `ADMIN_EMAILS`, including a user who was already `USER` before their address was added
+- [ ] A non-admin still cannot self-assign `ADMIN` — `acl_test.go` still green
 - [ ] Frontend auth cookies validated
 
 ---
@@ -158,23 +184,26 @@ GolfTrack is transitioning from Django + Django Ninja backend to Pocketbase. Thi
 **Objective:** Validate all endpoints match Django contract
 
 #### Tasks:
-1. Document Pocketbase auto-generated endpoints and custom routes
-2. Create comprehensive API test suite (port Django tests)
+1. Document Pocketbase auto-generated endpoints and custom routes — `pocketbase/API.md` already does this; keep it current
+2. Port the Django API tests into the existing Go suite in `pocketbase/` (package `main`)
 3. Test filtering, pagination, sorting
-4. Verify ACL enforcement (users see own data only, admins see all)
+4. Verify ACL enforcement **on the custom routes** — the generated endpoints are already covered by `pocketbase/acl_test.go`, which tests all six collections as anonymous / user / other user / admin / superuser. The custom routes enforce ownership in hook code instead, and are untested until this phase
 5. Validate error responses (200/201/400/401/403/404/409)
 
+`API.md` records seven parity gaps, and closing or consciously deferring each of them is the substance of "response bodies match Django contract": camelCase field naming, unset numbers returning `0`/`""` instead of `null`, 15-character string ids vs. integers, relations as ids plus `expand` rather than inline objects, error body shape, 400 instead of 409 on constraint violations, and — new in Phase 2 — anonymous callers getting 200/404/400 where Django returns 401/403.
+
 #### Deliverables:
-- Go test suite (`go test ./...` plus PocketBase's `tests` package for full-app tests)
-- `pocketbase/api_contract.md` — all endpoints documented
+- Parity tests added to the existing Go suite in `pocketbase/` (`go test ./...`, using PocketBase's `tests` package for full-app tests)
+- `pocketbase/API.md` updated — each gap marked resolved, or carried forward with the decision recorded
 - Performance baseline vs. Django
 
 #### Validation Gate:
 - [ ] All endpoints accessible and return expected status codes
-- [ ] Response bodies match Django contract
-- [ ] ACL enforcement tested
+- [ ] Response bodies match Django contract, or the deviation is recorded in `API.md` with a decision
+- [ ] ACL enforcement tested on the custom routes
 - [ ] Pagination/filtering working
-- [ ] Error responses correct
+- [ ] Error responses correct, including 409 and the anonymous-caller codes
+- [ ] `make pb-test` green
 
 ---
 
