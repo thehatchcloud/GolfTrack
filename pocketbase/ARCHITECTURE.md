@@ -112,7 +112,7 @@ Where each rule ended up:
 |---|---|---|
 | Course snapshotting | `rounds` | `POST /api/rounds/` |
 | Play-mode validity | `rounds` | `POST /api/rounds/` |
-| Course hole-set validity | `courses` + `rounds` | per record on write; as a set at round creation |
+| Course hole-set validity | `courses` + `rounds` | per record on write; as a whole payload on `POST`/`PUT /api/courses`; as a set at round creation |
 | Exact `hole_count` | `courses` | `OnRecordCreate` / `OnRecordUpdate` |
 | Stroke cache | `shots` → `roundholes` | `OnRecordCreate` / `OnRecordDelete` on `shots` |
 | Shot renumbering | `shots` | `OnRecordDelete` on `shots` |
@@ -268,6 +268,15 @@ application — so every handler resolves its round through
 `records.FindRound(app, id, userID)`, which collapses ownership into the lookup
 the way Django's `.get(pk=..., user=user)` does: another player's round is *not
 found*, never *forbidden*.
+
+Course administration is the one place where a *role* decides the answer rather
+than ownership. `POST /api/courses/` and `PUT /api/courses/{id}` (Phase 7B,
+`courses/write.go`) add `requireAdmin` on top of `apis.RequireAuth()`, porting
+`core/api_auth.py`'s `require_admin`: `role = ADMIN`, or a PocketBase superuser,
+and otherwise `403 {"error": "Forbidden"}`. Both run `CourseIn`'s validators
+before opening their transaction, so a course and its holes commit together or
+not at all — the invariant `courses.ValidateHoleSet` would otherwise only catch
+at the next round creation.
 
 Handlers return errors rather than writing them; `apierr.Handler` turns an
 `*apierr.Error` into `{"error": "<message>"}` with its status, and anything else

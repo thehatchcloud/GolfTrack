@@ -308,6 +308,8 @@ bound to a record hook rather than to a route.
 |---|---|---|
 | `GET` | `/api/courses` | list courses, camelCase `CourseOut` shape, holes nested inline |
 | `GET` | `/api/courses/{id}` | a single course, same shape |
+| `POST` | `/api/courses/` | create a course and its whole hole set in one transaction (admin) |
+| `PUT` | `/api/courses/{id}` | rename, resize and reconcile the hole set in one transaction (admin) |
 | `POST` | `/api/rounds/` | create a round, snapshotting the course's holes by play mode |
 | `GET` | `/api/rounds/` | list completed rounds, camelCase `RoundOut` shape |
 | `GET` | `/api/rounds/in-progress` | the caller's in-progress round (camelCase `RoundDetailOut`) or `null` |
@@ -326,6 +328,15 @@ from the current API — a generated endpoint would answer `200` with an empty
 list, because a list rule filters rather than gates. The two `/api/courses`
 read routes are unauthenticated, matching the current API's course endpoints.
 
+The two course *write* routes go one step further and require `role = ADMIN`,
+the way `courses/api.py` opens `create` and `update` with `require_admin` — a
+signed-in player gets `403 {"error": "Forbidden"}`. A PocketBase superuser
+passes: it already bypasses the collection rules the generated endpoints
+enforce, so refusing it on the custom route would make the custom route the
+stricter path for no reason an operator would expect. Round routes have no such
+branch — "admin" here means course administration, never impersonation, and
+`parity_test.go` keeps it that way.
+
 These paths, their request/response field names (`courseId`, `playMode`, `club`,
 `note`, `currentHole`, `holeCount`, `isArchived`, `totalStrokes`,
 `relativeToPar`) and their status codes are the current contract's, so the
@@ -341,6 +352,9 @@ returns — both are recorded in `API.md` for Phase 6 (#127).
 | Situation | Response |
 |---|---|
 | No auth | `401` |
+| Creating or editing a course as a non-admin | `403 {"error": "Forbidden"}` |
+| Editing a course that does not exist | `404 {"error": "Course not found"}` |
+| A course payload the `CourseIn` rules reject | `400` with the Django message, and nothing written |
 | A round or hole belonging to someone else | `404` — ownership collapses into the lookup, as it does in Django |
 | A round already in progress | `409 {"error": "A round is already in progress"}` |
 | A round already completed | `409 {"error": "Round is already completed"}` |
@@ -446,6 +460,21 @@ See `AUTH.md` § "For the frontend" for the auth-token-storage decision this
 phase made — a cookie, not `localStorage` — which Phase 7B implements and
 validates.
 
+The Phase 7B backend dependency:
+
+| Gate item | How |
+|---|---|
+| A course and its holes are created in one request, atomically | `POST /api/courses/` — `courses.Create`, one `RunInTransaction`; `TestCreateCourseRouteCreatesCourseAndItsHoles` |
+| A course edit reconciles the hole set in one request, atomically | `PUT /api/courses/{id}` — `courses.Update`; `TestUpdateCourseKeepsTheHoleRecordsItCanReuse`, `TestUpdateCourseGrowsTheHoleSet`, `TestUpdateCourseShrinksTheHoleSet` |
+| Both refuse a non-admin | `TestCreateCourseRouteIsAdminOnly`, `TestUpdateCourseRouteIsAdminOnly` — 401 anonymous, 403 signed-in player, superuser through |
+| A rejected payload leaves no partial course behind | `TestCreateCourseRouteRejectsInvalidPayloads`, `TestUpdateCourseRouteRejectsInvalidPayloads` — every case re-counts the courses and holes afterwards |
+| The courses workflow is drivable end to end | `TestFrontendWorkflowCourseAdmin` — create, list, edit, refuse a player, archive out of the list |
+
+This is the piece Phase 7B needs *before* pages: a course form that saved a name
+and eighteen pars through generated CRUD would issue 19 non-atomic requests. The
+pages themselves — `internal/web/`, the templates, the asset pipeline, the auth
+cookie — are still ahead.
+
 The Phase 4 (#125) gate:
 
 | Gate item | How |
@@ -498,6 +527,9 @@ that could drift from it.
 | `schema_test.go` | unique indexes, field bounds and enums, cascade and restrict deletes, the `role` default |
 | `domain_test.go` | the business rules — snapshotting, the stroke cache, renumbering, totals, cancellation |
 | `routes_test.go` | the custom routes end to end, including their 401s, 404s and 409s |
+| `read_routes_test.go` | the Phase 7A read routes: camelCase, nested relations, `null` totals |
+| `course_write_routes_test.go` | `POST`/`PUT /api/courses`: admin gating, `CourseIn` validation, hole reconciliation, and that a rejected payload writes nothing |
+| `frontend_workflow_test.go` | each frontend workflow as the request sequence a browser client would make |
 | `parity_test.go` | parity with the Django contract: ownership on the custom routes, pagination/filtering/sorting, the status codes, and a characterisation test per gap in `API.md` |
 | `bench_test.go` | the performance baseline — benchmarks, so `go test ./...` skips them |
 | `concurrency_test.go` | two writers on one hole, one player starting two rounds, delete racing delete |

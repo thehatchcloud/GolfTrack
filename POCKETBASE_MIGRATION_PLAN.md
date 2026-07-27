@@ -280,7 +280,10 @@ Phase 3 closed three of those *on the custom routes it built* — camelCase, the
 
 #### Workflows to Cover:
 - Home page (resume in-progress round or list completed)
-- Courses list/create/edit/delete
+- Courses list/create/edit/delete — *list covered here; create/edit had no route
+  until Phase 7B built the course write routes, and are covered from there by
+  `TestFrontendWorkflowCourseAdmin`. "Delete" is archive: the contract has no
+  course delete*
 - Start round (pick course, play mode)
 - Play round (add/undo/edit/delete shots)
 - Complete round (calculate totals)
@@ -347,21 +350,36 @@ Next.js (Decision #2's other branch) needs a Node server alongside the binary,
 or a static export that gives up SSR — either way it works against the
 single-container model.
 
-#### Backend dependency — course writes have no route yet
+#### Backend dependency — course writes — **built**
 
-`API.md` § "Mapping to the current contract" still maps `POST /api/courses/` to
+`API.md` § "Mapping to the current contract" mapped `POST /api/courses/` to
 "`POST /api/collections/courses/records` + N hole creates" and
 `PUT /api/courses/{id}` to "`PATCH` + hole reconciliation". A course form that
 saved a name and eighteen pars through the generated endpoints would issue 19
 non-atomic requests and could leave a course with a partial hole set — which
-Phase 3 rule 8 then rejects at round creation. This phase needs the two custom
-write routes built first, in the shape Phase 3 established:
+Phase 3 rule 8 then rejects at round creation, one request removed from the edit
+that broke it. This phase needed the two custom write routes first, in the shape
+Phase 3 established:
 
-- `POST /api/courses/` — create course and holes in one transaction
-- `PUT /api/courses/{id}` — update course and reconcile the hole set in one transaction
+- [x] `POST /api/courses/` — create course and holes in one transaction
+- [x] `PUT /api/courses/{id}` — update course and reconcile the hole set in one transaction
+
+Both are admin-only (`courses/api.py` opens create and update with
+`require_admin`): 401 anonymous, 403 for a signed-in player, and a PocketBase
+superuser through, since it already bypasses the collection rules the generated
+endpoints enforce. `CourseIn`'s validators are ported message for message and
+run *before* the transaction opens, so a rejected payload writes nothing.
+`PUT` reconciles rather than replaces — a hole still in the payload keeps its
+record and its id, a hole absent from it is deleted, as `update_course` does.
 
 Archive/unarchive stay on the generated `PATCH` (single field, already
-admin-gated by the Phase 2 rules).
+admin-gated by the Phase 2 rules); there is no course *delete* in the contract.
+
+Delivered with `pocketbase/internal/hooks/domain/courses/write.go`,
+`pocketbase/course_write_routes_test.go`, and a courses leg added to
+`pocketbase/frontend_workflow_test.go` — which also closes the one Phase 7A
+workflow ("Courses list/create/edit/delete") that had no route to walk. See
+`pocketbase/README.md` § "The Phase 7B backend dependency".
 
 #### Page Routes to Rebuild:
 
@@ -391,7 +409,7 @@ admin-gated by the Phase 2 rules).
 - `pocketbase/internal/web/templates/` — ported layouts and pages (`go:embed`)
 - `pocketbase/internal/web/static/` — Tailwind output, vendored Alpine/htmx, icons, manifest (`go:embed`)
 - `pocketbase/internal/web/auth.go` — cookie read/write implementing the `AUTH.md` contract
-- Custom course write routes (see "Backend dependency" above), with `API.md` updated
+- [x] Custom course write routes (see "Backend dependency" above), with `API.md` updated
 - `pocketbase/web_test.go` — page-route tests: status codes, signed-out redirects, admin gating
 - `pocketbase/README.md` § "Frontend" — layout, how to run it, how the asset build works
 
