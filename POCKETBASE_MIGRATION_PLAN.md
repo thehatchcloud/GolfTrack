@@ -10,13 +10,21 @@ GolfTrack is transitioning from Django + Django Ninja backend to Pocketbase. Thi
 - Maintain SQLite as the database (leveraging Pocketbase's native support)
 - Preserve Litestream S3 replication for production resilience
 - Migrate data in-place (no "clean slate")
-- Keep the frontend unchanged initially (HTMX/Alpine.js or Next.js against new API)
+- ~~Keep the frontend unchanged initially (HTMX/Alpine.js or Next.js against new API)~~ — *the frontend cannot be kept unchanged: it is Django server-rendered (`rounds/views.py`, `courses/views.py` and eleven Django templates), and PocketBase serves an API and static assets rather than rendering Django templates. The UI is rewritten as a PocketBase-native frontend in Phase 7B, preserving behaviour rather than code.*
 
-**Timeline: 12-17 weeks (3-4 months)** for full production migration
+**Timeline: 15-21 weeks (4-5 months)** for full production migration
 
 ---
 
 ## Phase Breakdown
+
+> **On the 7A/7B lettering:** the frontend rewrite was added after Phases 1-5
+> shipped, and phase numbers are load-bearing here — they are cited throughout
+> `pocketbase/*.md`, in test comments, and against issue numbers (#128 is
+> "Phase 7", #130 is "Phase 9"). Renumbering 7-11 would invalidate all of that
+> for no gain, so the new work is lettered into Phase 7 instead: **7A** is the
+> API adaptation delivered in #128, **7B** is the rewrite. Phases 8-11 keep
+> their numbers.
 
 ### PHASE 1: Foundation & Design (1-2 weeks)
 
@@ -169,7 +177,7 @@ separate records and that is the first point the set is read as a whole.*
 2. ~~Extend Pocketbase user schema with `role` field~~ — *done in Phase 1; Phase 2 added the access rules over it*
 3. [x] Implement admin detection (check `ADMIN_EMAILS` env var) via `OnRecordAuthWithOAuth2Request` — `pocketbase/internal/hooks/adminrole.go`
 4. [x] Decide the password-login question — decided; see below
-5. [~] Update frontend to use Pocketbase auth — the auth slice is specified in `pocketbase/AUTH.md`; the frontend itself is Phase 7 (#128), which owns the adaptation
+5. [~] Update frontend to use Pocketbase auth — the auth slice is specified in `pocketbase/AUTH.md`; Phase 7A (#128) made the token-storage decision, and Phase 7B builds the sign-in/sign-out pages and the cookie handling against it
 
 `pocketbase/internal/hooks/users.go` already defaults `users.role` to `USER` on create — the field default Django writes as `default=Role.USER`, needed because `role` is required and an OAuth2 sign-up supplies only email, name and avatar. This phase adds the *promotion* on top of it.
 
@@ -180,7 +188,7 @@ Password login is not purely additive: Phase 2 set the `users` create rule to `@
 #### Deliverables:
 - [x] Admin role assignment in `pocketbase/internal/hooks/` (Go), registered from `hooks.Register`
 - [x] Updated environment variables documentation (`ADMIN_EMAILS`, provider client ids/secrets) — `pocketbase/AUTH.md`, summarised in `pocketbase/README.md`
-- [~] Frontend auth integration — the contract and the token-storage trade-off, for Phase 7 to build against
+- [~] Frontend auth integration — the contract and the token-storage trade-off, for Phase 7B to build against
 - [x] A recorded decision on password login, with `acl_test.go` matching it
 
 #### Validation Gate:
@@ -189,7 +197,7 @@ Password login is not purely additive: Phase 2 set the `users` create rule to `@
 - [x] A first-time sign-in lands with `role = USER` through the real OAuth path
 - [x] Admin role assigned correctly from `ADMIN_EMAILS`, including a user who was already `USER` before their address was added
 - [x] A non-admin still cannot self-assign `ADMIN` — `acl_test.go` still green
-- [ ] Frontend auth cookies validated — deferred to Phase 7 (#128); PocketBase's session is a token the client holds, so where it lives is a frontend decision
+- [ ] Frontend auth cookies validated — PocketBase's session is a token the client holds, so where it lives is a frontend decision. Phase 7A (#128) decided *where* (a `Secure`, `SameSite=Lax`, non-`HttpOnly` cookie); **validating it needs a frontend, so this closes in Phase 7B**
 
 *Delivered in #125. Two deviations from this section, both recorded in
 `pocketbase/README.md` § "Deviations": the OAuth providers are applied from the
@@ -259,17 +267,18 @@ Phase 3 closed three of those *on the custom routes it built* — camelCase, the
 
 ---
 
-### PHASE 7: Frontend API Adaptation (1-2 weeks)
+### PHASE 7A: Frontend API Adaptation (1-2 weeks)
 
-**Objective:** Update frontend to work with Pocketbase API
+**Objective:** Make the API serve the exact response shapes a GolfTrack frontend renders
 
 #### Tasks:
-1. [~] Update API client library to use Pocketbase auth cookies/tokens — token-storage decision still open, see `pocketbase/AUTH.md` § "For the frontend"
-2. [~] Adjust API endpoint calls for Pocketbase format — the read-side format gap (camelCase, null totals, nested relations) is closed with new custom routes: `GET /api/courses`, `/api/courses/{id}`, `/api/rounds`, `/api/rounds/in-progress`, `/api/rounds/{id}`, pinned by `pocketbase/read_routes_test.go` and recorded in `pocketbase/API.md` § "Parity gaps" (gaps 1, 2, 4)
-3. [ ] Test all frontend workflows end-to-end
-4. [ ] Verify CSS/Tailwind styling
+1. [~] Update API client library to use Pocketbase auth cookies/tokens — token-storage decision made in #128: a cookie, not `localStorage`; see `pocketbase/AUTH.md` § "For the frontend"
+2. [x] Adjust API endpoint calls for Pocketbase format — the read-side format gap (camelCase, null totals, nested relations) is closed with new custom routes: `GET /api/courses`, `/api/courses/{id}`, `/api/rounds`, `/api/rounds/in-progress`, `/api/rounds/{id}`, pinned by `pocketbase/read_routes_test.go` and recorded in `pocketbase/API.md` § "Parity gaps" (gaps 1, 2, 4)
+3. [x] Exercise every workflow below at the HTTP level, as the automated stand-in for a browser pass — `pocketbase/frontend_workflow_test.go`
+4. [→] Test all frontend workflows in a browser — **moved to Phase 7B**, which builds the browser client
+5. [→] Verify CSS/Tailwind styling — **moved to Phase 7B**
 
-#### Workflows to Test:
+#### Workflows to Cover:
 - Home page (resume in-progress round or list completed)
 - Courses list/create/edit/delete
 - Start round (pick course, play mode)
@@ -279,15 +288,124 @@ Phase 3 closed three of those *on the custom routes it built* — camelCase, the
 - Review completed rounds
 
 #### Validation Gate:
-- [ ] All page routes load
-- [ ] All API calls successful
-- [ ] Round creation and play flow works
-- [ ] No JavaScript console errors
-- [ ] Styling looks correct
+- [x] All API calls successful — every route above covered by HTTP-level tests
+- [x] Round creation and play flow works — `routes_test.go`, `frontend_workflow_test.go`
+- [x] Response shapes match what each page renders — `read_routes_test.go`
+- [→] All page routes load — **moved to Phase 7B**; there are no PocketBase page routes to load yet
+- [→] No JavaScript console errors — **moved to Phase 7B**
+- [→] Styling looks correct — **moved to Phase 7B**
 
-*In progress (#128). The backend half — custom read routes returning the exact
+*Delivered in #128. The backend half — custom read routes returning the exact
 shapes the frontend contract expects — is delivered and tested; see
-`pocketbase/README.md` § "The Phase 7 (#128) gate" for the item-by-item status.*
+`pocketbase/README.md` § "The Phase 7A (#128) gate" for the item-by-item status.
+The three gate items marked → were written against a frontend that does not
+exist on PocketBase; they are the Phase 7B gate now.*
+
+---
+
+### PHASE 7B: Frontend Rewrite (3-4 weeks)
+
+**Objective:** Rebuild the GolfTrack UI as a PocketBase-native frontend that preserves every current behaviour
+
+#### Why this phase exists
+
+Phase 7A adapts *API calls*. It cannot adapt the pages, because the pages are
+not a client that can be re-pointed — they are Django server-rendering:
+`rounds/views.py` and `courses/views.py` render eleven Django templates, with
+Alpine.js islands calling `fetch()` against markup Django has already produced
+(`rounds/templates/rounds/play.html` bootstraps from a Django-rendered
+`<script id="round-init">` blob), and django-allauth rendering the sign-in and
+sign-out pages. PocketBase serves an API and static assets; it does not render
+Django templates. Every page route, the template rendering, the per-page context,
+the auth pages and the asset pipeline therefore have to be rebuilt, and no other
+phase owns that work — Phase 11 in fact *deletes* it.
+
+#### Framework decision — resolves Key Architectural Decision #2
+
+**Server-rendered Go `html/template` pages inside the PocketBase binary, keeping
+Alpine.js islands and Tailwind; PocketBase JS SDK for client-side auth and
+writes.** Rationale:
+
+- **It matches the token decision already made.** `AUTH.md` § "For the frontend"
+  (#128) chose a cookie over `localStorage` precisely so "the server [is] able to
+  gate a page render before any JavaScript runs". A pure client-side SPA has no
+  server render to gate, so choosing one would reopen that decision.
+- **It preserves the single-binary deployment** that motivated the migration
+  (Decision #1, and the Phase 9 container). PocketBase's Go API supports this
+  directly — `template.NewRegistry()` for rendering, `apis.Static` for assets,
+  both served by the same process on the same origin, so there is no CORS
+  surface and no second server.
+- **It preserves the existing markup and behaviour.** Django templates and Go
+  `html/template` are close enough that porting is largely mechanical, so the
+  Alpine islands, the Tailwind classes and the mobile-first layout survive the
+  move rather than being redesigned mid-migration.
+
+*Alternatives rejected:* a static SPA in `pb_public` (Svelte/React) is the more
+common PocketBase pattern and remains viable later, but it discards the existing
+markup, adds a JS build toolchain, and contradicts the #128 cookie rationale.
+Next.js (Decision #2's other branch) needs a Node server alongside the binary,
+or a static export that gives up SSR — either way it works against the
+single-container model.
+
+#### Backend dependency — course writes have no route yet
+
+`API.md` § "Mapping to the current contract" still maps `POST /api/courses/` to
+"`POST /api/collections/courses/records` + N hole creates" and
+`PUT /api/courses/{id}` to "`PATCH` + hole reconciliation". A course form that
+saved a name and eighteen pars through the generated endpoints would issue 19
+non-atomic requests and could leave a course with a partial hole set — which
+Phase 3 rule 8 then rejects at round creation. This phase needs the two custom
+write routes built first, in the shape Phase 3 established:
+
+- `POST /api/courses/` — create course and holes in one transaction
+- `PUT /api/courses/{id}` — update course and reconcile the hole set in one transaction
+
+Archive/unarchive stay on the generated `PATCH` (single field, already
+admin-gated by the Phase 2 rules).
+
+#### Page Routes to Rebuild:
+
+| Current (Django) | Notes |
+|---|---|
+| `/` | home — resume in-progress round or list completed |
+| `/courses/` | list |
+| `/courses/new/`, `/courses/{id}/edit/` | admin-only; the Django form POST becomes an API call against the new course write routes |
+| `/courses/{id}/` | detail |
+| `/courses/archived/` | admin-only |
+| `/courses/{id}/archive/`, `/courses/{id}/unarchive/` | admin-only POST actions |
+| `/rounds/`, `/rounds/new/` | list, start-round form |
+| `/rounds/{id}/`, `/rounds/{id}/play/`, `/rounds/{id}/review/` | detail, live play, review |
+| `/accounts/login/`, `/accounts/logout/` | allauth pages replaced by our own, driven by `GET /api/collections/users/auth-methods` (which providers to render, whether to show a password form) |
+
+#### Cross-cutting Work:
+1. **Base layout and navigation** — port `templates/base.html`, including the auth-aware nav and admin-only links (`record.role == "ADMIN"`, advisory in the UI only; the server rules are the enforcement)
+2. **Auth cookie handling** — write the SDK's `authStore` to the cookie per the #128 decision, read it server-side to gate a render, refresh via `POST /api/collections/users/auth-refresh`; sign-out discards the token
+3. **Drop CSRF plumbing** — the `<meta name="csrf-token">` and its uses have no PocketBase equivalent; auth is a bearer token
+4. **Vendor Alpine.js and htmx** — `base.html` loads both from unpkg under a Django CSP nonce. PocketBase emits no such nonce, and a PWA should not depend on a CDN at run time; serve them from the embedded static FS
+5. **Asset pipeline** — retarget the Tailwind build (`bin/build-css.sh`, `make css`) at the new template tree and output into the embedded static FS
+6. **PWA** — `manifest.webmanifest`, the icon set, `apple-touch-icon`, `theme-color`; `start_url` and icon paths change with the static mount point
+7. **Error and not-found pages** — 404 and the admin-only 403, currently Django's
+
+#### Deliverables:
+- `pocketbase/internal/web/` — page-route registration on `OnServe`, template registry, per-page handlers
+- `pocketbase/internal/web/templates/` — ported layouts and pages (`go:embed`)
+- `pocketbase/internal/web/static/` — Tailwind output, vendored Alpine/htmx, icons, manifest (`go:embed`)
+- `pocketbase/internal/web/auth.go` — cookie read/write implementing the `AUTH.md` contract
+- Custom course write routes (see "Backend dependency" above), with `API.md` updated
+- `pocketbase/web_test.go` — page-route tests: status codes, signed-out redirects, admin gating
+- `pocketbase/README.md` § "Frontend" — layout, how to run it, how the asset build works
+
+#### Validation Gate:
+- [ ] Every page route in the table above loads for a signed-in user
+- [ ] A signed-out visitor is redirected to sign-in from each gated page (Django's `@login_required_view`)
+- [ ] Admin-only pages and actions refuse a non-admin (Django's `@admin_required`)
+- [ ] Sign-in works through both OAuth providers, and sign-out discards the token
+- [ ] Frontend auth cookie validated — closes the item deferred from Phase 4 (#125)
+- [ ] All seven Phase 7A workflows pass in a real browser, not just at HTTP level
+- [ ] No JavaScript console errors
+- [ ] Styling matches the current app; PWA still installable and icons served
+- [ ] No run-time requests to any external CDN
+- [ ] `make pb-test` green
 
 ---
 
@@ -336,7 +454,7 @@ shapes the frontend contract expects — is delivered and tested; see
 - [ ] Container starts and serves API
 - [ ] Litestream replicates without errors
 - [ ] Health check passes
-- [ ] Static assets served correctly
+- [ ] Static assets served correctly — the Phase 7B embedded asset FS (Tailwind output, vendored Alpine/htmx, icons, manifest), not Django's `collectstatic`/WhiteNoise output
 
 ---
 
@@ -376,11 +494,12 @@ shapes the frontend contract expects — is delivered and tested; see
 **Objective:** Remove Django code and finalize the migration
 
 #### Tasks:
-1. Remove Django code (`config/`, `accounts/`, `courses/`, `rounds/`)
-2. Remove Next.js legacy code (`app/`, `components/`, `lib/`, `prisma/`)
-3. Reorganize repository structure
-4. Update documentation (README, DEPLOYMENT.md, delete DJANGO.md)
-5. Archive historical branches
+1. Remove Django code (`config/`, `accounts/`, `core/`, `courses/`, `rounds/`, `manage.py`, `conftest.py`, `pyproject.toml`)
+2. Remove the Django frontend that Phase 7B replaced — root `templates/`, and the parts of `static/` now embedded in the binary (`static/js/round-play.js`, `static/src/input.css`, the compiled `static/css/app.css`, and the icons/manifest once they live under `pocketbase/internal/web/static/`). *This was previously implicit: `courses/` and `rounds/` contain `views.py` and `templates/`, so step 1 deletes the UI, and the root `templates/`+`static/` trees were not listed at all.*
+3. Remove Next.js legacy code (`app/`, `components/`, `lib/`, `prisma/`)
+4. Reorganize repository structure
+5. Update documentation (README, DEPLOYMENT.md, delete DJANGO.md)
+6. Archive historical branches
 
 #### Deliverables:
 - Cleaned repository structure
@@ -389,6 +508,7 @@ shapes the frontend contract expects — is delivered and tested; see
 
 #### Validation Gate:
 - [ ] Django code removed
+- [ ] Django templates and superseded static assets removed; no page or asset the app still serves lives outside `pocketbase/`
 - [ ] Next.js code removed
 - [ ] Documentation updated
 - [ ] Prod still functioning
@@ -406,7 +526,9 @@ shapes the frontend contract expects — is delivered and tested; see
 | OAuth provider misconfiguration | Medium | Test with real credentials in staging, documented runbooks |
 | Concurrent shot edits (race condition) | Medium | IMMEDIATE transaction mode, concurrency tests, Pocketbase DB locking |
 | Litestream replication issues | Medium | Test restore flow, S3 bucket backups, monitor replication lag |
-| Breaking frontend changes | Medium | Comprehensive Phase 7 testing, no format changes unless documented |
+| Breaking frontend changes | Medium | Phase 7A pins the response shapes with tests and documents every deviation in `API.md`; Phase 7B rebuilds against those shapes and gates on a browser pass of all seven workflows |
+| Frontend rewrite regresses behaviour the tests do not describe | Medium | Port page-for-page from the Django templates rather than redesigning; keep Alpine/Tailwind so markup and styling carry over; `web_test.go` covers page routes, auth redirects and admin gating |
+| Phase 7B slips and blocks the cutover | Medium | It is the only phase with no shipped predecessor to lean on. Build the course write routes first (they are backend work with existing test patterns), then port pages in dependency order — layout, auth, courses, rounds — so a slip costs pages rather than the whole phase |
 | Deployment/container issues | Low | Docker best practices, health checks, CI/CD validation |
 
 ---
@@ -420,7 +542,7 @@ shapes the frontend contract expects — is delivered and tested; see
 - [ ] Backup of current Django database
 
 ### Pre-Production (Before Phase 10)
-- [ ] All phases 1-9 complete and tested
+- [ ] All phases 1-9 complete and tested, 7B included — the cutover has no UI without it
 - [ ] Performance benchmarks acceptable
 - [ ] Data migration validated on staging
 - [ ] Rollback plan documented and tested
@@ -454,7 +576,7 @@ shapes the frontend contract expects — is delivered and tested; see
 6. `pocketbase/main.go` — Custom API routes and Litestream integration
 7. `Dockerfile` — Pocketbase container with Litestream
 8. `migration/import.js` — Data migration from Django to Pocketbase
-9. `templates/base.html` — Frontend updated for Pocketbase auth/API
+9. `pocketbase/internal/web/` — the rewritten frontend: page routes, templates, embedded static assets and the auth-cookie handling (Phase 7B). *Previously listed as `templates/base.html`, a Django template PocketBase cannot render.*
 10. `.github/workflows/deploy.yml` — CI/CD pipeline for Pocketbase
 
 ---
@@ -462,7 +584,7 @@ shapes the frontend contract expects — is delivered and tested; see
 ## Key Architectural Decisions
 
 1. **Hook Language:** Go from the start — PocketBase as a Go framework, one portable binary embedding server, schema and hooks. *(Revised during #122 review; the original decision was JavaScript hooks for Phase 3-8 with a possible later Go migration.)*
-2. **Frontend Framework:** Keep HTMX + Alpine.js (lightweight), or revert to Next.js (separate concern)
+2. **Frontend Framework:** Server-rendered Go `html/template` pages inside the PocketBase binary, keeping Alpine.js islands and Tailwind, with the PocketBase JS SDK for client-side auth and writes. *(Resolved in Phase 7B; the original entry — "Keep HTMX + Alpine.js, or revert to Next.js (separate concern)" — was an open either/or, and treating the frontend as a separate concern is what left the rewrite unowned. Rationale and rejected alternatives are in Phase 7B.)*
 3. **Data Migration:** In-place migration (preserves history), not "clean slate"
 4. **Deployment Model:** Single container, SQLite + Litestream (same as Django)
 5. **Zero-Downtime Strategy:** Dual-stack period recommended to minimize risk
@@ -479,13 +601,15 @@ shapes the frontend contract expects — is delivered and tested; see
 | 4. Auth | 1-2 weeks | OAuth integration + admin assignment |
 | 5. API Testing | 1-2 weeks | Full endpoint validation |
 | 6. Data Migration | 1 week | Django → Pocketbase data transfer |
-| 7. Frontend | 1-2 weeks | API adaptation and testing |
+| 7A. Frontend API | 1-2 weeks | API adaptation and read-route parity |
+| 7B. Frontend Rewrite | 3-4 weeks | PocketBase-native UI replacing the Django templates |
 | 8. Performance | 1 week | Load testing and optimization |
 | 9. Docker/Deploy | 1-2 weeks | Container setup and rollout prep |
 | 10. CI/CD & Rollout | 1-2 weeks | Production deployment |
 | 11. Cleanup | 1 week | Remove Django/Next.js code |
 
-**Total: 12-17 weeks (3-4 months)**
+**Total: 15-21 weeks (4-5 months)** — 3-4 weeks more than the original estimate,
+which carried no frontend rewrite.
 
 ---
 
