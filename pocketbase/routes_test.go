@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
@@ -66,8 +67,22 @@ func newPlayFixture(t testing.TB) *playFixture {
 	seedCourse(t, app, idPlayCourse9, "Nine Acres", 9, 3)
 
 	// A completed round first: the partial unique index only counts
-	// in-progress rounds, so the owner can hold both.
-	done := createRound(t, app, idDoneRound, f.owner, course, collections.RoundStatusCompleted)
+	// in-progress rounds, so the owner can hold both. Its totals are set at
+	// creation, the way rounds.Complete would leave them, rather than by a
+	// later update — the "round is already completed" hook
+	// (registerCompletedRoundIsImmutable) blocks exactly that second save.
+	done := saveAs(t, app, newRecord(t, app, collections.NameRounds, idDoneRound, map[string]any{
+		"user":            f.owner.Id,
+		"course":          course.Id,
+		"status":          collections.RoundStatusCompleted,
+		"play_mode":       collections.PlayModeFull,
+		"started_at":      time.Now().UTC(),
+		"finished_at":     time.Now().UTC(),
+		"current_hole":    1,
+		"total_strokes":   4,
+		"total_par":       4,
+		"relative_to_par": 0,
+	}))
 	createRoundHole(t, app, idDoneHole, done, 1, 4)
 
 	round := createRound(t, app, idPlayRound, f.owner, course, collections.RoundStatusInProgress)
@@ -136,6 +151,9 @@ func TestCustomRoutesRequireAuth(t *testing.T) {
 		{http.MethodPost, "/api/rounds/" + idPlayRound + "/holes/1/undo"},
 		{http.MethodPatch, "/api/rounds/" + idPlayRound + "/holes/3/shots/" + idPlayShot1},
 		{http.MethodDelete, "/api/rounds/" + idPlayRound + "/holes/3/shots/" + idPlayShot1},
+		{http.MethodGet, "/api/rounds/"},
+		{http.MethodGet, "/api/rounds/in-progress"},
+		{http.MethodGet, "/api/rounds/" + idPlayRound},
 	} {
 		runPlay(t, nil, tests.ApiScenario{
 			Name:            "anonymous " + tc.method + " " + tc.url,

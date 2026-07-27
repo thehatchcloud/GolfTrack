@@ -1,13 +1,16 @@
 package rounds
 
 import (
+	"fmt"
 	"net/http"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 
 	"github.com/thehatchcloud/golftrack/pocketbase/internal/apierr"
 	"github.com/thehatchcloud/golftrack/pocketbase/internal/collections"
+	"github.com/thehatchcloud/golftrack/pocketbase/internal/records"
 )
 
 // The round routes PocketBase's generated CRUD cannot cover, because each one
@@ -30,6 +33,19 @@ func registerRoutes(app core.App) {
 		se.Router.POST("/api/rounds/{id}/complete", apierr.Handler(complete)).Bind(apis.RequireAuth())
 		se.Router.POST("/api/rounds/{id}/cancel", apierr.Handler(cancel)).Bind(apis.RequireAuth())
 		se.Router.PATCH("/api/rounds/{id}/current-hole", apierr.Handler(patchCurrentHole)).Bind(apis.RequireAuth())
+
+		// The read routes (Phase 7, #128): the generated CRUD reaches every
+		// round already, but only in the shape gaps 1/2/4 describe. `GET
+		// /api/rounds/in-progress` also has no generated equivalent at all —
+		// it is "the one in-progress round", not a record by id.
+		//
+		// `/api/rounds/in-progress` is a literal path segment, so Go's
+		// ServeMux (which this router is built on) matches it in preference to
+		// the `{id}` wildcard below regardless of registration order.
+		se.Router.GET("/api/rounds", apierr.Handler(list)).Bind(apis.RequireAuth())
+		se.Router.GET("/api/rounds/{$}", apierr.Handler(list)).Bind(apis.RequireAuth())
+		se.Router.GET("/api/rounds/in-progress", apierr.Handler(inProgress)).Bind(apis.RequireAuth())
+		se.Router.GET("/api/rounds/{id}", apierr.Handler(detail)).Bind(apis.RequireAuth())
 
 		return se.Next()
 	})
@@ -100,4 +116,69 @@ func patchCurrentHole(e *core.RequestEvent) error {
 		"id":          round.Id,
 		"currentHole": round.GetInt(collections.FieldCurrentHole),
 	})
+}
+
+// GET /api/rounds/ — Django `list_completed`, response list[RoundOut]: the
+// caller's completed rounds, most recently finished first, capped at 20 —
+// `list_completed_rounds`'s defaults, which the Django route never exposes a
+// way to override either.
+func list(e *core.RequestEvent) error {
+	var roundRecords []*core.Record
+	err := e.App.RecordQuery(collections.NameRounds).
+		AndWhere(dbx.HashExp{
+			collections.FieldUser:   e.Auth.Id,
+			collections.FieldStatus: collections.RoundStatusCompleted,
+		}).
+		OrderBy(collections.FieldFinishedAt+" DESC", collections.FieldStartedAt+" DESC").
+		Limit(20).
+		All(&roundRecords)
+	if err != nil {
+		return fmt.Errorf("list completed rounds: %w", err)
+	}
+
+	out := make([]*Out, 0, len(roundRecords))
+	for _, round := range roundRecords {
+		roundOut, err := NewOut(e.App, round)
+		if err != nil {
+			return err
+		}
+		out = append(out, roundOut)
+	}
+
+	return e.JSON(http.StatusOK, out)
+}
+
+// GET /api/rounds/in-progress — Django `in_progress`, response
+// RoundDetailOut or `null`, so a client resuming a round and a client with none
+// in progress both get one, unambiguous request.
+func inProgress(e *core.RequestEvent) error {
+	round, err := records.InProgressRound(e.App, e.Auth.Id)
+	if err != nil {
+		return err
+	}
+	if round == nil {
+		return e.JSON(http.StatusOK, nil)
+	}
+
+	out, err := NewDetailOut(e.App, round)
+	if err != nil {
+		return err
+	}
+
+	return e.JSON(http.StatusOK, out)
+}
+
+// GET /api/rounds/{id} — Django `detail`, response RoundDetailOut.
+func detail(e *core.RequestEvent) error {
+	round, err := records.FindRound(e.App, e.Request.PathValue("id"), e.Auth.Id)
+	if err != nil {
+		return err
+	}
+
+	out, err := NewDetailOut(e.App, round)
+	if err != nil {
+		return err
+	}
+
+	return e.JSON(http.StatusOK, out)
 }

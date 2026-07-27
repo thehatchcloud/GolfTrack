@@ -64,6 +64,7 @@ var customRoutes = []customRoute{
 	{http.MethodPost, "/api/rounds/" + idPlayRound + "/holes/1/undo", "", "Round hole not found"},
 	{http.MethodPatch, "/api/rounds/" + idPlayRound + "/holes/3/shots/" + idPlayShot1, `{"club":"Driver"}`, "Round hole not found"},
 	{http.MethodDelete, "/api/rounds/" + idPlayRound + "/holes/3/shots/" + idPlayShot1, "", "Round hole not found"},
+	{http.MethodGet, "/api/rounds/" + idPlayRound, "", "Round not found"},
 }
 
 // TestCustomRoutesEnforceOwnership is this phase's ACL work: collection API
