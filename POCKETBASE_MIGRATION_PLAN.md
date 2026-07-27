@@ -264,10 +264,10 @@ Phase 3 closed three of those *on the custom routes it built* — camelCase, the
 **Objective:** Update frontend to work with Pocketbase API
 
 #### Tasks:
-1. Update API client library to use Pocketbase auth cookies/tokens
-2. Adjust API endpoint calls for Pocketbase format
-3. Test all frontend workflows end-to-end
-4. Verify CSS/Tailwind styling
+1. [~] Update API client library to use Pocketbase auth cookies/tokens — token-storage decision still open, see `pocketbase/AUTH.md` § "For the frontend"
+2. [~] Adjust API endpoint calls for Pocketbase format — the read-side format gap (camelCase, null totals, nested relations) is closed with new custom routes: `GET /api/courses`, `/api/courses/{id}`, `/api/rounds`, `/api/rounds/in-progress`, `/api/rounds/{id}`, pinned by `pocketbase/read_routes_test.go` and recorded in `pocketbase/API.md` § "Parity gaps" (gaps 1, 2, 4)
+3. [ ] Test all frontend workflows end-to-end
+4. [ ] Verify CSS/Tailwind styling
 
 #### Workflows to Test:
 - Home page (resume in-progress round or list completed)
@@ -284,6 +284,10 @@ Phase 3 closed three of those *on the custom routes it built* — camelCase, the
 - [ ] Round creation and play flow works
 - [ ] No JavaScript console errors
 - [ ] Styling looks correct
+
+*In progress (#128). The backend half — custom read routes returning the exact
+shapes the frontend contract expects — is delivered and tested; see
+`pocketbase/README.md` § "The Phase 7 (#128) gate" for the item-by-item status.*
 
 ---
 

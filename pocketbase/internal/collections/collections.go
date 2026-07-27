@@ -47,8 +47,13 @@ const (
 	FieldRole = "role"
 
 	// courses
-	FieldName      = "name"
-	FieldHoleCount = "hole_count"
+	FieldName       = "name"
+	FieldHoleCount  = "hole_count"
+	FieldIsArchived = "is_archived"
+
+	// timestamps, shared by every collection that has them
+	FieldCreatedAt = "created_at"
+	FieldUpdatedAt = "updated_at"
 
 	// course_holes, round_holes
 	FieldCourse     = "course"

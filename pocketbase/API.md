@@ -74,14 +74,14 @@ GET /api/collections/rounds/records?expand=course&filter=(status='in_progress')
 | Current endpoint | PocketBase equivalent |
 |---|---|
 | `GET /api/health` | `GET /api/health` — body differs (see below) |
-| `GET /api/courses/` | `GET /api/collections/courses/records?expand=…` |
+| `GET /api/courses/` | **built (Phase 7)** — same path; camelCase `CourseOut` shape |
 | `POST /api/courses/` | `POST /api/collections/courses/records` + N hole creates |
-| `GET /api/courses/{id}` | `GET /api/collections/courses/records/{id}` |
+| `GET /api/courses/{id}` | **built (Phase 7)** — same path; camelCase `CourseOut` shape |
 | `PUT /api/courses/{id}` | `PATCH` + hole reconciliation |
-| `GET /api/rounds/` | `GET /api/collections/rounds/records?filter=(status='completed')` |
+| `GET /api/rounds/` | **built (Phase 7)** — same path; completed rounds only, camelCase `RoundOut` |
 | `POST /api/rounds/` | **built (Phase 3)** — same path; creation snapshots holes |
-| `GET /api/rounds/in-progress` | `GET …/records?filter=(status='in_progress')&perPage=1` |
-| `GET /api/rounds/{id}` | `GET …/records/{id}?expand=…` |
+| `GET /api/rounds/in-progress` | **built (Phase 7)** — same path; camelCase `RoundDetailOut` or `null` |
+| `GET /api/rounds/{id}` | **built (Phase 7)** — same path; camelCase `RoundDetailOut`, nested `course`/`holes`/`shots` |
 | `POST /api/rounds/{id}/complete` | **built (Phase 3)** — same path |
 | `POST /api/rounds/{id}/cancel` | **built (Phase 3)** — same path, returning the `{id, cancelled}` body |
 | `PATCH /api/rounds/{id}/current-hole` | **built (Phase 3)** — same path |
@@ -102,9 +102,10 @@ anyway, so that the whole nested path space behaves consistently — the same
 `(round, hole_number)` addressing — rather than one verb in the group behaving
 like a PocketBase endpoint and the rest like GolfTrack ones.
 
-The `GET` rows are still generated endpoints. Phase 3 built only what the
-generated CRUD could not express; assembling `RoundDetailOut`-shaped read
-responses is Phase 5/7 work.
+The `GET` rows on nested/collection paths (`/rounds/{id}/holes/...`) are still
+generated endpoints. Phase 3 built only what the generated CRUD could not
+express; Phase 7 (#128) added the top-level `RoundDetailOut`/`CourseOut`-shaped
+read responses — see the parity gaps below.
 
 Note that the nested paths carry a hole number the generated endpoints have no
 concept of — `POST /api/rounds/12/holes/3/shots` addresses a shot by
@@ -125,17 +126,20 @@ naming the gap, rather than with a silent change nobody notices until the
 frontend renders an unfinished round as even par.
 
 The through-line of the decisions below: **the frontend reads through custom
-routes wherever the shape matters.** Four of the seven gaps (1, 2, 4, 5) close
-for free on a route that owns its own response body, and none of them can close
-on generated CRUD without giving something up. Phase 3 already built every
-custom *write*; Phase 7 adds the reads.
+routes wherever the shape matters.** Six of the seven gaps (1, 2, 4, 5, 6, 7)
+close for free on a route that owns its own response body, and none of them
+can close on generated CRUD without giving something up. Phase 3 built every
+custom *write*; Phase 7 (#128) added the custom *reads*
+(`GET /api/courses`, `/api/courses/{id}`, `/api/rounds`, `/api/rounds/in-progress`,
+`/api/rounds/{id}`) that close gaps 1, 2 and 4 for the top-level course/round
+shapes the frontend actually renders.
 
 | # | Gap | Decision | Pinned by |
 |---|---|---|---|
-| 1 | camelCase vs snake_case | Transform in custom routes; keep the schema on Django's model names | `TestGeneratedEndpointsReturnSnakeCase`, `TestCustomRoutesReturnCamelCase` |
-| 2 | Unset numbers are `0`, not `null` | Carried to Phase 7 — needs a custom read route | `TestUnsetNumbersComeBackAsZero` |
+| 1 | camelCase vs snake_case | Transform in custom routes; keep the schema on Django's model names | `TestGeneratedEndpointsReturnSnakeCase`, `TestCustomRoutesReturnCamelCase`, `TestCourseReadRoutesReturnCamelCase`, `TestRoundDetailRouteReturnsCamelCaseAndNestedCourse` |
+| 2 | Unset numbers are `0`, not `null` | Closed on the new custom read routes (`GET /api/rounds/{id}`, `/api/rounds/in-progress`); open on generated | `TestUnsetNumbersComeBackAsZero`, `TestRoundDetailRouteEmitsNullForUnsetTotals` |
 | 3 | Ids are 15-char strings | Carried to Phase 6 (#127) with the data migration | `TestRecordIdsAreStrings` |
-| 4 | Relations are ids plus `expand` | Resolved as *not* a blocker: the chain expands whole | `TestRelationsAreIdsPlusExpand` |
+| 4 | Relations are ids plus `expand` | Closed on the new custom read routes: `course` nests inline rather than as an id/expand pair | `TestRelationsAreIdsPlusExpand`, `TestRoundDetailRouteReturnsCamelCaseAndNestedCourse` |
 | 5 | Error bodies | Closed on custom routes; open on generated | `TestErrorBodyShapes` |
 | 6 | 409 for constraint violations | Closed on custom routes; generated create stays 400 | `TestConstraintViolationStatusCodes` |
 | 7 | Anonymous/unauthorised status codes | Closed on custom routes; frontend keys off the token, not 401 | `TestAnonymousCallerStatusCodes`, `TestUnauthorisedCallerStatusCodes` |
@@ -148,10 +152,14 @@ named to match the *Django models*, per Phase 1's brief, mirroring Django's
 own split between snake_case model fields and a camelCase serialisation layer
 (`core/schemas.py`). Two ways to close it: rename the schema fields to camelCase
 and give up model parity, or transform in the response layer. Phase 3 took the
-latter on the routes it built — they read `courseId`, `playMode`, `currentHole`
-and return `holeNumber`, `shotNumber` — which argues for routing the frontend
-through custom routes wherever the shape matters. Generated CRUD endpoints
-cannot do it, so a course still lists as `hole_count` and `is_archived`.
+latter on the write routes it built, and Phase 7 (#128) did the same for reads
+— `GET /api/courses`, `/api/courses/{id}`, `/api/rounds`,
+`/api/rounds/in-progress` and `/api/rounds/{id}` all return `holeCount`,
+`isArchived`, `totalPar`, `playMode`, `currentHole`, `totalStrokes` and
+`relativeToPar` in camelCase, built by `courses.NewOut`/`rounds.NewOut`/
+`rounds.NewDetailOut`. Generated CRUD endpoints still cannot do it, so a course
+fetched through `GET /api/collections/courses/records` still lists as
+`hole_count` and `is_archived`.
 
 *Phase 5 decision:* keep the schema on the model names and transform in the
 route layer. Renaming would close this gap and only this gap, while breaking the
@@ -164,20 +172,26 @@ generated endpoints, in snake_case, because it is derived per response through
 `OnRecordEnrich` rather than being a column. If gap 1 is closed by renaming, it
 renames with the rest.
 
-**2. Unset numbers come back as `0`, not `null`.** *Open; carried to Phase 7.*
-A fresh in-progress round
-returns `"total_strokes": 0, "total_par": 0, "relative_to_par": 0`, where the
-current API returns `null` for all three. This one is a live bug risk rather
-than cosmetics: a round that has not been completed would render as "even par"
-instead of blank. Unset dates behave the same way, returning `""` rather than
-`null` for `finished_at`.
+**2. Unset numbers come back as `0`, not `null`.** *Closed on the custom read
+routes.* A fresh in-progress round
+returns `"total_strokes": 0, "total_par": 0, "relative_to_par": 0` through the
+generated endpoints, where the Django contract returns `null` for all three.
+This one was a live bug risk rather than cosmetics: a round that has not been
+completed would render as "even par" instead of blank. Unset dates behave the
+same way through the generated endpoint, returning `""` rather than `null` for
+`finished_at`.
 
-*Phase 5 decision:* it cannot be closed on the schema — a PocketBase number
-field has no null — so the read path has to go through a route that can emit
-one. That is the same route gap 1 wants, which is why the two are carried
-together. Until it exists, a client must treat a round with
-`status = "in_progress"` as having no score at all rather than reading the
-zeroes.
+`GET /api/rounds/{id}` and `GET /api/rounds/in-progress` close this: both check
+`finished_at` on the record and, when it is unset, omit `finishedAt`,
+`totalStrokes`, `totalPar` and `relativeToPar` from the response body entirely
+(encoded as JSON `null` via untyped `interface{}` fields) rather than
+serialising the PocketBase zero values. `TestRoundDetailRouteEmitsNullForUnsetTotals`
+and `TestInProgressRouteReturnsTheDetailShape` pin this.
+
+*Phase 5 decision, closed in Phase 7:* it could not be closed on the schema — a
+PocketBase number field has no null — so the read path had to go through a
+route that can emit one. That is the same route gap 1 needed, which is why the
+two closed together.
 
 **3. Record ids are 15-character strings, not integers.** *Open; carried to
 Phase 6 (#127).* `IdOut` is typed
@@ -187,21 +201,21 @@ column or accept string ids and update every consumer. The custom routes already
 return and accept the string form, so the decision is not deferrable past the
 data migration.
 
-**4. Relations are ids plus `expand`, not inline nested objects.** *Resolved:
-not a blocker.* `RoundDetailOut`
+**4. Relations are ids plus `expand`, not inline nested objects.** *Closed on
+the custom read routes.* `RoundDetailOut`
 nests `course` (with its `holes`) and `holes` (with their `shots`) directly.
-PocketBase returns `"course": "yceuliutpkhlhls"` and puts the record under
-`expand.course` only when asked.
+The generated endpoints return `"course": "yceuliutpkhlhls"` and put the record
+under `expand.course` only when asked.
 
 This was written up in Phase 1 as possibly needing several requests, on the
 assumption that expansion depth would not reach round → holes → shots. Phase 5
 measured it and the assumption was wrong: `?expand=round_holes_via_round.
 shots_via_round_hole` returns the whole two-level chain in one response, well
-inside PocketBase's expansion depth cap. So the remaining difference is
-placement and naming — the
-data arrives under back-relation keys in snake_case rather than as `holes` and
-`shots` inline — which is gap 1 again, and closes with it in the same custom
-read route. No extra round trips, no separate design.
+inside PocketBase's expansion depth cap. Phase 7's `GET /api/rounds/{id}` uses
+exactly that expand chain and reshapes it into `RoundDetailOut`'s nested
+`course`/`holes`/`shots` — no extra round trips, no separate design.
+`TestRoundDetailRouteReturnsCamelCaseAndNestedCourse` pins the nested `course`
+object (not an id) on the response.
 
 **5. Error bodies.** *Closed on the custom routes; open on the generated ones.*
 The contract is `{"error": "<message>"}`; PocketBase returns

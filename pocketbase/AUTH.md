@@ -210,6 +210,22 @@ Either way the token is a JWT signed by the instance, valid for 5 days
 (`authToken.duration` in `pb_schema.json`), refreshable via
 `POST /api/collections/users/auth-refresh`.
 
+**Decision (#128):** a cookie, not `localStorage`. The current Django templates
+(`templates/base.html`, `static/js/round-play.js`) are server-rendered with
+Alpine.js/htmx sprinkled on top rather than a client-side SPA, and a PocketBase
+frontend built the same way needs the token on the *server* request too, not
+just the browser's `fetch` calls — `localStorage` cannot do that without an
+extra round trip through JavaScript on every page load. `pb.authStore.
+exportToCookie()` writes the same JWT into a cookie the server can read
+directly, so a page render and an API call authenticate the same way. The
+cookie is `Secure` and `SameSite=Lax` like Django's `sessionid`, but cannot be
+`HttpOnly`: the client-side SDK has to read it back out to set the
+`Authorization` header itself, since PocketBase's API does not accept the
+cookie as credentials the way Django's session middleware does. That is the
+trade-off the two bullets above describe, made explicit: this phase accepts
+"readable by the page's own scripts" as the cost of keeping the server able to
+gate a page render before any JavaScript runs.
+
 What the frontend needs from this phase:
 
 | Need | Where it comes from |

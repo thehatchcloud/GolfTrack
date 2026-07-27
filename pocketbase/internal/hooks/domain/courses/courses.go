@@ -25,6 +25,7 @@ func Register(app core.App) {
 	registerHoleCountRule(app)
 	registerHoleNumberRule(app)
 	registerDerivedTotalPar(app)
+	registerRoutes(app)
 }
 
 // registerHoleCountRule enforces Django's `hole_count: Literal[9, 18]`.

@@ -306,7 +306,12 @@ bound to a record hook rather than to a route.
 
 | Method | Path | Does |
 |---|---|---|
+| `GET` | `/api/courses` | list courses, camelCase `CourseOut` shape, holes nested inline |
+| `GET` | `/api/courses/{id}` | a single course, same shape |
 | `POST` | `/api/rounds/` | create a round, snapshotting the course's holes by play mode |
+| `GET` | `/api/rounds/` | list completed rounds, camelCase `RoundOut` shape |
+| `GET` | `/api/rounds/in-progress` | the caller's in-progress round (camelCase `RoundDetailOut`) or `null` |
+| `GET` | `/api/rounds/{id}` | a round's full detail — nested `course`, `holes`, `shots` — camelCase, `null` totals until completed |
 | `POST` | `/api/rounds/{id}/complete` | sum the holes into the round's totals and finish it |
 | `POST` | `/api/rounds/{id}/cancel` | delete an in-progress round and everything under it |
 | `PATCH` | `/api/rounds/{id}/current-hole` | move to a hole this round is playing |
@@ -315,16 +320,21 @@ bound to a record hook rather than to a route.
 | `PATCH` | `/api/rounds/{id}/holes/{n}/shots/{shotId}` | re-club a shot |
 | `DELETE` | `/api/rounds/{id}/holes/{n}/shots/{shotId}` | delete a shot and close the numbering gap |
 
-Every one of them is bound with `apis.RequireAuth()`, which is what restores the
-`401` an anonymous caller gets from the current API — a generated endpoint would
-answer `200` with an empty list, because a list rule filters rather than gates.
+Every write route (and every `/api/rounds/...` read route) is bound with
+`apis.RequireAuth()`, which is what restores the `401` an anonymous caller gets
+from the current API — a generated endpoint would answer `200` with an empty
+list, because a list rule filters rather than gates. The two `/api/courses`
+read routes are unauthenticated, matching the current API's course endpoints.
 
-These paths, their request field names (`courseId`, `playMode`, `club`, `note`,
-`currentHole`) and their status codes are the current contract's, so the
+These paths, their request/response field names (`courseId`, `playMode`, `club`,
+`note`, `currentHole`, `holeCount`, `isArchived`, `totalStrokes`,
+`relativeToPar`) and their status codes are the current contract's, so the
 frontend does not have to learn a second one. Responses are camelCase for the
-same reason. What is *not* yet reconciled is the generated endpoints, and record
+same reason, built by `courses.NewOut`/`rounds.NewOut`/`rounds.NewDetailOut`
+(Phase 7, #128) rather than the record's raw field names. What is *not* yet
+reconciled is the generated endpoints themselves (still snake_case), and record
 ids, which are 15-character strings rather than the integers the current API
-returns — both are recorded in `API.md` for Phase 5 (#126) and Phase 6 (#127).
+returns — both are recorded in `API.md` for Phase 6 (#127).
 
 ### Where a request can still be refused
 
@@ -412,6 +422,20 @@ Phase 5 changed one conclusion from Phase 1: gap 4 (nested relations) was
 written up as possibly needing several requests, and measuring it showed the
 round → holes → shots chain expands whole in one. `API.md` records the
 correction.
+
+The Phase 7 (#128) gate (in progress):
+
+| Gate item | How |
+|---|---|
+| Custom read routes close gaps 1, 2 and 4 for the shapes the frontend renders | `GET /api/courses`, `/api/courses/{id}`, `/api/rounds`, `/api/rounds/in-progress`, `/api/rounds/{id}` — pinned by `read_routes_test.go`; `API.md` § "Parity gaps" records each gap as closed on these routes |
+| All page routes load | pending — reference frontend not yet built |
+| All API calls successful | the routes above are covered by HTTP-level tests; a live end-to-end pass against a running frontend is pending |
+| Round creation and play flow works | already covered by Phase 3's write routes (`routes_test.go`); read side now closes the loop for rendering |
+| No JavaScript console errors | pending — no frontend client checked in yet |
+| Styling looks correct | pending |
+
+See `AUTH.md` § "For the frontend" for the still-open auth-token-storage
+decision this phase also has to make.
 
 The Phase 4 (#125) gate:
 

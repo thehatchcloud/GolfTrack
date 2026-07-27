@@ -245,6 +245,14 @@ the current API — completing a round, undoing a shot. Those are registered on
 the router inside `OnServe` and delegate to a domain package. `API.md` lists
 which endpoints are generated and which had to be written.
 
+Phase 7 (#128) added a second category of custom route: not new behaviour, but
+the read shape the frontend expects. `GET /api/courses`, `/api/courses/{id}`,
+`GET /api/rounds`, `/api/rounds/in-progress` and `/api/rounds/{id}` sit next to
+the write routes in `courses/routes.go` and `rounds/routes.go`, each backed by
+an `Out`/`DetailOut` builder (`courses/out.go`, `rounds/out.go`) that walks the
+record(s) and produces the camelCase, nested-relation, null-aware JSON body the
+generated endpoints cannot.
+
 ```go
 app.OnServe().BindFunc(func(se *core.ServeEvent) error {
     se.Router.POST("/api/rounds/{id}/complete", apierr.Handler(complete)).
