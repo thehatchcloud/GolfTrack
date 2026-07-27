@@ -44,6 +44,8 @@ pocketbase/
 ├── schema_test.go        # indexes, field validation, delete behaviour
 ├── domain_test.go        # the business rules, against a real database
 ├── routes_test.go        # the custom routes, over HTTP
+├── parity_test.go        # parity with the Django contract, gap by gap
+├── bench_test.go         # the performance baseline (excluded from make pb-test)
 ├── concurrency_test.go   # the races: two writers on one hole or one player
 ├── testapp_test.go       # test harness: seeded in-process app + fixtures
 ├── internal/
@@ -394,6 +396,23 @@ The Phase 3 (#124) gate:
 | 409 where Django returns 409 | `routes_test.go` — round already in progress, round already completed, cancelling a finished round |
 | `make pb-test` green | it is |
 
+The Phase 5 (#126) gate:
+
+| Gate item | How |
+|---|---|
+| All endpoints accessible and return expected status codes | `parity_test.go` — `TestSuccessStatusCodes` walks the 2xx half (201 for round creation, 200 for the rest); the 4xx half is spread across the ownership, gap-7 and constraint tests |
+| Response bodies match the contract, or the deviation is recorded with a decision | `API.md` § "Parity gaps" — a decision per gap, each naming the test that pins it |
+| ACL enforcement tested on the custom routes | `TestCustomRoutesEnforceOwnership`, `TestCustomRoutesAreNotOpenToAdmins`, `TestCustomRoutesRejectUnknownIds`; the generated endpoints stay covered by `acl_test.go` |
+| Pagination / filtering / sorting working | `TestListPagination`, `TestListFiltering`, `TestListSorting` |
+| Error responses correct, including 409 and the anonymous-caller codes | `TestConstraintViolationStatusCodes`, `TestErrorBodyShapes`, `TestAnonymousCallerStatusCodes`, `TestUnauthorisedCallerStatusCodes` |
+| Performance baseline vs. Django | `bench_test.go` and `API.md` § "Performance baseline". The PocketBase side is checked in; the Django side needs a live environment CI does not provision, and the section says why it is not automated |
+| `make pb-test` green | it is |
+
+Phase 5 changed one conclusion from Phase 1: gap 4 (nested relations) was
+written up as possibly needing several requests, and measuring it showed the
+round → holes → shots chain expands whole in one. `API.md` records the
+correction.
+
 The Phase 4 (#125) gate:
 
 | Gate item | How |
@@ -446,6 +465,8 @@ that could drift from it.
 | `schema_test.go` | unique indexes, field bounds and enums, cascade and restrict deletes, the `role` default |
 | `domain_test.go` | the business rules — snapshotting, the stroke cache, renumbering, totals, cancellation |
 | `routes_test.go` | the custom routes end to end, including their 401s, 404s and 409s |
+| `parity_test.go` | parity with the Django contract: ownership on the custom routes, pagination/filtering/sorting, the status codes, and a characterisation test per gap in `API.md` |
+| `bench_test.go` | the performance baseline — benchmarks, so `go test ./...` skips them |
 | `concurrency_test.go` | two writers on one hole, one player starting two rounds, delete racing delete |
 | `internal/hooks/domain/scoring/scoring_test.go` | the totals arithmetic, as plain unit tests |
 | `testapp_test.go` | the harness: seeded app, fixture builders, auth tokens |
