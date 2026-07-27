@@ -39,10 +39,16 @@ var (
 // every hole snapshotted, one empty hole, one hole three shots deep, and a
 // completed round to aim the 409s at. `other` owns nothing, so they can start a
 // round of their own.
+// admin and superuser carry no rounds of their own. Phase 5 (#126) uses them to
+// assert that the custom routes scope by ownership alone, the way Django's
+// `.get(pk=…, user=user)` does — a role that can *read* another player's round
+// through the generated endpoints still cannot score it.
 type playFixture struct {
-	app   *tests.TestApp
-	owner *core.Record
-	other *core.Record
+	app       *tests.TestApp
+	owner     *core.Record
+	other     *core.Record
+	admin     *core.Record
+	superuser *core.Record
 }
 
 func newPlayFixture(t testing.TB) *playFixture {
@@ -53,6 +59,8 @@ func newPlayFixture(t testing.TB) *playFixture {
 	f := &playFixture{app: app}
 	f.owner = createUser(t, app, idOwner, "owner@golftrack.test", collections.UserRoleUser)
 	f.other = createUser(t, app, idOther, "other@golftrack.test", collections.UserRoleUser)
+	f.admin = createUser(t, app, idAdmin, "admin@golftrack.test", collections.UserRoleAdmin)
+	f.superuser = createSuperuser(t, app, "super@golftrack.test")
 
 	course := seedCourse(t, app, idPlayCourse, "Play Links", 18, 4)
 	seedCourse(t, app, idPlayCourse9, "Nine Acres", 9, 3)
