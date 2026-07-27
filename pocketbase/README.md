@@ -423,19 +423,28 @@ written up as possibly needing several requests, and measuring it showed the
 round → holes → shots chain expands whole in one. `API.md` records the
 correction.
 
-The Phase 7 (#128) gate (in progress):
+The Phase 7A (#128) gate:
 
 | Gate item | How |
 |---|---|
 | Custom read routes close gaps 1, 2 and 4 for the shapes the frontend renders | `GET /api/courses`, `/api/courses/{id}`, `/api/rounds`, `/api/rounds/in-progress`, `/api/rounds/{id}` — pinned by `read_routes_test.go`; `API.md` § "Parity gaps" records each gap as closed on these routes |
-| All page routes load | pending — reference frontend not yet built |
-| All API calls successful | the routes above are covered by HTTP-level tests; a live end-to-end pass against a running frontend is pending |
+| All API calls successful | the routes above are covered by HTTP-level tests |
 | Round creation and play flow works | already covered by Phase 3's write routes (`routes_test.go`); read side now closes the loop for rendering |
-| No JavaScript console errors | pending — no frontend client checked in yet |
-| Styling looks correct | pending |
+| Every workflow drivable end to end at the HTTP level | `frontend_workflow_test.go` — the automated stand-in for a browser pass |
+| All page routes load | **moved to Phase 7B** — there is no PocketBase frontend to load pages from |
+| No JavaScript console errors | **moved to Phase 7B** — no frontend client checked in yet |
+| Styling looks correct | **moved to Phase 7B** |
 
-See `AUTH.md` § "For the frontend" for the still-open auth-token-storage
-decision this phase also has to make.
+Those last three were written on the assumption that the existing frontend could
+be re-pointed at PocketBase. It cannot: the pages are Django server-rendering
+(`rounds/views.py`, `courses/views.py`, eleven Django templates), and PocketBase
+serves an API and static assets rather than rendering Django templates. The
+rewrite is **Phase 7B** in `POCKETBASE_MIGRATION_PLAN.md`, which owns those gate
+items along with the sign-in pages, the asset pipeline and the PWA.
+
+See `AUTH.md` § "For the frontend" for the auth-token-storage decision this
+phase made — a cookie, not `localStorage` — which Phase 7B implements and
+validates.
 
 The Phase 4 (#125) gate:
 
