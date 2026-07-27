@@ -12,6 +12,12 @@
 # The binary embeds pb_schema.json and reconciles the database to it on every
 # startup, so no separate schema-apply step is needed. See "Schema changes" in
 # pocketbase/README.md.
+#
+# Authentication is configured from the environment, which this script passes
+# through — export GOOGLE_CLIENT_ID/SECRET, MICROSOFT_CLIENT_ID/SECRET,
+# ADMIN_EMAILS or GOLFTRACK_ALLOW_PASSWORD_LOGIN before running it. With none
+# of them set the app itself has no sign-in method; the Admin UI still opens.
+# See pocketbase/AUTH.md.
 set -euo pipefail
 
 PB_HOST="${PB_HOST:-127.0.0.1}"
@@ -37,9 +43,23 @@ echo "Building golftrack-pb..."
 "$BIN" superuser upsert "$PB_SUPERUSER_EMAIL" "$PB_SUPERUSER_PASSWORD" \
   --dir "$LOCAL/pb_data" >/dev/null
 
+# Mirrors internal/authenv: a provider needs both halves of its credentials,
+# and the password switch takes the values Django's _bool_env accepts.
+signin=""
+if [ -n "${GOOGLE_CLIENT_ID:-}" ] && [ -n "${GOOGLE_CLIENT_SECRET:-}" ]; then
+  signin="${signin}google "
+fi
+if [ -n "${MICROSOFT_CLIENT_ID:-}" ] && [ -n "${MICROSOFT_CLIENT_SECRET:-}" ]; then
+  signin="${signin}microsoft "
+fi
+case "$(printf '%s' "${GOLFTRACK_ALLOW_PASSWORD_LOGIN:-}" | tr '[:upper:]' '[:lower:]')" in
+  1 | true | yes | on) signin="${signin}password " ;;
+esac
+
 echo "Admin UI:    http://${PB_HOST}:${PB_PORT}/_/"
 echo "Superuser:   ${PB_SUPERUSER_EMAIL} / ${PB_SUPERUSER_PASSWORD}"
 echo "Schema:      embedded pb_schema.json, synced at startup"
+echo "Sign-in:     ${signin:-none configured (see pocketbase/AUTH.md)}"
 echo
 
 exec "$BIN" serve \

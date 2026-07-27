@@ -70,11 +70,10 @@ func registerStrokeCache(app core.App) {
 // registerRenumbering closes the gap a mid-hole delete leaves behind.
 //
 // Django issues one `UPDATE ... SET shot_number = shot_number - 1 WHERE
-// shot_number > n` and so does this: a per-record loop would rewrite the first
-// later shot into the slot the delete had not yet vacated in its own index
-// entry, and collide with the unique (round_hole, shot_number) index. One
-// statement rewrites the rows in ascending order into slots that are free by
-// the time each row reaches them.
+// shot_number > n`, and a per-record loop would be worse than that anyway: it
+// would rewrite the first later shot into a slot the delete had not yet vacated
+// in its own index entry, and collide with the unique (round_hole, shot_number)
+// index. See renumberAfter for why a single statement is not enough either.
 func registerRenumbering(app core.App) {
 	app.OnRecordDelete(collections.NameShots).BindFunc(func(e *core.RecordEvent) error {
 		if err := requireInProgressRound(e.App, e.Record); err != nil {
@@ -96,14 +95,42 @@ func registerRenumbering(app core.App) {
 	})
 }
 
+// renumberAfter decrements every shot_number above deletedNumber on the hole,
+// in two statements that route the rows through a band the index cannot
+// collide in.
+//
+// One statement is not enough. SQLite checks the unique (round_hole,
+// shot_number) index per row as it rewrites, in the order its scan happens to
+// visit the rows — which is insertion (rowid) order, not shot_number order. So
+// `3 -> 2` executed before `2 -> 1` fails, and whether it is executed first
+// depends only on which of the two rows was written to the table first. Shots
+// added through the round routes always append, so their two orders agree; a
+// shot written straight through the generated record endpoint — which the
+// round's owner is allowed to do — can put them out of step, and then a later
+// delete on that hole fails with a UNIQUE constraint violation.
+//
+// Negating first sidesteps the ordering question entirely: negation is
+// injective, so the intermediate values are unique among themselves, and they
+// cannot collide with the untouched rows at or below deletedNumber because
+// those are positive. The second statement brings them back one lower. Both run
+// inside the transaction PocketBase wraps the delete in, so a failure leaves no
+// negative shot_number behind.
 func renumberAfter(app core.App, roundHoleID string, deletedNumber int) error {
-	_, err := app.DB().
-		NewQuery("UPDATE {{" + collections.NameShots + "}} SET [[shot_number]] = [[shot_number]] - 1 " +
-			"WHERE [[round_hole]] = {:roundHole} AND [[shot_number]] > {:shotNumber}").
-		Bind(dbx.Params{"roundHole": roundHoleID, "shotNumber": deletedNumber}).
-		Execute()
-	if err != nil {
-		return fmt.Errorf("renumber shots after %d on round hole %q: %w", deletedNumber, roundHoleID, err)
+	shift := []string{
+		"UPDATE {{" + collections.NameShots + "}} SET [[shot_number]] = -[[shot_number]] " +
+			"WHERE [[round_hole]] = {:roundHole} AND [[shot_number]] > {:shotNumber}",
+		"UPDATE {{" + collections.NameShots + "}} SET [[shot_number]] = -[[shot_number]] - 1 " +
+			"WHERE [[round_hole]] = {:roundHole} AND [[shot_number]] < 0",
+	}
+
+	for _, statement := range shift {
+		_, err := app.DB().
+			NewQuery(statement).
+			Bind(dbx.Params{"roundHole": roundHoleID, "shotNumber": deletedNumber}).
+			Execute()
+		if err != nil {
+			return fmt.Errorf("renumber shots after %d on round hole %q: %w", deletedNumber, roundHoleID, err)
+		}
 	}
 
 	return nil

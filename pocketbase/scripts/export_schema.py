@@ -6,6 +6,13 @@ run this to write the change back into the repo. Output is sorted and indented
 so the diff is reviewable; PocketBase's system collections (``_superusers``,
 ``_mfas``, …) are excluded.
 
+The ``users`` authentication settings listed in ``ENV_MANAGED`` are *not*
+exported. Phase 4 (#125) applies those from the environment at every startup —
+see ``pocketbase/AUTH.md`` — so a running instance carries the deployment's
+OAuth client ids and its password-login state, none of which belong in a
+committed file. They are written back from the existing pb_schema.json instead,
+which also keeps the export byte-for-byte stable.
+
 Usage:
     python3 pocketbase/scripts/export_schema.py \
         --url http://127.0.0.1:8090 \
@@ -25,6 +32,12 @@ SCHEMA_PATH = pathlib.Path(__file__).resolve().parent.parent / "pb_schema.json"
 
 # Written in dependency order so the file reads top-down.
 ORDER = ["users", "courses", "course_holes", "rounds", "round_holes", "shots"]
+
+# (collection, top-level key) pairs whose value comes from the environment at
+# runtime rather than from this file. Client secrets are redacted by PocketBase
+# on the way out anyway, so exporting these would commit a provider list that no
+# longer imports.
+ENV_MANAGED = [("users", "oauth2"), ("users", "passwordAuth")]
 
 
 def request(base: str, method: str, path: str, payload=None, token: str = ""):
@@ -71,6 +84,8 @@ def main() -> int:
         print(f"instance is missing collections: {missing}", file=sys.stderr)
         return 1
 
+    committed = {c["name"]: c for c in json.loads(SCHEMA_PATH.read_text())}
+
     collections = []
     for name in ORDER:
         collection = by_name[name]
@@ -80,6 +95,12 @@ def main() -> int:
         # under "fields" and are left alone.)
         collection.pop("created", None)
         collection.pop("updated", None)
+
+        # Keep the environment-managed authentication settings as committed.
+        for env_name, key in ENV_MANAGED:
+            if env_name == name and key in committed.get(name, {}):
+                collection[key] = committed[name][key]
+
         collections.append(collection)
 
     SCHEMA_PATH.write_text(

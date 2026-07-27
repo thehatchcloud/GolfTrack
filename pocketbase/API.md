@@ -5,8 +5,8 @@ up with the REST contract the frontend uses today, and what has to be built to
 close the gap.
 
 Written in Phase 1 (#122) from a live 0.39.9 instance, and updated in Phase 3
-(#124) once the custom routes existed. The formal parity suite is Phase 5
-(#126); this is the design input for it.
+(#124) once the custom routes existed and Phase 4 (#125) once sign-in did. The
+formal parity suite is Phase 5 (#126); this is the design input for it.
 
 The current contract is defined by `config/api.py`, `courses/api.py` and
 `rounds/api.py` — itself a port of the Next.js route handlers it replaced, so
@@ -28,6 +28,25 @@ Every collection gets full CRUD under `/api/collections/{collection}/records`:
 `/auth-with-oauth2`, `/auth-refresh`, `/request-password-reset`,
 `/request-verification`, `/request-otp` and friends under
 `/api/collections/users/`.
+
+Which of those actually answer is decided by Phase 4's configuration, applied
+from the environment at startup — `AUTH.md` has the detail. The four the
+frontend uses:
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/api/collections/users/auth-methods` | which providers are enabled, and whether password login is; unauthenticated |
+| `POST` | `/api/collections/users/auth-with-oauth2` | the sign-in; answers `{token, record, meta}` |
+| `POST` | `/api/collections/users/auth-with-password` | `403` unless `GOLFTRACK_ALLOW_PASSWORD_LOGIN` is on |
+| `POST` | `/api/collections/users/auth-refresh` | a fresh token for a still-valid one |
+
+There is no equivalent of Django's `/accounts/login/` page or its session
+cookie: the session is a JWT the client holds and sends as `Authorization`.
+That is the one auth-shaped difference the frontend has to absorb, and it is
+written up for Phase 7 (#128) in `AUTH.md` § "For the frontend".
+
+`POST /api/collections/users/records` — the generated create, i.e. self-service
+sign-up — is closed in every environment by the `users` create rule.
 
 Schema and health endpoints:
 

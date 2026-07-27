@@ -165,29 +165,40 @@ separate records and that is the first point the set is read as a whole.*
 **Objective:** Integrate OAuth and adapt authentication to Pocketbase
 
 #### Tasks:
-1. Configure Pocketbase OAuth providers (Google, Microsoft Entra ID)
+1. [x] Configure Pocketbase OAuth providers (Google, Microsoft Entra ID) — from environment variables at startup, not from the committed schema; see below
 2. ~~Extend Pocketbase user schema with `role` field~~ — *done in Phase 1; Phase 2 added the access rules over it*
-3. Implement admin detection (check `ADMIN_EMAILS` env var) via `OnRecordAuthWithOAuth2Request`
-4. Decide the password-login question — see below; this is a decision, not just a toggle
-5. Update frontend to use Pocketbase auth — coordinate with Phase 7, which owns frontend adaptation generally
+3. [x] Implement admin detection (check `ADMIN_EMAILS` env var) via `OnRecordAuthWithOAuth2Request` — `pocketbase/internal/hooks/adminrole.go`
+4. [x] Decide the password-login question — decided; see below
+5. [~] Update frontend to use Pocketbase auth — the auth slice is specified in `pocketbase/AUTH.md`; the frontend itself is Phase 7 (#128), which owns the adaptation
 
 `pocketbase/internal/hooks/users.go` already defaults `users.role` to `USER` on create — the field default Django writes as `default=Role.USER`, needed because `role` is required and an OAuth2 sign-up supplies only email, name and avatar. This phase adds the *promotion* on top of it.
 
 Password login is not purely additive: Phase 2 set the `users` create rule to `@request.context = "oauth2"`, which closes the account-minting half of a privilege-escalation path. Enabling password *sign-up* means relaxing that rule while keeping `role` unsettable by the client; password *authentication* for an already-provisioned account is governed by `authRule` and needs no change. Either way `pocketbase/acl_test.go` has to be updated to match — `TestSignupIsOAuth2Only` asserts the current behaviour.
 
+**Decision (#125):** self-service registration stays closed in every environment, so the create rule is unchanged; password *authentication* for accounts that already exist is available behind `GOLFTRACK_ALLOW_PASSWORD_LOGIN`, off by default, mirroring Django's `DJANGO_ALLOW_PASSWORD_LOGIN`. `TestSignupIsOAuth2Only` gained a case proving the two switches are independent.
+
 #### Deliverables:
-- Admin role assignment in `pocketbase/internal/hooks/` (Go), registered from `hooks.Register`
-- Updated environment variables documentation (`ADMIN_EMAILS`, provider client ids/secrets)
-- Frontend auth integration
-- A recorded decision on password login, with `acl_test.go` matching it
+- [x] Admin role assignment in `pocketbase/internal/hooks/` (Go), registered from `hooks.Register`
+- [x] Updated environment variables documentation (`ADMIN_EMAILS`, provider client ids/secrets) — `pocketbase/AUTH.md`, summarised in `pocketbase/README.md`
+- [~] Frontend auth integration — the contract and the token-storage trade-off, for Phase 7 to build against
+- [x] A recorded decision on password login, with `acl_test.go` matching it
 
 #### Validation Gate:
-- [ ] OAuth flow completes end-to-end for both providers
-- [ ] Users created/updated on successful OAuth
-- [ ] A first-time sign-in lands with `role = USER` through the real OAuth path
-- [ ] Admin role assigned correctly from `ADMIN_EMAILS`, including a user who was already `USER` before their address was added
-- [ ] A non-admin still cannot self-assign `ADMIN` — `acl_test.go` still green
-- [ ] Frontend auth cookies validated
+- [x] OAuth flow completes end-to-end for both providers — `pocketbase/auth_test.go` drives the real endpoint with a fake provider; the live token exchange needs credentials and a browser and is owner-verified
+- [x] Users created/updated on successful OAuth
+- [x] A first-time sign-in lands with `role = USER` through the real OAuth path
+- [x] Admin role assigned correctly from `ADMIN_EMAILS`, including a user who was already `USER` before their address was added
+- [x] A non-admin still cannot self-assign `ADMIN` — `acl_test.go` still green
+- [ ] Frontend auth cookies validated — deferred to Phase 7 (#128); PocketBase's session is a token the client holds, so where it lives is a frontend decision
+
+*Delivered in #125. Two deviations from this section, both recorded in
+`pocketbase/README.md` § "Deviations": the OAuth providers are applied from the
+environment at every startup rather than committed to `pb_schema.json` (client
+secrets cannot be committed, and per-environment client ids would have to be
+edited per deployment), and the sign-in hook additionally discards the
+caller-supplied `createData` — enabling OAuth2 sign-up is what makes that map
+reachable, and the create rule restricts only the context of an account
+creation, not its contents.*
 
 ---
 
