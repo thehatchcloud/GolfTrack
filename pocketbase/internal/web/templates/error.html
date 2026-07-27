@@ -1,0 +1,16 @@
+{{define "title"}}{{.Title}}{{end}}
+
+{{define "content"}}
+{{/* Django rendered these itself — the 404 from Http404 and the bare
+     HttpResponseForbidden("Forbidden") from @admin_required. Here they are
+     pages, so a signed-in player who follows an admin link gets the nav and a
+     way back rather than a bare string. */}}
+<div class="mx-auto max-w-sm space-y-4 py-16 text-center">
+  <p class="text-5xl font-bold text-stone-300">{{.Status}}</p>
+  <h1 class="text-xl font-bold">{{.Heading}}</h1>
+  <p class="text-sm text-stone-500">{{.Message}}</p>
+  <a href="/" class="inline-block rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">
+    Back to GolfTrack
+  </a>
+</div>
+{{end}}

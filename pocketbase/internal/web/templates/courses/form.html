@@ -1,0 +1,69 @@
+{{define "title"}}{{.Title}}{{end}}
+
+{{define "content"}}
+<div class="mb-5 flex items-center justify-between">
+  <h1 class="text-xl font-bold">{{if .Editing}}Edit Course{{else}}Add Course{{end}}</h1>
+  <a href="{{if .Course}}/courses/{{.Course.ID}}/{{else}}/courses/{{end}}"
+     class="text-sm text-stone-500 hover:underline">Cancel</a>
+</div>
+
+{{/*
+  The Django form posted to this page and re-rendered itself with an error.
+  Here it submits to the course write routes instead — one request, one
+  transaction — and shows whatever message the API returns in the same box.
+*/}}
+<form x-data="courseForm({ courseId: '{{if .Course}}{{.Course.ID}}{{end}}', holeCount: {{.HoleCount}} })"
+      @submit.prevent="submit()">
+
+  <div x-show="error" x-cloak class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+       x-text="error"></div>
+
+  <!-- Course name -->
+  <div class="mb-5 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+    <label class="mb-1 block text-sm font-semibold text-stone-700" for="name">Course name</label>
+    <input id="name" name="name" type="text" maxlength="100" required
+           value="{{if .Course}}{{.Course.Name}}{{end}}"
+           class="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+           placeholder="e.g. Pebble Beach" />
+  </div>
+
+  <!-- Hole count -->
+  <div class="mb-5 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+    <p class="mb-2 text-sm font-semibold text-stone-700">Number of holes</p>
+    <div class="flex gap-2">
+      <button type="button" @click="holeCount = 9"
+              :class="holeCount === 9 ? 'bg-emerald-50 border-emerald-600 text-emerald-700 font-semibold' : 'border-stone-200 text-stone-600 hover:bg-stone-50'"
+              class="flex-1 rounded-lg border px-4 py-2 text-sm transition">9 holes</button>
+      <button type="button" @click="holeCount = 18"
+              :class="holeCount === 18 ? 'bg-emerald-50 border-emerald-600 text-emerald-700 font-semibold' : 'border-stone-200 text-stone-600 hover:bg-stone-50'"
+              class="flex-1 rounded-lg border px-4 py-2 text-sm transition">18 holes</button>
+    </div>
+  </div>
+
+  <!-- Hole pars -->
+  <div class="mb-6 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+    <p class="mb-3 text-sm font-semibold text-stone-700">Hole pars</p>
+    <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      {{range .HoleRows}}
+        <div x-show="holeCount >= {{.HoleNumber}}"
+             class="flex items-center justify-between rounded-xl bg-stone-50 px-3 py-2">
+          <span class="text-sm text-stone-600">Hole {{.HoleNumber}}</span>
+          <select name="hole_{{.HoleNumber}}" data-hole="{{.HoleNumber}}"
+                  class="rounded-lg border border-stone-200 bg-white px-2 py-1 text-sm">
+            {{$par := .Par}}
+            {{range $.ParOptions}}
+              <option value="{{.}}" {{if eq . $par}}selected{{end}}>{{.}}</option>
+            {{end}}
+          </select>
+        </div>
+      {{end}}
+    </div>
+  </div>
+
+  <button type="submit" :disabled="loading"
+          class="w-full rounded-lg bg-emerald-700 py-3 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60">
+    <span x-show="!loading">{{if .Editing}}Save Changes{{else}}Save Course{{end}}</span>
+    <span x-show="loading" x-cloak>Saving…</span>
+  </button>
+</form>
+{{end}}

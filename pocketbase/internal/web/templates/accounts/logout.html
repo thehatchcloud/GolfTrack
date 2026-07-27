@@ -1,0 +1,18 @@
+{{define "title"}}{{.Title}}{{end}}
+
+{{define "content"}}
+{{/*
+  Signing out is discarding the token — there is no server-side session to end
+  (AUTH.md § "For the frontend"). The confirmation step is Django's, kept so
+  that a mis-tap on the nav does not silently end the session.
+*/}}
+<div class="mx-auto max-w-sm space-y-6 py-12 text-center" x-data="signOut()">
+  <h1 class="text-2xl font-bold">Sign out?</h1>
+  <p class="text-sm text-slate-500">You'll need to sign in again to track rounds.</p>
+  <button type="button" @click="submit()"
+          class="rounded-lg bg-slate-800 px-6 py-2 text-sm font-medium text-white transition hover:bg-slate-700">
+    Sign out
+  </button>
+  <a href="/" class="block text-sm text-slate-500 hover:underline">Cancel</a>
+</div>
+{{end}}

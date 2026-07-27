@@ -1,12 +1,8 @@
 package courses
 
 import (
-	"database/sql"
-	"errors"
-	"fmt"
 	"net/http"
 
-	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 
@@ -115,22 +111,9 @@ func update(e *core.RequestEvent) error {
 // courses are excluded, and the list is ordered by name, matching
 // `list_courses`'s default (`include_archived=False`).
 func list(e *core.RequestEvent) error {
-	var courseRecords []*core.Record
-	err := e.App.RecordQuery(collections.NameCourses).
-		AndWhere(dbx.HashExp{collections.FieldIsArchived: false}).
-		OrderBy(collections.FieldName + " ASC").
-		All(&courseRecords)
+	out, err := List(e.App)
 	if err != nil {
-		return fmt.Errorf("list courses: %w", err)
-	}
-
-	out := make([]*Out, 0, len(courseRecords))
-	for _, course := range courseRecords {
-		courseOut, err := NewOut(e.App, course)
-		if err != nil {
-			return err
-		}
-		out = append(out, courseOut)
+		return err
 	}
 
 	return e.JSON(http.StatusOK, out)
@@ -138,15 +121,7 @@ func list(e *core.RequestEvent) error {
 
 // GET /api/courses/{id} — Django `detail`, response CourseOut.
 func detail(e *core.RequestEvent) error {
-	course, err := e.App.FindRecordById(collections.NameCourses, e.Request.PathValue("id"))
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return apierr.NotFound("Course not found")
-		}
-		return fmt.Errorf("find course %q: %w", e.Request.PathValue("id"), err)
-	}
-
-	out, err := NewOut(e.App, course)
+	out, err := Detail(e.App, e.Request.PathValue("id"))
 	if err != nil {
 		return err
 	}

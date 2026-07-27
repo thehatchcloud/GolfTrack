@@ -1,0 +1,71 @@
+{{define "title"}}{{.Title}}{{end}}
+
+{{define "content"}}
+<!-- Hero -->
+<div class="mb-6 rounded-2xl bg-gradient-to-br from-emerald-700 to-emerald-900 px-6 py-8 text-white shadow-lg">
+  <h1 class="text-2xl font-bold leading-snug">Track your round,<br>one shot at a time.</h1>
+  <div class="mt-4 flex flex-wrap gap-3">
+    {{if .Viewer.SignedIn}}
+      <a href="/rounds/new/"
+         class="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50">
+        Start New Round
+      </a>
+      <a href="/courses/"
+         class="rounded-lg border border-white/40 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10">
+        Manage Courses
+      </a>
+    {{else}}
+      <a href="/accounts/login/"
+         class="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50">
+        Sign In to Start
+      </a>
+    {{end}}
+  </div>
+</div>
+
+{{if .Viewer.SignedIn}}
+<div class="grid gap-4 sm:grid-cols-2">
+  <!-- In-progress round -->
+  <div class="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+    <h2 class="mb-3 text-xs font-semibold uppercase tracking-widest text-stone-400">Continue round</h2>
+    {{with .InProgress}}
+      <div class="space-y-1">
+        <p class="font-semibold">{{.Course.Name}}</p>
+        <p class="text-sm text-stone-500">Hole {{.CurrentHole}}</p>
+      </div>
+      <a href="/rounds/{{.ID}}/play/"
+         class="mt-4 flex items-center justify-center rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800">
+        Continue
+      </a>
+    {{else}}
+      <p class="text-sm text-stone-500">No round in progress.</p>
+      <a href="/rounds/new/" class="mt-3 inline-block text-sm font-medium text-emerald-700 hover:underline">
+        Start one →
+      </a>
+    {{end}}
+  </div>
+
+  <!-- Recent rounds -->
+  <div class="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+    <h2 class="mb-3 text-xs font-semibold uppercase tracking-widest text-stone-400">Recent rounds</h2>
+    {{if .Recent}}
+      <ul class="space-y-2">
+        {{range .Recent}}
+          <li>
+            <a href="/rounds/{{.ID}}/" class="flex items-center justify-between hover:text-emerald-700">
+              <span class="text-sm font-medium">{{.Course.Name}}</span>
+              <span class="text-sm text-stone-500">{{toPar .RelativeToPar}}</span>
+            </a>
+          </li>
+        {{end}}
+      </ul>
+      <a href="/rounds/" class="mt-3 inline-block text-sm font-medium text-emerald-700 hover:underline">
+        All rounds →
+      </a>
+    {{else}}
+      <p class="text-sm text-stone-500">No completed rounds yet.</p>
+    {{end}}
+  </div>
+</div>
+{{end}}
+{{end}}
