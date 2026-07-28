@@ -368,10 +368,25 @@ that it would be timing a response body that grows with `b.N`, since the route
 returns the hole with every shot on it — an easy way to produce a number that
 looks like a regression and is not.
 
-Taking the Django side for comparison needs a live environment this repository's
-CI does not provision (`make install` then `make dev`, and hit the same paths
-with `hey` or `wrk`). It is deliberately not automated: the two stacks are not
-running the same request in the same process, so a checked-in cross-stack ratio
-would be measuring the harness. The value of the table above is as a *baseline
-against itself* — a later PocketBase change that adds a query per request shows
-up as a step in these numbers.
+> **Superseded by Phase 8 (#129).** The table above measures the *generated*
+> endpoints, which is the right baseline for "is PocketBase fast" and the wrong
+> one for "is the app fast" — the frontend goes through the custom routes.
+> `performance_report.md` measures those, and the benchmarks for them are in
+> `bench_test.go` alongside these. The numbers above are unchanged by Phase 8
+> and are kept for continuity.
+>
+> Phase 8 also revised this section's conclusion about Django. It said a
+> cross-stack comparison "would be measuring the harness" and was deliberately
+> not automated. That holds for a comparison over the network; it does not hold
+> in process, which is how both sides are now measured —
+> `tests/test_django_baseline.py` times the Django service layer and counts its
+> queries against the same fixture. See `performance_report.md` § "Versus
+> Django", including what the comparison excludes and why the Django HTTP layer
+> is not part of it.
+
+A second thing this section was measuring without saying so: how many *queries*
+a request issues. Timings on a small fixture cannot see a per-record read, and
+four of the custom read routes had one — the round detail was 41 statements for
+an 18-hole round. That is now asserted rather than benchmarked, in
+`perf_test.go`, by counting statements at two data sizes and requiring the counts
+to match.

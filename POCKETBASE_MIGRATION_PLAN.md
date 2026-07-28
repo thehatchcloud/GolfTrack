@@ -442,20 +442,33 @@ same process.*
 **Objective:** Ensure Pocketbase performance meets production requirements
 
 #### Tasks:
-1. Load testing (10, 50, 100 concurrent users)
-2. Optimize hook performance (profile, batch operations, caching)
-3. Review database indexing
-4. Monitor memory/resource usage
+1. [x] Load testing (10, 50, 100 concurrent users) — `pocketbase/loadtest_test.go`, `make pb-loadtest`
+2. [x] Optimize hook performance (profile, batch operations, ~~caching~~) — the per-record reads in `internal/hooks/domain` are now set-at-a-time; **no cache was added**, and the report says why
+3. [x] Review database indexing — `TestHotQueriesUseAnIndex` reads SQLite's plan for every hot query and fails on a scan; it found two, both now in `pb_schema.json`
+4. [x] Monitor memory/resource usage — `TestSustainedTrafficDoesNotLeak`
 
 #### Deliverables:
-- `pocketbase/performance_report.md` — benchmarks vs. Django
-- Optimized hook implementations (if needed)
+- [x] `pocketbase/performance_report.md` — benchmarks vs. Django
+- [x] Optimized hook implementations — `internal/records` gained batched lookups; `courses`, `rounds` and `roundholes` build responses from them
 
 #### Validation Gate:
-- [ ] Response times acceptable (<200ms p95 for most endpoints)
-- [ ] No memory leaks
-- [ ] Concurrency tests pass
-- [ ] Queries efficient
+- [x] Response times acceptable (<200ms p95 for most endpoints) — every read endpoint at 100 concurrent players; every endpoint including writes at a realistic offered load, where p95 is under 5 ms
+- [x] No memory leaks — heap and goroutine count flat across a batch five times the warm-up's
+- [x] Concurrency tests pass — `concurrency_test.go` unchanged and green; the new sweep runs 10/50/100 players with zero failed requests
+- [x] Queries efficient — the round detail read went from 41 statements to 6 and no longer grows with the round; asserted at two data sizes
+
+*Delivered in #129. The finding worth carrying past this phase:* ***the write
+ceiling is the deployment's, not the code's.*** *Write throughput is flat at
+~290 req/s from ten concurrent players onward, because PocketBase runs writes on
+a one-connection pool over SQLite's single writer. That is some four orders of
+magnitude beyond this application's real demand, but it is the number **Phase 9
+(#130)** should have before choosing a container and volume shape.*
+
+*One deviation from this section: it lists caching among the optimisation
+techniques and none was added. The expensive reads are now 3–6 statements against
+indexed SQLite in the same process, so a cache would add an invalidation problem
+for no measured gain. See `pocketbase/performance_report.md` § "What was
+deliberately not done".*
 
 ---
 
@@ -550,7 +563,7 @@ same process.*
 |------|----------|-----------|
 | Business logic bugs in hooks | High | Comprehensive test coverage, peer review, staged rollout |
 | Data corruption during migration | High | Backup Django DB, validate row counts, test rollback, keep Django read-only during cutover |
-| Performance regression | Medium | Load testing in Phase 8, optimize hooks, compare to Django baseline |
+| Performance regression | Medium | ~~Load testing in Phase 8, optimize hooks, compare to Django baseline~~ — *done in #129, and the risk did materialise: four read paths were issuing a query per record, which the Django ORM's `prefetch_related` had been hiding. Fixed, and pinned by statement-count assertions that fail if a query is added back* |
 | OAuth provider misconfiguration | Medium | Test with real credentials in staging, documented runbooks |
 | Concurrent shot edits (race condition) | Medium | IMMEDIATE transaction mode, concurrency tests, Pocketbase DB locking |
 | Litestream replication issues | Medium | Test restore flow, S3 bucket backups, monitor replication lag |

@@ -35,16 +35,7 @@ func ListCompleted(app core.App, userID string) ([]*Out, error) {
 		return nil, fmt.Errorf("list completed rounds: %w", err)
 	}
 
-	out := make([]*Out, 0, len(roundRecords))
-	for _, round := range roundRecords {
-		roundOut, err := NewOut(app, round)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, roundOut)
-	}
-
-	return out, nil
+	return NewOutList(app, roundRecords)
 }
 
 // InProgress returns the player's in-progress round in the detail shape, or nil

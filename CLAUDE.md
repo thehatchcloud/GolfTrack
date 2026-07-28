@@ -2,7 +2,7 @@
 
 > **Rewrite in progress (#85):** GolfTrack is being migrated to **Django + Django Ninja + Tailwind CSS**. The Django app currently lives alongside this Next.js app — see `DJANGO.md` for its layout and dev commands. The guidance below describes the existing Next.js app, which remains authoritative until the Phase 8 cutover.
 
-> **PocketBase migration (#121):** a second migration, Django → PocketBase, is under way in `pocketbase/` — see `pocketbase/README.md`. As of Phase 7B it is a complete application (schema, domain hooks, API, and a frontend serving every page the Django app serves) that builds and runs locally with `make pb-dev`, but it is **not deployed**: the Django app remains the shipped artifact until the Phase 10 cutover. Its tests are `make pb-test`; its Tailwind build is `make pb-css`.
+> **PocketBase migration (#121):** a second migration, Django → PocketBase, is under way in `pocketbase/` — see `pocketbase/README.md`. As of Phase 7B it is a complete application (schema, domain hooks, API, and a frontend serving every page the Django app serves) that builds and runs locally with `make pb-dev`, but it is **not deployed**: the Django app remains the shipped artifact until the Phase 10 cutover. Its tests are `make pb-test`; its Tailwind build is `make pb-css`. Phase 8 (#129) added `make pb-bench` and `make pb-loadtest` — neither runs with `pb-test`, and both are written up in `pocketbase/performance_report.md`.
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
