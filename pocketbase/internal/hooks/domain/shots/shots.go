@@ -190,15 +190,15 @@ func Add(app core.App, userID, roundID string, holeNumber int, club string) (*co
 			return err
 		}
 
-		existing, err := records.HoleShots(txApp, hole.Id)
+		// The highest number so far, asked of the database as one row rather
+		// than as the whole shot list — this runs inside the write transaction,
+		// so anything it does not need to load is time every other writer
+		// spends queued behind it.
+		lastNumber, err := records.LastShotNumber(txApp, hole.Id)
 		if err != nil {
 			return err
 		}
-
-		nextNumber := 1
-		if len(existing) > 0 {
-			nextNumber = existing[len(existing)-1].GetInt(collections.FieldShotNumber) + 1
-		}
+		nextNumber := lastNumber + 1
 
 		shotsCollection, err := txApp.FindCollectionByNameOrId(collections.NameShots)
 		if err != nil {
@@ -238,15 +238,14 @@ func Undo(app core.App, userID, roundID string, holeNumber int) (*core.Record, e
 			return err
 		}
 
-		shots, err := records.HoleShots(txApp, hole.Id)
+		last, err := records.LastShot(txApp, hole.Id)
 		if err != nil {
 			return err
 		}
-		if len(shots) == 0 {
+		if last == nil {
 			return nil
 		}
 
-		last := shots[len(shots)-1]
 		if err := txApp.Delete(last); err != nil {
 			return fmt.Errorf("undo shot %d on hole %d of round %q: %w",
 				last.GetInt(collections.FieldShotNumber), holeNumber, roundID, err)
@@ -328,16 +327,16 @@ func Delete(app core.App, userID, roundID string, holeNumber int, shotID string)
 
 // openHole resolves (round, hole_number) for an owner and refuses the write if
 // the round is finished — the two lines every Django shot service opens with.
+//
+// The round comes back from the lookup rather than being fetched again for the
+// status check: this runs inside the write transaction, and the second read was
+// of a row the first had already returned.
 func openHole(app core.App, roundID string, holeNumber int, userID string) (*core.Record, error) {
-	hole, err := records.FindRoundHole(app, roundID, holeNumber, userID)
+	hole, round, err := records.FindRoundHoleAndRound(app, roundID, holeNumber, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	round, err := app.FindRecordById(collections.NameRounds, hole.GetString(collections.FieldRound))
-	if err != nil {
-		return nil, fmt.Errorf("load round of hole %q: %w", hole.Id, err)
-	}
 	if err := records.RequireInProgress(round); err != nil {
 		return nil, err
 	}

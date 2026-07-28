@@ -51,16 +51,18 @@ func RefreshStrokes(app core.App, roundHoleID string) error {
 		return fmt.Errorf("load round hole %q: %w", roundHoleID, err)
 	}
 
-	shots, err := records.HoleShots(app, roundHoleID)
+	// A count, not the shot list: this runs inside the transaction of the write
+	// that made the cache stale, and the number is all it has ever needed.
+	strokes, err := records.CountHoleShots(app, roundHoleID)
 	if err != nil {
 		return err
 	}
 
-	if hole.GetInt(collections.FieldStrokes) == len(shots) {
+	if hole.GetInt(collections.FieldStrokes) == strokes {
 		return nil
 	}
 
-	hole.Set(collections.FieldStrokes, len(shots))
+	hole.Set(collections.FieldStrokes, strokes)
 	if err := app.Save(hole); err != nil {
 		return fmt.Errorf("update stroke cache of round hole %q: %w", roundHoleID, err)
 	}
@@ -86,6 +88,9 @@ type Out struct {
 
 // NewOut builds the response payload for a hole, reloading it so the strokes it
 // reports are the committed ones.
+//
+// The reload is the point: the shot routes call this straight after a
+// transaction, and the hole record they hold is the pre-write one.
 func NewOut(app core.App, roundHoleID string) (*Out, error) {
 	hole, err := app.FindRecordById(collections.NameRoundHoles, roundHoleID)
 	if err != nil {
@@ -97,6 +102,36 @@ func NewOut(app core.App, roundHoleID string) (*Out, error) {
 		return nil, err
 	}
 
+	return newOut(hole, shots), nil
+}
+
+// NewOutList is NewOut for a round's whole hole set, in one query for every
+// hole's shots instead of two queries per hole (Phase 8, #129).
+//
+// It takes the hole records rather than their ids because its caller has just
+// listed them, and — unlike the shot routes — is not reading back its own
+// uncommitted write, so there is nothing to reload.
+func NewOutList(app core.App, holes []*core.Record) ([]Out, error) {
+	ids := make([]string, 0, len(holes))
+	for _, hole := range holes {
+		ids = append(ids, hole.Id)
+	}
+
+	shotsByHole, err := records.ShotsByRoundHole(app, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]Out, 0, len(holes))
+	for _, hole := range holes {
+		out = append(out, *newOut(hole, shotsByHole[hole.Id]))
+	}
+
+	return out, nil
+}
+
+// newOut assembles the payload from records already loaded.
+func newOut(hole *core.Record, shots []*core.Record) *Out {
 	out := &Out{
 		ID:         hole.Id,
 		HoleNumber: hole.GetInt(collections.FieldHoleNumber),
@@ -112,5 +147,5 @@ func NewOut(app core.App, roundHoleID string) (*Out, error) {
 		})
 	}
 
-	return out, nil
+	return out
 }

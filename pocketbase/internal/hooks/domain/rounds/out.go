@@ -1,6 +1,8 @@
 package rounds
 
 import (
+	"fmt"
+
 	"github.com/pocketbase/pocketbase/core"
 
 	"github.com/thehatchcloud/golftrack/pocketbase/internal/collections"
@@ -53,6 +55,59 @@ func NewOut(app core.App, round *core.Record) (*Out, error) {
 		return nil, err
 	}
 
+	return newOut(round, courseOut), nil
+}
+
+// NewOutList is NewOut for a set of rounds, loading the courses they were played
+// on — and those courses' holes — in two queries rather than two per round
+// (Phase 8, #129).
+//
+// A player's rounds cluster onto a handful of courses, so the batch is usually
+// far smaller than the list: twelve rounds at one club are one course lookup.
+func NewOutList(app core.App, roundRecords []*core.Record) ([]*Out, error) {
+	courseIDs := make([]string, 0, len(roundRecords))
+	for _, round := range roundRecords {
+		courseIDs = append(courseIDs, round.GetString(collections.FieldCourse))
+	}
+
+	courseRecords, err := records.CoursesByID(app, courseIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	distinct := make([]*core.Record, 0, len(courseRecords))
+	for _, course := range courseRecords {
+		distinct = append(distinct, course)
+	}
+
+	courseOuts, err := courses.NewOutList(app, distinct)
+	if err != nil {
+		return nil, err
+	}
+
+	byID := make(map[string]*courses.Out, len(courseOuts))
+	for _, courseOut := range courseOuts {
+		byID[courseOut.ID] = courseOut
+	}
+
+	out := make([]*Out, 0, len(roundRecords))
+	for _, round := range roundRecords {
+		courseOut, ok := byID[round.GetString(collections.FieldCourse)]
+		if !ok {
+			// rounds.course is a required relation with cascadeDelete off, so
+			// the database refuses to delete a course a round still points at.
+			// A round without one is corruption, not an empty list.
+			return nil, fmt.Errorf("round %q references missing course %q",
+				round.Id, round.GetString(collections.FieldCourse))
+		}
+		out = append(out, newOut(round, courseOut))
+	}
+
+	return out, nil
+}
+
+// newOut assembles the payload from a round and its already-built course.
+func newOut(round *core.Record, courseOut *courses.Out) *Out {
 	finished := round.GetDateTime(collections.FieldFinishedAt)
 
 	out := &Out{
@@ -78,11 +133,15 @@ func NewOut(app core.App, round *core.Record) (*Out, error) {
 		out.RelativeToPar = round.GetInt(collections.FieldRelativeToPar)
 	}
 
-	return out, nil
+	return out
 }
 
 // NewDetailOut builds the detail-shaped response: NewOut plus the round's
 // holes, each with its shots, in hole-number order.
+//
+// Four statements regardless of how long the round is — the course, its holes,
+// the round's holes, and every shot on them — which is what makes the play and
+// review pages cost the same on the eighteenth hole as on the first.
 func NewDetailOut(app core.App, round *core.Record) (*DetailOut, error) {
 	out, err := NewOut(app, round)
 	if err != nil {
@@ -94,13 +153,9 @@ func NewDetailOut(app core.App, round *core.Record) (*DetailOut, error) {
 		return nil, err
 	}
 
-	holes := make([]roundholes.Out, 0, len(holeRecords))
-	for _, hole := range holeRecords {
-		holeOut, err := roundholes.NewOut(app, hole.Id)
-		if err != nil {
-			return nil, err
-		}
-		holes = append(holes, *holeOut)
+	holes, err := roundholes.NewOutList(app, holeRecords)
+	if err != nil {
+		return nil, err
 	}
 
 	return &DetailOut{Out: *out, Holes: holes}, nil

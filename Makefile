@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help install migrate dev shell test lint css collectstatic clean distclean pb-test pb-css pb-dev
+.PHONY: help install migrate dev shell test lint css collectstatic clean distclean pb-test pb-bench pb-loadtest pb-css pb-dev
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -26,6 +26,12 @@ lint: ## Lint with ruff
 
 pb-test: ## Vet and test the PocketBase app (pocketbase/, Go)
 	cd pocketbase && go vet ./... && go test ./...
+
+pb-bench: ## Benchmark the PocketBase hot paths (not part of pb-test)
+	cd pocketbase && go test -run '^$$' -bench . -benchmem
+
+pb-loadtest: ## Load-test PocketBase at 10/50/100 concurrent players (slow; not part of pb-test)
+	cd pocketbase && GOLFTRACK_LOADTEST=1 go test -run TestLoad -v -timeout 30m
 
 pb-css: ## Compile Tailwind CSS for the PocketBase frontend (embedded in the binary)
 	sh ./bin/build-pb-css.sh

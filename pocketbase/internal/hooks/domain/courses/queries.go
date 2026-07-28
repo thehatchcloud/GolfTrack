@@ -55,14 +55,5 @@ func listWhere(app core.App, where dbx.Expression) ([]*Out, error) {
 		return nil, fmt.Errorf("list courses: %w", err)
 	}
 
-	out := make([]*Out, 0, len(courseRecords))
-	for _, course := range courseRecords {
-		courseOut, err := NewOut(app, course)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, courseOut)
-	}
-
-	return out, nil
+	return NewOutList(app, courseRecords)
 }

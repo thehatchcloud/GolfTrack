@@ -1,8 +1,8 @@
 # GolfTrack on PocketBase
 
-Phases 1 (#122), 2 (#123), 3 (#124), 4 (#125), 5 (#126), 7A (#128) and 7B of
-the Django → PocketBase migration tracked in epic #121. The overall plan lives
-in [`POCKETBASE_MIGRATION_PLAN.md`](../POCKETBASE_MIGRATION_PLAN.md).
+Phases 1 (#122), 2 (#123), 3 (#124), 4 (#125), 5 (#126), 7A (#128), 7B and
+8 (#129) of the Django → PocketBase migration tracked in epic #121. The overall
+plan lives in [`POCKETBASE_MIGRATION_PLAN.md`](../POCKETBASE_MIGRATION_PLAN.md).
 
 **Nothing in this directory is wired into the deployed app.** The Django app in
 the repository root is still the only thing built and shipped (see
@@ -48,6 +48,9 @@ pocketbase/
 ├── routes_test.go        # the custom routes, over HTTP
 ├── parity_test.go        # parity with the Django contract, gap by gap
 ├── bench_test.go         # the performance baseline (excluded from make pb-test)
+├── perf_test.go          # statements per request, query plans, the no-leak check
+├── loadtest_test.go      # 10/50/100 concurrent players (gated; see Performance)
+├── performance_report.md # Phase 8: the measurements and what they mean
 ├── concurrency_test.go   # the races: two writers on one hole or one player
 ├── course_write_routes_test.go # the course write routes, HTTP + reconciliation
 ├── frontend_workflow_test.go   # each workflow as a request sequence
@@ -304,6 +307,23 @@ expression of "one in-progress round per user", the same
 `uq_user_one_in_progress_round` constraint Django emits. `verify_schema.py`
 proves both halves — a second in-progress round is rejected, while a *completed*
 round for the same user is accepted.
+
+Phase 8 (#129) added two more, from query plans rather than from the Django
+models:
+
+```
+courses         idx_courses_archived_name               (is_archived, name)
+rounds          idx_rounds_user_status_finished         (user, status, finished_at DESC, started_at DESC)
+```
+
+The second is the one that mattered. `idx_rounds_status` is a single-column
+index on a two-valued column, so the completed-rounds list was selecting every
+completed round *in the database* and filtering by user afterwards, then sorting
+in a temporary B-tree. `idx_rounds_user` and `idx_rounds_status` are kept — they
+mirror the Django model's `Meta.indexes` and Phase 6 imported against them — but
+the planner now prefers the composite. `TestHotQueriesUseAnIndex` asks SQLite for
+the plan of every query the read paths issue and fails on a table scan, which is
+how both were found.
 
 ## Access rules
 
@@ -579,6 +599,26 @@ The Phase 7B gate:
 | No run-time requests to any external CDN | `TestPagesLoadNothingFromACDN` on the markup, and the walkthrough fails on any request whose origin is not the app's |
 | `make pb-test` green | it is |
 
+The Phase 8 (#129) gate — full write-up in
+[`performance_report.md`](performance_report.md):
+
+| Gate item | How |
+|---|---|
+| Response times acceptable (<200 ms p95 for most endpoints) | `TestLoadReads` holds every read endpoint to the budget at 10, 50 and 100 concurrent players; `TestLoadAtRealisticPace` holds *every* endpoint, writes included, to it at an offered load a golf app can receive — measured at under 5 ms p95 |
+| No memory leaks | `TestSustainedTrafficDoesNotLeak` — heap and goroutine count flat across a batch five times the warm-up's size |
+| Concurrency tests pass | `concurrency_test.go` unchanged and green, plus `TestLoadReads`/`TestLoadWrites`/`TestLoadMixed` with zero failed requests at every level |
+| Queries efficient | `TestReadPathsDoNotQueryPerRecord` and `TestPagesDoNotQueryPerRecord` — every read path issues the *same* number of statements at two data sizes; `TestHotQueriesUseAnIndex` fails on a query plan that scans |
+| `pocketbase/performance_report.md` — benchmarks vs. Django | it exists, with the Django side measured rather than deferred (`tests/test_django_baseline.py`). One qualification: the Django *HTTP* layer was not measured, because django-ninja's pydantic does not import on CPython 3.14.0rc2 — the only 3.14 build available in the container this was measured in. The service layer was measured instead, and the report says exactly what that includes |
+| Optimised hook implementations | the per-record reads in `internal/hooks/domain` are now set-at-a-time (`internal/records`), and three redundant reads came out of the write transaction |
+| `make pb-test` green | it is |
+
+One thing Phase 8 measured is worth carrying forward rather than leaving in the
+report: **write throughput is flat from ten concurrent players onward** —
+roughly 290 requests/second — because PocketBase runs writes on a
+one-connection pool over SQLite's single writer. That is far beyond what this
+application needs (a golfer records a shot about once a minute), but it is the
+number Phase 9 (#130) should have before choosing a deployment shape.
+
 The Phase 4 (#125) gate:
 
 | Gate item | How |
@@ -610,6 +650,38 @@ embedded into the binary and reconciled at startup, so they appear in the Admin
 UI without anyone clicking through it. Defining them by hand there would in fact
 be reverted by the next restart (see "Schema changes").
 
+## Performance
+
+Added in Phase 8 (#129). The measurements, the comparison with Django and the
+reasoning behind each assertion are in
+[`performance_report.md`](performance_report.md); the short version:
+
+- **Reads are 3–6 statements each, whatever the size of the round.** They used to
+  be one query per hole and one per round — 41 statements for an 18-hole round's
+  detail, 66 for the home page of a player with a dozen rounds behind them. The
+  batched lookups live in `internal/records`.
+- **The round-detail read is 3.2× faster** than before this phase, and faster
+  than the generated endpoint with `expand` for the same data.
+- **PocketBase answers a full authenticated HTTP request, JSON included, in less
+  time than Django's service layer alone takes to assemble the same data** —
+  roughly 4× on the reads, 1.2× on the writes.
+- **Writes saturate at ~290 requests/second** on a 4-vCPU machine, because
+  PocketBase runs them on a one-connection pool over SQLite's single writer. At a
+  realistic pace every endpoint is under 5 ms p95 with a hundred players on the
+  course.
+
+```bash
+make pb-bench         # the timings
+make pb-loadtest      # 10/50/100 concurrent players; slow, and gated
+```
+
+The load sweep is gated on `GOLFTRACK_LOADTEST` and the Django baseline on
+`GOLFTRACK_BASELINE`, so neither runs with `make pb-test`: one seeds a hundred
+players per level, and both are measuring instruments whose output is a table for
+a human rather than a pass/fail. What *is* in `make pb-test` is the part that
+does not depend on the machine — the statement counts, the query plans and the
+leak check.
+
 ## Tests
 
 ```bash
@@ -637,6 +709,8 @@ that could drift from it.
 | `parity_test.go` | parity with the Django contract: ownership on the custom routes, pagination/filtering/sorting, the status codes, and a characterisation test per gap in `API.md` |
 | `web_test.go` | the page routes: every page renders, the sign-in redirects, the admin refusals, the auth cookie (valid, absent, forged), the embedded assets, and that no page references a CDN |
 | `bench_test.go` | the performance baseline — benchmarks, so `go test ./...` skips them |
+| `perf_test.go` | how many statements each read path issues, counted at two data sizes so an N+1 shows up as a number that moves; the query plan of every hot query; and that sustained traffic leaks neither heap nor goroutines |
+| `loadtest_test.go` | 10/50/100 concurrent players, reads, writes and both — gated on `GOLFTRACK_LOADTEST`, because seeding a hundred players costs more than the rest of this directory put together |
 | `concurrency_test.go` | two writers on one hole, one player starting two rounds, delete racing delete |
 | `internal/hooks/domain/scoring/scoring_test.go` | the totals arithmetic, as plain unit tests |
 | `testapp_test.go` | the harness: seeded app, fixture builders, auth tokens |
@@ -763,6 +837,6 @@ Phase 4 adds two, against #125:
 
 | Phase | Issue | Adds |
 |---|---|---|
-| 5 — API parity | #126 | The endpoint contract, including the anonymous-caller status codes noted in `API.md` |
-| 6 — Data migration | #127 | The Django database imported, and the record-id question in `API.md` decided |
-| 7 — Frontend | #128 | The frontend against this API, including where the auth token lives (`AUTH.md` § "For the frontend") |
+| 9 — Docker & deployment | #130 | The container, Litestream and the health check. Bring `performance_report.md` § "Concurrency" to it: the write ceiling is a property of the deployment shape, not of the code |
+| 10 — CI/CD & rollout | #131 | The cutover |
+| 11 — Decommissioning | #132 | Django and Next.js removed; the duplicate `rounds` indexes noted above are a cleanup candidate here |

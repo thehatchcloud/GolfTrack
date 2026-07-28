@@ -2,12 +2,14 @@ package main
 
 import (
 	"errors"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
 
@@ -177,6 +179,34 @@ func createShot(t testing.TB, app core.App, id string, roundHole *core.Record, s
 		"shot_number": shotNumber,
 		"club":        club,
 	}))
+}
+
+// newMux builds the handler a request would land on, the way tests.ApiScenario
+// does: a router carrying the default app routes, then OnServe triggered so the
+// custom routes and (if registered) the pages bind to it.
+//
+// Used by the suites that drive requests themselves rather than through
+// tests.ApiScenario — the benchmarks, the query counts and the load test — all
+// of which need the same handler more than once per app.
+func newMux(tb testing.TB, app core.App) http.Handler {
+	tb.Helper()
+
+	router, err := apis.NewRouter(app)
+	if err != nil {
+		tb.Fatalf("new router: %v", err)
+	}
+
+	se := &core.ServeEvent{App: app, Router: router}
+	if err := app.OnServe().Trigger(se, func(*core.ServeEvent) error { return nil }); err != nil {
+		tb.Fatalf("trigger OnServe: %v", err)
+	}
+
+	mux, err := se.Router.BuildMux()
+	if err != nil {
+		tb.Fatalf("build mux: %v", err)
+	}
+
+	return mux
 }
 
 // authHeader returns an Authorization header map for the given auth record, or

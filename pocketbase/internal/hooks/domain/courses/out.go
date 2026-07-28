@@ -41,6 +41,38 @@ func NewOut(app core.App, course *core.Record) (*Out, error) {
 		return nil, err
 	}
 
+	return newOut(course, holes), nil
+}
+
+// NewOutList is NewOut for a set of courses, loading every course's holes in one
+// query rather than one per course (Phase 8, #129).
+//
+// The list endpoints and the pages behind them both go through here, so the
+// cost of `GET /api/courses` is two statements whether the app knows about one
+// course or a hundred.
+func NewOutList(app core.App, courseRecords []*core.Record) ([]*Out, error) {
+	ids := make([]string, 0, len(courseRecords))
+	for _, course := range courseRecords {
+		ids = append(ids, course.Id)
+	}
+
+	holesByCourse, err := records.CourseHolesByCourse(app, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]*Out, 0, len(courseRecords))
+	for _, course := range courseRecords {
+		out = append(out, newOut(course, holesByCourse[course.Id]))
+	}
+
+	return out, nil
+}
+
+// newOut assembles the payload from records already loaded — the half of NewOut
+// that touches no database, so both the single and the batched path produce
+// literally the same shape.
+func newOut(course *core.Record, holes []*core.Record) *Out {
 	out := &Out{
 		ID:         course.Id,
 		Name:       course.GetString(collections.FieldName),
@@ -61,5 +93,5 @@ func NewOut(app core.App, course *core.Record) (*Out, error) {
 		})
 	}
 
-	return out, nil
+	return out
 }
