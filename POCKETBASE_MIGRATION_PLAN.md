@@ -177,7 +177,7 @@ separate records and that is the first point the set is read as a whole.*
 2. ~~Extend Pocketbase user schema with `role` field~~ — *done in Phase 1; Phase 2 added the access rules over it*
 3. [x] Implement admin detection (check `ADMIN_EMAILS` env var) via `OnRecordAuthWithOAuth2Request` — `pocketbase/internal/hooks/adminrole.go`
 4. [x] Decide the password-login question — decided; see below
-5. [~] Update frontend to use Pocketbase auth — the auth slice is specified in `pocketbase/AUTH.md`; Phase 7A (#128) made the token-storage decision, and Phase 7B builds the sign-in/sign-out pages and the cookie handling against it
+5. [x] Update frontend to use Pocketbase auth — the auth slice is specified in `pocketbase/AUTH.md`; Phase 7A (#128) made the token-storage decision, and Phase 7B built the sign-in/sign-out pages and the cookie handling against it
 
 `pocketbase/internal/hooks/users.go` already defaults `users.role` to `USER` on create — the field default Django writes as `default=Role.USER`, needed because `role` is required and an OAuth2 sign-up supplies only email, name and avatar. This phase adds the *promotion* on top of it.
 
@@ -188,7 +188,7 @@ Password login is not purely additive: Phase 2 set the `users` create rule to `@
 #### Deliverables:
 - [x] Admin role assignment in `pocketbase/internal/hooks/` (Go), registered from `hooks.Register`
 - [x] Updated environment variables documentation (`ADMIN_EMAILS`, provider client ids/secrets) — `pocketbase/AUTH.md`, summarised in `pocketbase/README.md`
-- [~] Frontend auth integration — the contract and the token-storage trade-off, for Phase 7B to build against
+- [x] Frontend auth integration — the contract and the token-storage trade-off, built against in Phase 7B
 - [x] A recorded decision on password login, with `acl_test.go` matching it
 
 #### Validation Gate:
@@ -197,7 +197,7 @@ Password login is not purely additive: Phase 2 set the `users` create rule to `@
 - [x] A first-time sign-in lands with `role = USER` through the real OAuth path
 - [x] Admin role assigned correctly from `ADMIN_EMAILS`, including a user who was already `USER` before their address was added
 - [x] A non-admin still cannot self-assign `ADMIN` — `acl_test.go` still green
-- [ ] Frontend auth cookies validated — PocketBase's session is a token the client holds, so where it lives is a frontend decision. Phase 7A (#128) decided *where* (a `Secure`, `SameSite=Lax`, non-`HttpOnly` cookie); **validating it needs a frontend, so this closes in Phase 7B**
+- [x] Frontend auth cookies validated — PocketBase's session is a token the client holds, so where it lives is a frontend decision. Phase 7A (#128) decided *where* (a `Secure`, `SameSite=Lax`, non-`HttpOnly` cookie); **Phase 7B built and validated it** (`internal/web/auth.go`, `web_test.go`), including that the client-writable record half of the cookie grants nothing
 
 *Delivered in #125. Two deviations from this section, both recorded in
 `pocketbase/README.md` § "Deviations": the OAuth providers are applied from the
@@ -272,15 +272,18 @@ Phase 3 closed three of those *on the custom routes it built* — camelCase, the
 **Objective:** Make the API serve the exact response shapes a GolfTrack frontend renders
 
 #### Tasks:
-1. [~] Update API client library to use Pocketbase auth cookies/tokens — token-storage decision made in #128: a cookie, not `localStorage`; see `pocketbase/AUTH.md` § "For the frontend"
+1. [x] Update API client library to use Pocketbase auth cookies/tokens — token-storage decision made in #128 (a cookie, not `localStorage`; see `pocketbase/AUTH.md` § "For the frontend"), and implemented in Phase 7B as `internal/web/static/js/golftrack.js`
 2. [x] Adjust API endpoint calls for Pocketbase format — the read-side format gap (camelCase, null totals, nested relations) is closed with new custom routes: `GET /api/courses`, `/api/courses/{id}`, `/api/rounds`, `/api/rounds/in-progress`, `/api/rounds/{id}`, pinned by `pocketbase/read_routes_test.go` and recorded in `pocketbase/API.md` § "Parity gaps" (gaps 1, 2, 4)
 3. [x] Exercise every workflow below at the HTTP level, as the automated stand-in for a browser pass — `pocketbase/frontend_workflow_test.go`
-4. [→] Test all frontend workflows in a browser — **moved to Phase 7B**, which builds the browser client
-5. [→] Verify CSS/Tailwind styling — **moved to Phase 7B**
+4. [→] Test all frontend workflows in a browser — **moved to Phase 7B**, which builds the browser client; **done there**
+5. [→] Verify CSS/Tailwind styling — **moved to Phase 7B**; **done there**
 
 #### Workflows to Cover:
 - Home page (resume in-progress round or list completed)
-- Courses list/create/edit/delete
+- Courses list/create/edit/delete — *list covered here; create/edit had no route
+  until Phase 7B built the course write routes, and are covered from there by
+  `TestFrontendWorkflowCourseAdmin`. "Delete" is archive: the contract has no
+  course delete*
 - Start round (pick course, play mode)
 - Play round (add/undo/edit/delete shots)
 - Complete round (calculate totals)
@@ -291,9 +294,9 @@ Phase 3 closed three of those *on the custom routes it built* — camelCase, the
 - [x] All API calls successful — every route above covered by HTTP-level tests
 - [x] Round creation and play flow works — `routes_test.go`, `frontend_workflow_test.go`
 - [x] Response shapes match what each page renders — `read_routes_test.go`
-- [→] All page routes load — **moved to Phase 7B**; there are no PocketBase page routes to load yet
-- [→] No JavaScript console errors — **moved to Phase 7B**
-- [→] Styling looks correct — **moved to Phase 7B**
+- [→] All page routes load — **moved to Phase 7B**, and met there
+- [→] No JavaScript console errors — **moved to Phase 7B**, and met there
+- [→] Styling looks correct — **moved to Phase 7B**, and met there
 
 *Delivered in #128. The backend half — custom read routes returning the exact
 shapes the frontend contract expects — is delivered and tested; see
@@ -347,21 +350,36 @@ Next.js (Decision #2's other branch) needs a Node server alongside the binary,
 or a static export that gives up SSR — either way it works against the
 single-container model.
 
-#### Backend dependency — course writes have no route yet
+#### Backend dependency — course writes — **built**
 
-`API.md` § "Mapping to the current contract" still maps `POST /api/courses/` to
+`API.md` § "Mapping to the current contract" mapped `POST /api/courses/` to
 "`POST /api/collections/courses/records` + N hole creates" and
 `PUT /api/courses/{id}` to "`PATCH` + hole reconciliation". A course form that
 saved a name and eighteen pars through the generated endpoints would issue 19
 non-atomic requests and could leave a course with a partial hole set — which
-Phase 3 rule 8 then rejects at round creation. This phase needs the two custom
-write routes built first, in the shape Phase 3 established:
+Phase 3 rule 8 then rejects at round creation, one request removed from the edit
+that broke it. This phase needed the two custom write routes first, in the shape
+Phase 3 established:
 
-- `POST /api/courses/` — create course and holes in one transaction
-- `PUT /api/courses/{id}` — update course and reconcile the hole set in one transaction
+- [x] `POST /api/courses/` — create course and holes in one transaction
+- [x] `PUT /api/courses/{id}` — update course and reconcile the hole set in one transaction
+
+Both are admin-only (`courses/api.py` opens create and update with
+`require_admin`): 401 anonymous, 403 for a signed-in player, and a PocketBase
+superuser through, since it already bypasses the collection rules the generated
+endpoints enforce. `CourseIn`'s validators are ported message for message and
+run *before* the transaction opens, so a rejected payload writes nothing.
+`PUT` reconciles rather than replaces — a hole still in the payload keeps its
+record and its id, a hole absent from it is deleted, as `update_course` does.
 
 Archive/unarchive stay on the generated `PATCH` (single field, already
-admin-gated by the Phase 2 rules).
+admin-gated by the Phase 2 rules); there is no course *delete* in the contract.
+
+Delivered with `pocketbase/internal/hooks/domain/courses/write.go`,
+`pocketbase/course_write_routes_test.go`, and a courses leg added to
+`pocketbase/frontend_workflow_test.go` — which also closes the one Phase 7A
+workflow ("Courses list/create/edit/delete") that had no route to walk. See
+`pocketbase/README.md` § "The Phase 7B backend dependency".
 
 #### Page Routes to Rebuild:
 
@@ -387,25 +405,35 @@ admin-gated by the Phase 2 rules).
 7. **Error and not-found pages** — 404 and the admin-only 403, currently Django's
 
 #### Deliverables:
-- `pocketbase/internal/web/` — page-route registration on `OnServe`, template registry, per-page handlers
-- `pocketbase/internal/web/templates/` — ported layouts and pages (`go:embed`)
-- `pocketbase/internal/web/static/` — Tailwind output, vendored Alpine/htmx, icons, manifest (`go:embed`)
-- `pocketbase/internal/web/auth.go` — cookie read/write implementing the `AUTH.md` contract
-- Custom course write routes (see "Backend dependency" above), with `API.md` updated
-- `pocketbase/web_test.go` — page-route tests: status codes, signed-out redirects, admin gating
-- `pocketbase/README.md` § "Frontend" — layout, how to run it, how the asset build works
+- [x] `pocketbase/internal/web/` — page-route registration on `OnServe`, template registry, per-page handlers
+- [x] `pocketbase/internal/web/templates/` — ported layouts and pages (`go:embed`)
+- [x] `pocketbase/internal/web/static/` — Tailwind output, vendored Alpine and the PocketBase JS SDK, icons, manifest (`go:embed`). *htmx is not vendored: `base.html` loaded it, but no template ever used an `hx-` attribute*
+- [x] `pocketbase/internal/web/auth.go` — cookie read implementing the `AUTH.md` contract. *Read, not read/write: the cookie is written by the SDK in the browser (`static/js/golftrack.js`), and only its token half is trusted server-side*
+- [x] Custom course write routes (see "Backend dependency" above), with `API.md` updated
+- [x] `pocketbase/web_test.go` — page-route tests: status codes, signed-out redirects, admin gating
+- [x] `pocketbase/scripts/browser-walkthrough.mjs` — the seven workflows in a real browser, failing on any console error or third-party request. *Not in the original list; the gate asks for a browser pass, and a script makes it repeatable rather than a one-off*
+- [x] `pocketbase/README.md` § "Frontend" — layout, how to run it, how the asset build works
 
 #### Validation Gate:
-- [ ] Every page route in the table above loads for a signed-in user
-- [ ] A signed-out visitor is redirected to sign-in from each gated page (Django's `@login_required_view`)
-- [ ] Admin-only pages and actions refuse a non-admin (Django's `@admin_required`)
-- [ ] Sign-in works through both OAuth providers, and sign-out discards the token
-- [ ] Frontend auth cookie validated — closes the item deferred from Phase 4 (#125)
-- [ ] All seven Phase 7A workflows pass in a real browser, not just at HTTP level
-- [ ] No JavaScript console errors
-- [ ] Styling matches the current app; PWA still installable and icons served
-- [ ] No run-time requests to any external CDN
-- [ ] `make pb-test` green
+- [x] Every page route in the table above loads for a signed-in user — `web_test.go`
+- [x] A signed-out visitor is redirected to sign-in from each gated page (Django's `@login_required_view`), `?next=` included
+- [x] Admin-only pages and actions refuse a non-admin (Django's `@admin_required`) — including a cookie that claims `role: ADMIN`
+- [~] Sign-in works through both OAuth providers, and sign-out discards the token — the flow, the cookie and sign-out are exercised; **the live provider exchange stays owner-verified**, as in Phase 4, because it needs real credentials and a browser
+- [x] Frontend auth cookie validated — closes the item deferred from Phase 4 (#125)
+- [x] All seven Phase 7A workflows pass in a real browser, not just at HTTP level — `scripts/browser-walkthrough.mjs`
+- [x] No JavaScript console errors — the walkthrough fails on any
+- [x] Styling matches the current app; PWA still installable and icons served
+- [x] No run-time requests to any external CDN — asserted on the markup *and* on every request the browser makes
+- [x] `make pb-test` green
+
+*Delivered. Three deviations from this section, all recorded in
+`pocketbase/README.md` § "Frontend": htmx is not vendored (nothing used it), the
+archive/unarchive and course-form POSTs became API calls rather than page routes
+(so the cookie gates renders only and there is no CSRF surface to replace), and
+the sign-in page reads the enabled providers from the users collection directly
+instead of from `GET /api/collections/users/auth-methods` — same answer, one
+fewer round trip, and it cannot disagree with the endpoint because it is the
+same process.*
 
 ---
 
@@ -454,7 +482,7 @@ admin-gated by the Phase 2 rules).
 - [ ] Container starts and serves API
 - [ ] Litestream replicates without errors
 - [ ] Health check passes
-- [ ] Static assets served correctly — the Phase 7B embedded asset FS (Tailwind output, vendored Alpine/htmx, icons, manifest), not Django's `collectstatic`/WhiteNoise output
+- [ ] Static assets served correctly — the Phase 7B embedded asset FS (Tailwind output, vendored Alpine and the PocketBase JS SDK, icons, manifest), not Django's `collectstatic`/WhiteNoise output
 
 ---
 
@@ -495,7 +523,7 @@ admin-gated by the Phase 2 rules).
 
 #### Tasks:
 1. Remove Django code (`config/`, `accounts/`, `core/`, `courses/`, `rounds/`, `manage.py`, `conftest.py`, `pyproject.toml`)
-2. Remove the Django frontend that Phase 7B replaced — root `templates/`, and the parts of `static/` now embedded in the binary (`static/js/round-play.js`, `static/src/input.css`, the compiled `static/css/app.css`, and the icons/manifest once they live under `pocketbase/internal/web/static/`). *This was previously implicit: `courses/` and `rounds/` contain `views.py` and `templates/`, so step 1 deletes the UI, and the root `templates/`+`static/` trees were not listed at all.*
+2. Remove the Django frontend that Phase 7B replaced — root `templates/`, and the parts of `static/` now embedded in the binary (`static/js/round-play.js`, `static/src/input.css`, the compiled `static/css/app.css`, and the icons/manifest, all of which now live under `pocketbase/internal/web/static/`). Also `bin/build-css.sh`, `tailwind.config.js` and `make css`, whose PocketBase twins are `bin/build-pb-css.sh`, `tailwind.pocketbase.config.js` and `make pb-css`. *This was previously implicit: `courses/` and `rounds/` contain `views.py` and `templates/`, so step 1 deletes the UI, and the root `templates/`+`static/` trees were not listed at all.*
 3. Remove Next.js legacy code (`app/`, `components/`, `lib/`, `prisma/`)
 4. Reorganize repository structure
 5. Update documentation (README, DEPLOYMENT.md, delete DJANGO.md)

@@ -43,17 +43,18 @@ pocketbase/
     ├── apierr/          the {"error": …} contract: typed errors + the route wrapper
     ├── authenv/         the authentication configuration, read from the environment
     ├── records/         record lookups the domain packages share
-    └── hooks/
-        ├── hooks.go     Register() — the only place hooks are bound
-        ├── users.go     users.role field default
-        ├── authconfig.go  OAuth2 providers + password login, applied on OnServe
-        ├── adminrole.go   users.role from ADMIN_EMAILS, on OAuth2 sign-in
-        └── domain/      one package per aggregate
-            ├── courses/     course and hole validation, derived total_par
-            ├── rounds/      round lifecycle + its custom routes
-            ├── roundholes/  hole initialisation, the stroke cache, the hole payload
-            ├── shots/       shot lifecycle + the nested shot routes
-            └── scoring/     calculate_round_totals (pure, no hooks)
+    ├── hooks/
+    │   ├── hooks.go     Register() — the only place hooks are bound
+    │   ├── users.go     users.role field default
+    │   ├── authconfig.go  OAuth2 providers + password login, applied on OnServe
+    │   ├── adminrole.go   users.role from ADMIN_EMAILS, on OAuth2 sign-in
+    │   └── domain/      one package per aggregate
+    │       ├── courses/     course and hole validation, writes, derived total_par
+    │       ├── rounds/      round lifecycle + its custom routes
+    │       ├── roundholes/  hole initialisation, the stroke cache, the hole payload
+    │       ├── shots/       shot lifecycle + the nested shot routes
+    │       └── scoring/     calculate_round_totals (pure, no hooks)
+    └── web/             the frontend (Phase 7B): pages, templates, static assets
 ```
 
 `schema.go` holds the embed rather than `main.go` so that `syncSchema` is a
@@ -112,7 +113,7 @@ Where each rule ended up:
 |---|---|---|
 | Course snapshotting | `rounds` | `POST /api/rounds/` |
 | Play-mode validity | `rounds` | `POST /api/rounds/` |
-| Course hole-set validity | `courses` + `rounds` | per record on write; as a set at round creation |
+| Course hole-set validity | `courses` + `rounds` | per record on write; as a whole payload on `POST`/`PUT /api/courses`; as a set at round creation |
 | Exact `hole_count` | `courses` | `OnRecordCreate` / `OnRecordUpdate` |
 | Stroke cache | `shots` → `roundholes` | `OnRecordCreate` / `OnRecordDelete` on `shots` |
 | Shot renumbering | `shots` | `OnRecordDelete` on `shots` |
@@ -269,10 +270,40 @@ application — so every handler resolves its round through
 the way Django's `.get(pk=..., user=user)` does: another player's round is *not
 found*, never *forbidden*.
 
+Course administration is the one place where a *role* decides the answer rather
+than ownership. `POST /api/courses/` and `PUT /api/courses/{id}` (Phase 7B,
+`courses/write.go`) add `requireAdmin` on top of `apis.RequireAuth()`, porting
+`core/api_auth.py`'s `require_admin`: `role = ADMIN`, or a PocketBase superuser,
+and otherwise `403 {"error": "Forbidden"}`. Both run `CourseIn`'s validators
+before opening their transaction, so a course and its holes commit together or
+not at all — the invariant `courses.ValidateHoleSet` would otherwise only catch
+at the next round creation.
+
 Handlers return errors rather than writing them; `apierr.Handler` turns an
 `*apierr.Error` into `{"error": "<message>"}` with its status, and anything else
 into a logged 500. That split is what lets the same domain function be called
 from inside a transaction, where there is no `RequestEvent` to write to yet.
+
+## The frontend
+
+Phase 7B added `internal/web`: the page routes, their templates and the static
+assets, all embedded in the same binary and served by the same process. It is a
+port of the Django views rather than a new design — same routes, same markup,
+same Alpine islands — and it sits on top of the layers above rather than beside
+them:
+
+- **Pages read through the domain packages' exported queries**
+  (`courses.List`, `rounds.InProgress`, `rounds.Detail`, …), which are the same
+  functions the JSON routes call. A page cannot answer differently from the
+  endpoint behind it, because there is only one query.
+- **Pages never write.** Every mutation is an API call from the page's own
+  JavaScript carrying the bearer token, so the write paths documented above are
+  the only write paths, and the cookie can never authorise a write.
+- **The cookie gates renders only**, and only the token half of it is trusted —
+  `internal/web/auth.go` verifies the JWT and re-reads the user record, so the
+  client-writable `record` blob in the cookie decides nothing.
+
+`README.md` § "Frontend" covers the routes, the asset build and how to run it.
 
 ## Testing
 

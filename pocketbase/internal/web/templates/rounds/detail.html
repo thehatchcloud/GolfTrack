@@ -1,0 +1,65 @@
+{{define "title"}}{{.Title}}{{end}}
+
+{{define "content"}}
+<div class="mb-5 flex items-start justify-between">
+  <div>
+    <p class="text-xs font-semibold uppercase tracking-widest text-stone-400">Completed Round</p>
+    <h1 class="text-xl font-bold">{{.Round.Course.Name}}</h1>
+    <p class="text-sm text-stone-500">{{shortDate .Round.FinishedAt}}</p>
+  </div>
+  <a href="/rounds/" class="rounded-lg border border-stone-200 px-3 py-1.5 text-sm hover:bg-stone-50">
+    ← Rounds
+  </a>
+</div>
+
+<!-- Score summary -->
+<div class="mb-5 grid grid-cols-3 gap-3">
+  <div class="rounded-xl bg-stone-100 p-3 text-center">
+    <p class="text-xs font-semibold uppercase tracking-wider text-stone-500">Par</p>
+    <p class="text-2xl font-bold">{{orDash .Round.TotalPar}}</p>
+  </div>
+  <div class="rounded-xl bg-stone-100 p-3 text-center">
+    <p class="text-xs font-semibold uppercase tracking-wider text-stone-500">Strokes</p>
+    <p class="text-2xl font-bold">{{orDash .Round.TotalStrokes}}</p>
+  </div>
+  <div class="rounded-xl bg-stone-100 p-3 text-center">
+    <p class="text-xs font-semibold uppercase tracking-wider text-stone-500">To Par</p>
+    <p class="text-2xl font-bold">{{toPar .Round.RelativeToPar}}</p>
+  </div>
+</div>
+
+<!-- Hole-by-hole -->
+<div class="mb-5 rounded-2xl border border-stone-200 bg-white shadow-sm">
+  <h2 class="border-b border-stone-100 px-4 py-3 text-sm font-semibold text-stone-700">Hole by hole</h2>
+  <ul class="divide-y divide-stone-100">
+    {{range .Round.Holes}}
+      <li class="px-4 py-3">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <span class="w-16 text-sm font-medium text-stone-600">Hole {{.HoleNumber}}</span>
+            <span class="rounded-lg bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-500">Par {{.Par}}</span>
+          </div>
+          <span class="font-semibold">{{.Strokes}}</span>
+        </div>
+        {{if .Shots}}
+          <div class="mt-2 flex flex-wrap gap-1.5">
+            {{range .Shots}}
+              <span class="rounded-lg bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
+                {{.ShotNumber}}. {{.Club}}
+              </span>
+            {{end}}
+          </div>
+        {{end}}
+      </li>
+    {{end}}
+  </ul>
+</div>
+
+<!-- Notes -->
+{{if .Round.Note}}
+  <div class="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+    <h2 class="mb-2 text-sm font-semibold text-stone-700">Round notes</h2>
+    <p class="whitespace-pre-wrap text-sm text-stone-600">{{.Round.Note}}</p>
+  </div>
+{{end}}
+{{end}}

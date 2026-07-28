@@ -226,6 +226,28 @@ trade-off the two bullets above describe, made explicit: this phase accepts
 "readable by the page's own scripts" as the cost of keeping the server able to
 gate a page render before any JavaScript runs.
 
+**Built in Phase 7B.** `internal/web/auth.go` reads the cookie server-side and
+`static/js/golftrack.js` writes it (through `authStore.exportToCookie`) and
+attaches the token to every API call. Two details the decision above did not
+pin down, settled by the implementation:
+
+- **Only the token is trusted.** `exportToCookie` writes `{"token": …,
+  "record": {…}}`, and the record half is as forgeable as anything else the
+  client holds. The server ignores it: it verifies the token and re-reads the
+  user, so a cookie edited to `"role":"ADMIN"` opens no admin page
+  (`TestTamperedCookieRecordCannotGrantAdmin`).
+- **`Secure` follows the scheme.** The cookie is written `Secure` over HTTPS and
+  not over plain HTTP, because a `Secure` cookie is silently dropped on
+  `http://localhost` and development would have no session at all. Production is
+  HTTPS, so production gets `Secure`.
+
+Sign-in itself uses the SDK's popup OAuth2 flow
+(`authWithOAuth2({provider})`), which completes against `/api/oauth2-redirect` —
+the redirect URI this document already tells you to register. The alternative
+noted above (a frontend that drives the redirect itself and registers its own
+callback) stays available if the popup proves awkward in a particular mobile
+browser; it would need a second redirect URI added to each OAuth app.
+
 What the frontend needs from this phase:
 
 | Need | Where it comes from |

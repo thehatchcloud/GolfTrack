@@ -1,8 +1,8 @@
 # GolfTrack on PocketBase
 
-Phases 1 (#122), 2 (#123), 3 (#124) and 4 (#125) of the Django → PocketBase
-migration tracked in epic #121. The overall plan lives in
-[`POCKETBASE_MIGRATION_PLAN.md`](../POCKETBASE_MIGRATION_PLAN.md).
+Phases 1 (#122), 2 (#123), 3 (#124), 4 (#125), 5 (#126), 7A (#128) and 7B of
+the Django → PocketBase migration tracked in epic #121. The overall plan lives
+in [`POCKETBASE_MIGRATION_PLAN.md`](../POCKETBASE_MIGRATION_PLAN.md).
 
 **Nothing in this directory is wired into the deployed app.** The Django app in
 the repository root is still the only thing built and shipped (see
@@ -13,8 +13,10 @@ What is here so far: a PocketBase application you can build and run locally, the
 six collections defined and reproducible from a committed schema file, their
 access rules, the domain logic — the round and shot lifecycle, the stroke cache,
 the scoring — as compiled-in Go hooks with the custom routes the generated CRUD
-cannot cover, and OAuth sign-in with the admin role assigned from
-`ADMIN_EMAILS`.
+cannot cover, OAuth sign-in with the admin role assigned from `ADMIN_EMAILS`,
+and — since Phase 7B — the **frontend**: every page the Django app serves,
+rebuilt as server-rendered Go templates inside the same binary. `go run . serve`
+now gives you the whole app, not just an API.
 
 ## One Go binary
 
@@ -47,23 +49,35 @@ pocketbase/
 ├── parity_test.go        # parity with the Django contract, gap by gap
 ├── bench_test.go         # the performance baseline (excluded from make pb-test)
 ├── concurrency_test.go   # the races: two writers on one hole or one player
+├── course_write_routes_test.go # the course write routes, HTTP + reconciliation
+├── frontend_workflow_test.go   # each workflow as a request sequence
+├── read_routes_test.go   # the Phase 7A read shapes
+├── web_test.go           # the page routes: rendering, gating, assets
 ├── testapp_test.go       # test harness: seeded in-process app + fixtures
 ├── internal/
 │   ├── collections/      # collection names/ids, field names, enum values
 │   ├── apierr/           # the {"error": …} contract + the route wrapper
 │   ├── authenv/          # the auth configuration, read from the environment
 │   ├── records/          # record lookups the domain packages share
-│   └── hooks/
-│       ├── hooks.go      # Register() — the only place hooks are bound
-│       ├── users.go      # users.role field default
-│       ├── authconfig.go # OAuth2 providers + password login, from the env
-│       ├── adminrole.go  # users.role from ADMIN_EMAILS, on OAuth2 sign-in
-│       └── domain/       # one package per aggregate (see its README)
+│   ├── hooks/
+│   │   ├── hooks.go      # Register() — the only place hooks are bound
+│   │   ├── users.go      # users.role field default
+│   │   ├── authconfig.go # OAuth2 providers + password login, from the env
+│   │   ├── adminrole.go  # users.role from ADMIN_EMAILS, on OAuth2 sign-in
+│   │   └── domain/       # one package per aggregate (see its README)
+│   └── web/              # the frontend (Phase 7B) — see "Frontend" below
+│       ├── web.go        # Register(): page routes, static mount, rendering
+│       ├── pages.go      # one handler per Django view
+│       ├── auth.go       # the auth cookie: read, verify, never trust
+│       ├── funcs.go      # the template functions the ported markup needs
+│       ├── templates/    # go:embed — base layout + one file per page
+│       └── static/       # go:embed — Tailwind output, Alpine, SDK, icons
 ├── scripts/
 │   ├── dev.sh            # build the binary + run the dev server
 │   ├── apply_schema.py   # pb_schema.json  ->  running instance (reconcile)
 │   ├── export_schema.py  # running instance ->  pb_schema.json
-│   └── verify_schema.py  # assert the Phase 1 validation gate
+│   ├── verify_schema.py  # assert the Phase 1 validation gate
+│   └── browser-walkthrough.mjs # drive all seven workflows in a real browser
 └── .local/               # gitignored: compiled binary, pb_data
 ```
 
@@ -111,6 +125,83 @@ GOLFTRACK_ALLOW_PASSWORD_LOGIN=true pocketbase/scripts/dev.sh
 
 With none of them set the app has no sign-in method and says so at startup;
 the Admin UI still opens, because superusers are a separate collection.
+
+## Frontend
+
+Added in Phase 7B. The app's pages are served by this binary: Go
+`html/template` pages, Alpine.js islands, Tailwind, all embedded. There is no
+second server, no build step at run time and no CDN — `go build` produces
+something you can hand to a browser.
+
+| Route | Gate | Django original |
+|---|---|---|
+| `/` | open | `core/views.home` |
+| `/courses/` | open | `course_list` |
+| `/courses/{id}/` | open | `course_detail` |
+| `/courses/new/`, `/courses/{id}/edit/` | admin | `course_new`, `course_edit` |
+| `/courses/archived/` | admin | `course_archived_list` |
+| `/rounds/`, `/rounds/new/` | signed in | `round_list`, `round_new` |
+| `/rounds/{id}/`, `/rounds/{id}/play/`, `/rounds/{id}/review/` | signed in | `round_detail`, `round_play`, `round_review` |
+| `/accounts/login/`, `/accounts/logout/` | open | django-allauth's pages |
+
+The course pages are open because the Django views carry no decorator and
+`GET /api/courses` is unauthenticated for the same reason. Everything under
+`/rounds/` redirects a signed-out visitor to `/accounts/login/?next=…`, and the
+admin pages answer a signed-in non-admin with the 403 page — `@login_required_view`
+and `@admin_required`, ported.
+
+Three properties are worth stating outright, because they are what the port
+changed rather than copied:
+
+- **Pages are GET-only.** Every write — creating a course, adding a shot,
+  archiving, completing a round — is a JSON API call from the page's own
+  JavaScript with an `Authorization` header. Nothing is written on the strength
+  of a cookie, so Django's CSRF token has no replacement and needs none.
+- **The cookie is read, never trusted.** `pb_auth` carries a token *and* a copy
+  of the user record, and the record half is client-writable. `internal/web/auth.go`
+  verifies the token and re-reads the user from the database; a cookie
+  hand-edited to `"role":"ADMIN"` opens nothing (`TestTamperedCookieRecordCannotGrantAdmin`).
+- **Sign-in is the SDK's popup OAuth2 flow**, completed against
+  `/api/oauth2-redirect` — the redirect URI `AUTH.md` already tells you to
+  register, so no provider reconfiguration is needed. Sign-out discards the
+  cookie; there is no server session to end.
+
+### Running it
+
+```bash
+make pb-dev          # or: cd pocketbase && go run . serve
+```
+
+Then <http://127.0.0.1:8090/>. Sign-in needs an auth method, so in development
+either export the OAuth variables or use
+`GOLFTRACK_ALLOW_PASSWORD_LOGIN=true` and create an account in the Admin UI
+(self-service sign-up stays closed — that is Phase 4's recorded decision).
+
+### The asset build
+
+```bash
+make pb-css          # bin/build-pb-css.sh — Tailwind -> internal/web/static/css/app.css
+```
+
+`tailwind.pocketbase.config.js` scans `internal/web/templates`; the Django
+build (`make css`, `tailwind.config.js`) still scans the Django tree and writes
+`static/css/app.css`. Both exist until the Phase 11 cleanup and share a Tailwind
+version, so the ported markup renders identically. **The compiled CSS is
+committed**, because `go:embed` needs it at build time — a checkout must be able
+to `go build` with no Tailwind toolchain installed. Re-run `make pb-css` after
+touching a template's classes.
+
+Alpine and the PocketBase JS SDK are vendored under `internal/web/static/js/`
+for the same reason the CSS is committed, and because a PWA that needs unpkg.com
+to boot is not one. htmx is *not* vendored: `base.html` loaded it, but no
+template in the app ever used an `hx-` attribute.
+
+### Checking it in a browser
+
+`web_test.go` renders every page but never runs the JavaScript.
+`scripts/browser-walkthrough.mjs` does: it drives Chromium through all seven
+workflows and fails on any console error, any third-party request, or any
+unexpected status. Its header comments say how to seed an instance for it.
 
 ## Collections
 
@@ -308,6 +399,8 @@ bound to a record hook rather than to a route.
 |---|---|---|
 | `GET` | `/api/courses` | list courses, camelCase `CourseOut` shape, holes nested inline |
 | `GET` | `/api/courses/{id}` | a single course, same shape |
+| `POST` | `/api/courses/` | create a course and its whole hole set in one transaction (admin) |
+| `PUT` | `/api/courses/{id}` | rename, resize and reconcile the hole set in one transaction (admin) |
 | `POST` | `/api/rounds/` | create a round, snapshotting the course's holes by play mode |
 | `GET` | `/api/rounds/` | list completed rounds, camelCase `RoundOut` shape |
 | `GET` | `/api/rounds/in-progress` | the caller's in-progress round (camelCase `RoundDetailOut`) or `null` |
@@ -326,6 +419,15 @@ from the current API — a generated endpoint would answer `200` with an empty
 list, because a list rule filters rather than gates. The two `/api/courses`
 read routes are unauthenticated, matching the current API's course endpoints.
 
+The two course *write* routes go one step further and require `role = ADMIN`,
+the way `courses/api.py` opens `create` and `update` with `require_admin` — a
+signed-in player gets `403 {"error": "Forbidden"}`. A PocketBase superuser
+passes: it already bypasses the collection rules the generated endpoints
+enforce, so refusing it on the custom route would make the custom route the
+stricter path for no reason an operator would expect. Round routes have no such
+branch — "admin" here means course administration, never impersonation, and
+`parity_test.go` keeps it that way.
+
 These paths, their request/response field names (`courseId`, `playMode`, `club`,
 `note`, `currentHole`, `holeCount`, `isArchived`, `totalStrokes`,
 `relativeToPar`) and their status codes are the current contract's, so the
@@ -341,6 +443,9 @@ returns — both are recorded in `API.md` for Phase 6 (#127).
 | Situation | Response |
 |---|---|
 | No auth | `401` |
+| Creating or editing a course as a non-admin | `403 {"error": "Forbidden"}` |
+| Editing a course that does not exist | `404 {"error": "Course not found"}` |
+| A course payload the `CourseIn` rules reject | `400` with the Django message, and nothing written |
 | A round or hole belonging to someone else | `404` — ownership collapses into the lookup, as it does in Django |
 | A round already in progress | `409 {"error": "A round is already in progress"}` |
 | A round already completed | `409 {"error": "Round is already completed"}` |
@@ -446,6 +551,34 @@ See `AUTH.md` § "For the frontend" for the auth-token-storage decision this
 phase made — a cookie, not `localStorage` — which Phase 7B implements and
 validates.
 
+The Phase 7B backend dependency:
+
+| Gate item | How |
+|---|---|
+| A course and its holes are created in one request, atomically | `POST /api/courses/` — `courses.Create`, one `RunInTransaction`; `TestCreateCourseRouteCreatesCourseAndItsHoles` |
+| A course edit reconciles the hole set in one request, atomically | `PUT /api/courses/{id}` — `courses.Update`; `TestUpdateCourseKeepsTheHoleRecordsItCanReuse`, `TestUpdateCourseGrowsTheHoleSet`, `TestUpdateCourseShrinksTheHoleSet` |
+| Both refuse a non-admin | `TestCreateCourseRouteIsAdminOnly`, `TestUpdateCourseRouteIsAdminOnly` — 401 anonymous, 403 signed-in player, superuser through |
+| A rejected payload leaves no partial course behind | `TestCreateCourseRouteRejectsInvalidPayloads`, `TestUpdateCourseRouteRejectsInvalidPayloads` — every case re-counts the courses and holes afterwards |
+| The courses workflow is drivable end to end | `TestFrontendWorkflowCourseAdmin` — create, list, edit, refuse a player, archive out of the list |
+
+This is the piece Phase 7B needed *before* pages: a course form that saved a name
+and eighteen pars through generated CRUD would issue 19 non-atomic requests.
+
+The Phase 7B gate:
+
+| Gate item | How |
+|---|---|
+| Every page route loads for a signed-in user | `TestPagesLoadForASignedInPlayer`, `TestAdminPagesLoadForAnAdmin` — every route in the table under "Frontend" |
+| A signed-out visitor is redirected to sign-in from each gated page | `TestGatedPagesRedirectASignedOutVisitor` — including the `?next=` Django sends |
+| Admin-only pages and actions refuse a non-admin | `TestAdminPagesRefuseANonAdmin`, and `TestTamperedCookieRecordCannotGrantAdmin` for the cookie that claims otherwise |
+| Sign-in works through both OAuth providers, and sign-out discards the token | the password half and sign-out are covered by the browser walkthrough; **the live OAuth exchange is owner-verified**, as in Phase 4 — it needs real credentials |
+| Frontend auth cookie validated | closes the item deferred from Phase 4 (#125): `web_test.go` covers the cookie's three states (valid, absent, forged) and the walkthrough writes a real one through the SDK |
+| All seven Phase 7A workflows pass in a real browser | `scripts/browser-walkthrough.mjs` — sign in, courses (create/edit/list/archive/restore), start, play (add/undo/edit/delete/navigate), review, complete, cancel |
+| No JavaScript console errors | the same script fails on any console error; the one it tolerates is the 400 it provokes on purpose to prove a validation message reaches the form |
+| Styling matches the current app; PWA still installable and icons served | the walkthrough screenshots each page (`GOLFTRACK_SHOTS=…`); the manifest and icons are served from the embedded FS (`TestStaticAssetsAreServedFromTheBinary`) |
+| No run-time requests to any external CDN | `TestPagesLoadNothingFromACDN` on the markup, and the walkthrough fails on any request whose origin is not the app's |
+| `make pb-test` green | it is |
+
 The Phase 4 (#125) gate:
 
 | Gate item | How |
@@ -498,11 +631,16 @@ that could drift from it.
 | `schema_test.go` | unique indexes, field bounds and enums, cascade and restrict deletes, the `role` default |
 | `domain_test.go` | the business rules — snapshotting, the stroke cache, renumbering, totals, cancellation |
 | `routes_test.go` | the custom routes end to end, including their 401s, 404s and 409s |
+| `read_routes_test.go` | the Phase 7A read routes: camelCase, nested relations, `null` totals |
+| `course_write_routes_test.go` | `POST`/`PUT /api/courses`: admin gating, `CourseIn` validation, hole reconciliation, and that a rejected payload writes nothing |
+| `frontend_workflow_test.go` | each frontend workflow as the request sequence a browser client would make |
 | `parity_test.go` | parity with the Django contract: ownership on the custom routes, pagination/filtering/sorting, the status codes, and a characterisation test per gap in `API.md` |
+| `web_test.go` | the page routes: every page renders, the sign-in redirects, the admin refusals, the auth cookie (valid, absent, forged), the embedded assets, and that no page references a CDN |
 | `bench_test.go` | the performance baseline — benchmarks, so `go test ./...` skips them |
 | `concurrency_test.go` | two writers on one hole, one player starting two rounds, delete racing delete |
 | `internal/hooks/domain/scoring/scoring_test.go` | the totals arithmetic, as plain unit tests |
 | `testapp_test.go` | the harness: seeded app, fixture builders, auth tokens |
+| `scripts/browser-walkthrough.mjs` | the seven workflows in a real Chromium — the one check that runs the JavaScript. Manual: it needs a seeded instance, so it is not part of `make pb-test` |
 
 The domain and concurrency suites are ports of `tests/test_services.py` and
 `tests/test_concurrency.py`, which are the specification for behaviour this

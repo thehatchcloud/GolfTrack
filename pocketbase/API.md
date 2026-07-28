@@ -75,9 +75,9 @@ GET /api/collections/rounds/records?expand=course&filter=(status='in_progress')
 |---|---|
 | `GET /api/health` | `GET /api/health` — body differs (see below) |
 | `GET /api/courses/` | **built (Phase 7)** — same path; camelCase `CourseOut` shape |
-| `POST /api/courses/` | `POST /api/collections/courses/records` + N hole creates |
+| `POST /api/courses/` | **built (Phase 7B)** — same path; course and holes in one transaction, admin-only |
 | `GET /api/courses/{id}` | **built (Phase 7)** — same path; camelCase `CourseOut` shape |
-| `PUT /api/courses/{id}` | `PATCH` + hole reconciliation |
+| `PUT /api/courses/{id}` | **built (Phase 7B)** — same path; hole reconciliation in one transaction, admin-only |
 | `GET /api/rounds/` | **built (Phase 7)** — same path; completed rounds only, camelCase `RoundOut` |
 | `POST /api/rounds/` | **built (Phase 3)** — same path; creation snapshots holes |
 | `GET /api/rounds/in-progress` | **built (Phase 7)** — same path; camelCase `RoundDetailOut` or `null` |
@@ -94,6 +94,20 @@ The rows marked *built* are the ones where the generated CRUD was not enough on
 its own, because a single request has to touch more than one collection
 atomically, or because the path addresses a shot by `(round, hole_number)`.
 `ARCHITECTURE.md` covers what each does; `routes_test.go` exercises them.
+
+The two course write rows were listed as coverable by generated CRUD until
+Phase 7B built them. They are not, for the same reason `POST /api/rounds/` is
+not: a course is submitted as one payload and stored across two collections, so
+an 18-hole course would be 19 separate requests, and a failure part-way through
+leaves a course whose hole set is incomplete. Nothing rejects that course at the
+time — `rounds.Create` refuses it at the *next round*, one request removed from
+the edit that broke it. `POST /api/courses/` and `PUT /api/courses/{id}` do the
+whole thing in one transaction, validate the payload the way `CourseIn` does
+before opening it, and gate on `role = ADMIN` the way `require_admin` does.
+`PUT` reconciles rather than replaces: a hole still in the payload keeps its
+record (and its id), a hole absent from it is deleted. Archive and unarchive
+stay on the generated `PATCH` — one field, already admin-gated by the Phase 2
+rules. `course_write_routes_test.go` exercises both.
 
 The `PATCH …/shots/{shotId}` row was originally listed as coverable by
 `PATCH /api/collections/shots/records/{id}`. It is built as a custom route

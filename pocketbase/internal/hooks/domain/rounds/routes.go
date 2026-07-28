@@ -1,16 +1,13 @@
 package rounds
 
 import (
-	"fmt"
 	"net/http"
 
-	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 
 	"github.com/thehatchcloud/golftrack/pocketbase/internal/apierr"
 	"github.com/thehatchcloud/golftrack/pocketbase/internal/collections"
-	"github.com/thehatchcloud/golftrack/pocketbase/internal/records"
 )
 
 // The round routes PocketBase's generated CRUD cannot cover, because each one
@@ -123,26 +120,9 @@ func patchCurrentHole(e *core.RequestEvent) error {
 // `list_completed_rounds`'s defaults, which the Django route never exposes a
 // way to override either.
 func list(e *core.RequestEvent) error {
-	var roundRecords []*core.Record
-	err := e.App.RecordQuery(collections.NameRounds).
-		AndWhere(dbx.HashExp{
-			collections.FieldUser:   e.Auth.Id,
-			collections.FieldStatus: collections.RoundStatusCompleted,
-		}).
-		OrderBy(collections.FieldFinishedAt+" DESC", collections.FieldStartedAt+" DESC").
-		Limit(20).
-		All(&roundRecords)
+	out, err := ListCompleted(e.App, e.Auth.Id)
 	if err != nil {
-		return fmt.Errorf("list completed rounds: %w", err)
-	}
-
-	out := make([]*Out, 0, len(roundRecords))
-	for _, round := range roundRecords {
-		roundOut, err := NewOut(e.App, round)
-		if err != nil {
-			return err
-		}
-		out = append(out, roundOut)
+		return err
 	}
 
 	return e.JSON(http.StatusOK, out)
@@ -152,17 +132,12 @@ func list(e *core.RequestEvent) error {
 // RoundDetailOut or `null`, so a client resuming a round and a client with none
 // in progress both get one, unambiguous request.
 func inProgress(e *core.RequestEvent) error {
-	round, err := records.InProgressRound(e.App, e.Auth.Id)
+	out, err := InProgress(e.App, e.Auth.Id)
 	if err != nil {
 		return err
 	}
-	if round == nil {
+	if out == nil {
 		return e.JSON(http.StatusOK, nil)
-	}
-
-	out, err := NewDetailOut(e.App, round)
-	if err != nil {
-		return err
 	}
 
 	return e.JSON(http.StatusOK, out)
@@ -170,12 +145,7 @@ func inProgress(e *core.RequestEvent) error {
 
 // GET /api/rounds/{id} — Django `detail`, response RoundDetailOut.
 func detail(e *core.RequestEvent) error {
-	round, err := records.FindRound(e.App, e.Request.PathValue("id"), e.Auth.Id)
-	if err != nil {
-		return err
-	}
-
-	out, err := NewDetailOut(e.App, round)
+	out, err := Detail(e.App, e.Auth.Id, e.Request.PathValue("id"))
 	if err != nil {
 		return err
 	}
