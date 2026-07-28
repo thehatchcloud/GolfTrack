@@ -1,13 +1,14 @@
 # GolfTrack on PocketBase
 
-Phases 1 (#122), 2 (#123), 3 (#124), 4 (#125), 5 (#126), 7A (#128), 7B and
-8 (#129) of the Django → PocketBase migration tracked in epic #121. The overall
-plan lives in [`POCKETBASE_MIGRATION_PLAN.md`](../POCKETBASE_MIGRATION_PLAN.md).
+Phases 1 (#122), 2 (#123), 3 (#124), 4 (#125), 5 (#126), 7A (#128), 7B, 8
+(#129) and 9 (#130) of the Django → PocketBase migration tracked in epic
+#121. The overall plan lives in
+[`POCKETBASE_MIGRATION_PLAN.md`](../POCKETBASE_MIGRATION_PLAN.md).
 
 **Nothing in this directory is wired into the deployed app.** The Django app in
 the repository root is still the only thing built and shipped (see
 [`DJANGO.md`](../DJANGO.md) and [`DEPLOYMENT.md`](../DEPLOYMENT.md)). This
-directory is a parallel, local-only environment until the Phase 9/10 cutover.
+directory is a parallel, local-only environment until the Phase 10 cutover.
 
 What is here so far: a PocketBase application you can build and run locally, the
 six collections defined and reproducible from a committed schema file, their
@@ -16,7 +17,10 @@ the scoring — as compiled-in Go hooks with the custom routes the generated CRU
 cannot cover, OAuth sign-in with the admin role assigned from `ADMIN_EMAILS`,
 and — since Phase 7B — the **frontend**: every page the Django app serves,
 rebuilt as server-rendered Go templates inside the same binary. `go run . serve`
-now gives you the whole app, not just an API.
+now gives you the whole app, not just an API. Since Phase 9 (#130), it also
+builds and runs as the **container** that Phase 10 (#131) will deploy —
+`Dockerfile`, `litestream.yml`, `entrypoint.sh` — documented in
+[`DEPLOYMENT.md`](DEPLOYMENT.md), not deployed yet either.
 
 ## One Go binary
 
@@ -81,6 +85,11 @@ pocketbase/
 │   ├── export_schema.py  # running instance ->  pb_schema.json
 │   ├── verify_schema.py  # assert the Phase 1 validation gate
 │   └── browser-walkthrough.mjs # drive all seven workflows in a real browser
+├── Dockerfile             # Phase 9 (#130): builder + debian-slim runtime image
+├── litestream.yml         # Phase 9: S3 replication for data.db + auxiliary.db
+├── entrypoint.sh          # Phase 9: restore-then-serve, under litestream when configured
+├── .env.example           # Phase 9: the container's environment variables
+├── DEPLOYMENT.md          # Phase 9: how to build/run it, and what Phase 10 still owes
 └── .local/               # gitignored: compiled binary, pb_data
 ```
 
@@ -499,8 +508,9 @@ startup.
 | `GOLFTRACK_ALLOW_PASSWORD_LOGIN` | `false` | email+password login for existing accounts |
 
 The names are Django's, so a host that already sets them needs no new secrets
-when the Phase 9 (#130) container arrives; `DEPLOYMENT.md` notes that changing
-an environment variable means recreating the container, which applies here too.
+now that the Phase 9 (#130) container exists; its `DEPLOYMENT.md` notes that
+changing an environment variable means recreating the container, which applies
+here too.
 A fresh instance with none of them set has no way to sign in to the *app* and
 says so at startup — the Admin UI is a separate collection and still opens.
 
@@ -617,7 +627,24 @@ report: **write throughput is flat from ten concurrent players onward** —
 roughly 290 requests/second — because PocketBase runs writes on a
 one-connection pool over SQLite's single writer. That is far beyond what this
 application needs (a golfer records a shot about once a minute), but it is the
-number Phase 9 (#130) should have before choosing a deployment shape.
+number Phase 9 (#130) chose its deployment shape against: one container,
+Litestream on top of that same single-writer SQLite, no attempt to shard
+writes across instances.
+
+The Phase 9 (#130) gate — full write-up in [`DEPLOYMENT.md`](DEPLOYMENT.md):
+
+| Gate item | How |
+|---|---|
+| Docker image builds | `docker build -t golftrack-pb pocketbase/` — a multi-stage build, `go build` in `golang:1.25-bookworm` then a `debian:bookworm-slim` runtime; **maintainer-run**, this environment has no Docker (see `DEPLOYMENT.md` § "Manual Docker run") |
+| Container starts and serves API | `entrypoint.sh` starts `golftrack-pb serve` directly when `LITESTREAM_BUCKET` is unset — the schema sync that makes the database self-initializing runs in-process before it starts serving, so there's no separate migration step to sequence first, unlike the Django entrypoint; **maintainer-run** |
+| Litestream replicates without errors | `litestream replicate -exec` supervises `golftrack-pb serve`, replicating both `data.db` and `auxiliary.db` per `litestream.yml`; needs live S3-compatible credentials, so **maintainer-run** |
+| Health check passes | `GET /api/health` needs no new route — it's PocketBase's own endpoint, `TestHealthEndpointShape` in `parity_test.go` pins its shape (`{"code":200,...}`, not Django's `{"status":"ok"}`), and the `Dockerfile`'s `HEALTHCHECK` only needs the `200` |
+| Static assets served correctly | the Phase 7B embedded asset FS (Tailwind output, vendored Alpine and the PocketBase JS SDK, icons, manifest) — already covered by `TestStaticAssetsAreServedFromTheBinary` and `TestPagesLoadNothingFromACDN`; the container changes nothing about how they're served, only where the binary runs |
+
+Env var mapping from the Django app (task 3) and the reasoning behind each
+"no equivalent" is `DEPLOYMENT.md` § "Environment variables"; `.env.example`
+in this directory documents the same table in a form a `docker run` command
+can source from.
 
 The Phase 4 (#125) gate:
 
@@ -739,7 +766,7 @@ rules. 24 checks as of Phase 1.
 `pb_schema.json` is the source of truth. It is embedded into the binary and
 imported at every startup (an upsert by collection id — idempotent, and it
 reconciles a drifted dev database). This is also the deterministic startup
-path the Phase 9 (#130) container will rely on.
+path the Phase 9 (#130) container relies on.
 
 To change the schema:
 
@@ -837,6 +864,5 @@ Phase 4 adds two, against #125:
 
 | Phase | Issue | Adds |
 |---|---|---|
-| 9 — Docker & deployment | #130 | The container, Litestream and the health check. Bring `performance_report.md` § "Concurrency" to it: the write ceiling is a property of the deployment shape, not of the code |
-| 10 — CI/CD & rollout | #131 | The cutover |
+| 10 — CI/CD & rollout | #131 | A CI job that builds and pushes the Phase 9 image; deploy scripts updated to run it; the cutover strategy and its rollback plan; `DEPLOYMENT.md` § "What Phase 10 (#131) still has to do" has the punch list |
 | 11 — Decommissioning | #132 | Django and Next.js removed; the duplicate `rounds` indexes noted above are a cleanup candidate here |

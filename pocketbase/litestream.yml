@@ -1,0 +1,30 @@
+# Litestream config for the PocketBase deployment shape (Phase 9, #130).
+#
+# PocketBase keeps two SQLite databases in its data directory: data.db (the
+# six GolfTrack collections — everything a player or admin creates) and
+# auxiliary.db (request/cron logs; see
+# github.com/pocketbase/pocketbase/core/base.go). Both are replicated, each
+# under its own path in the bucket, distinct from the Django app's replica
+# path (../litestream.yml uses `django`) so the two migrations' generations
+# never collide in the same bucket.
+#
+# Same DO Spaces gotcha as the Django app's config: force-path-style must
+# stay unset — DO Spaces only accepts virtual-hosted-style URLs. Other
+# providers (e.g. B2) may need it set instead; see ../DEPLOYMENT.md.
+dbs:
+  - path: /data/data.db
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_BUCKET}
+        path: pocketbase/data
+        endpoint: ${LITESTREAM_ENDPOINT}
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+  - path: /data/auxiliary.db
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_BUCKET}
+        path: pocketbase/auxiliary
+        endpoint: ${LITESTREAM_ENDPOINT}
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
