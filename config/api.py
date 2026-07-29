@@ -15,6 +15,7 @@ from core.exceptions import (
     UnauthorizedError,
     ValidationError,
 )
+from core.version import get_version
 from courses.api import router as courses_router
 from rounds.api import router as rounds_router
 
@@ -26,7 +27,7 @@ api.add_router("/rounds", rounds_router)
 
 @api.get("/health")
 def health(request):
-    return {"status": "ok"}
+    return {"status": "ok", "version": get_version()}
 
 
 def _error(request, message: str, status: int):

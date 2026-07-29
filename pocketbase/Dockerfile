@@ -19,13 +19,22 @@ RUN go mod download
 
 COPY . .
 
+# GIT_SHA is passed by the builder (--build-arg GIT_SHA=<commit>); .git itself
+# isn't part of this build context. internal/version.Get() reads GitSHA/
+# BuildDate first, and falls back to a live `git rev-parse` for local (non-
+# Docker) development — see internal/version/version.go.
+ARG GIT_SHA=dev
+
 # modernc.org/sqlite is a pure-Go SQLite driver — no cgo, so CGO_ENABLED=0
 # produces a fully static binary with no libc to match at runtime. The
 # frontend's Tailwind output, vendored JS and pb_schema.json are all
 # go:embed'd source (see main.go, schema.go, internal/web) and already
 # committed, so `go build` is the whole asset pipeline; unlike the Django
 # image, there is no separate collectstatic/Tailwind step to run here.
-RUN CGO_ENABLED=0 go build -o /out/golftrack-pb .
+RUN CGO_ENABLED=0 go build -ldflags "\
+      -X github.com/thehatchcloud/golftrack/pocketbase/internal/version.GitSHA=${GIT_SHA} \
+      -X github.com/thehatchcloud/golftrack/pocketbase/internal/version.BuildDate=$(date -u +%Y.%m.%d) \
+    " -o /out/golftrack-pb .
 
 FROM debian:bookworm-slim
 WORKDIR /app
