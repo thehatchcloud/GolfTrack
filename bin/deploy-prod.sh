@@ -93,6 +93,9 @@ if [ "$healthy" != "1" ]; then
   docker logs --tail 120 golftrack 2>&1 || true
   exit 1
 fi
+# The workflow greps this exact marker out of the SSH step's captured stdout
+# to prove the script ran at all — see "Verify the deploy script ran" in
+# .github/workflows/deploy.yml. Keep the wording in sync with it.
 echo "golftrack is healthy and running ${short_sha}."
 
 docker image prune -f

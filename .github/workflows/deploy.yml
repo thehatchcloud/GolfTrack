@@ -127,9 +127,11 @@ jobs:
           username: ubuntu
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           envs: GHCR_TOKEN,OWNER,GIT_SHA,LITESTREAM_ACCESS_KEY_ID,LITESTREAM_SECRET_ACCESS_KEY,LITESTREAM_BUCKET,LITESTREAM_ENDPOINT,DEPLOY_HOST,DJANGO_SECRET_KEY,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,MICROSOFT_CLIENT_ID,MICROSOFT_CLIENT_SECRET,ADMIN_EMAILS
+          capture_stdout: true
           script_path: bin/deploy-prod.sh
 
       - name: SSH deploy (retry)
+        id: deploy_retry
         if: steps.deploy.outcome == 'failure'
         uses: appleboy/ssh-action@v1
         env:
@@ -152,34 +154,35 @@ jobs:
           username: ubuntu
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           envs: GHCR_TOKEN,OWNER,GIT_SHA,LITESTREAM_ACCESS_KEY_ID,LITESTREAM_SECRET_ACCESS_KEY,LITESTREAM_BUCKET,LITESTREAM_ENDPOINT,DEPLOY_HOST,DJANGO_SECRET_KEY,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,MICROSOFT_CLIENT_ID,MICROSOFT_CLIENT_SECRET,ADMIN_EMAILS
+          capture_stdout: true
           script_path: bin/deploy-prod.sh
 
-      # An independent check that production is actually serving this commit.
+      # Proof that bin/deploy-prod.sh actually ran, independent of the SSH
+      # step's own exit code.
       #
-      # This exists because appleboy/ssh-action only *warns* about an unknown
-      # input name and still exits 0: `script_file:` (not a real input — the
-      # real one is `script_path:`) meant the action connected, ran nothing,
-      # and reported success, so every deploy from 2026-07-26 until this fix
-      # was a silent no-op that CI called green. Anything that verifies the
-      # deploy from inside that same step can be skipped the same way, so this
-      # asks the public URL instead, and fails the job if the version it
-      # reports is not this commit's.
-      - name: Verify production is serving this commit
+      # This is the guard the `script_file:` bug needed and did not have:
+      # appleboy/ssh-action only warns about an unknown input name, so it
+      # connected, ran nothing, and still exited 0 for three days of "green"
+      # deploys. Any check living inside the script is skipped in exactly that
+      # case, so this greps the marker the script prints on success out of the
+      # captured stdout — no marker means no script ran.
+      #
+      # It reads captured stdout rather than curling the public URL because
+      # exe.dev fronts the app with its own login gate: an unauthenticated
+      # runner gets a redirect to /__exe.dev/login, never /api/health.
+      - name: Verify the deploy script ran
         env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_STDOUT: ${{ steps.deploy.outputs.stdout }}${{ steps.deploy_retry.outputs.stdout }}
           GIT_SHA: ${{ github.sha }}
         run: |
           short_sha="${GIT_SHA:0:7}"
-          for attempt in $(seq 1 10); do
-            response="$(curl -fsS --max-time 10 "https://${DEPLOY_HOST}:3000/api/health" || true)"
-            case "$response" in
-              *"$short_sha"*)
-                echo "Production is serving ${short_sha}: ${response}"
-                exit 0
-                ;;
-            esac
-            echo "Attempt ${attempt}/10: /api/health reported '${response:-<unreachable>}', want version containing ${short_sha}."
-            sleep 6
-          done
-          echo "::error::Production is not serving ${short_sha} after ~60s. Last /api/health response: '${response:-<unreachable>}'. The deploy step reported success but the running container did not change."
-          exit 1
+          case "$DEPLOY_STDOUT" in
+            *"is healthy and running ${short_sha}"*)
+              echo "bin/deploy-prod.sh ran and confirmed ${short_sha} serving on the host."
+              ;;
+            *)
+              echo "::error::bin/deploy-prod.sh never reported ${short_sha} healthy. The SSH step exited 0 but produced no success marker, which is what a silently-skipped script looks like. Captured stdout follows:"
+              printf '%s\n' "${DEPLOY_STDOUT:-<empty>}"
+              exit 1
+              ;;
+          esac
