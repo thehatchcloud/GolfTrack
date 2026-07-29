@@ -5,6 +5,8 @@ Pushes to `main` automatically test, build, and deploy the **Django** app to the
 Non-`main` branches deploy to the **dev server** (`golftrack-dev.exe.xyz`) via `.github/workflows/deploy-dev.yml`. See [Dev server setup](#dev-server-setup-golftrack-devexexyz) below.
 
 > **Stack note:** As of the Phase 7 rewrite (#93), the deployed artifact is the Django app (`Dockerfile` → Python 3.13, gunicorn, WhiteNoise, Litestream). The legacy Next.js app remains in-tree until the Phase 8 cutover (#94) but is no longer built or deployed. The previous Next.js image stays in GHCR for rollback.
+>
+> A second migration is under way in `pocketbase/` (#121). Phase 9 (#130) gave it its own container — `pocketbase/Dockerfile`, `pocketbase/litestream.yml`, `pocketbase/entrypoint.sh`, documented in `pocketbase/DEPLOYMENT.md` — but nothing below changes yet: this file still describes what CI builds and what the exe.dev VM runs, until the Phase 10 cutover (#131).
 
 ---
 
