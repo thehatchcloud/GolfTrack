@@ -127,9 +127,11 @@ jobs:
           username: ubuntu
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           envs: GHCR_TOKEN,OWNER,GIT_SHA,LITESTREAM_ACCESS_KEY_ID,LITESTREAM_SECRET_ACCESS_KEY,LITESTREAM_BUCKET,LITESTREAM_ENDPOINT,DEPLOY_HOST,DJANGO_SECRET_KEY,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,MICROSOFT_CLIENT_ID,MICROSOFT_CLIENT_SECRET,ADMIN_EMAILS
-          script_file: bin/deploy-prod.sh
+          capture_stdout: true
+          script_path: bin/deploy-prod.sh
 
       - name: SSH deploy (retry)
+        id: deploy_retry
         if: steps.deploy.outcome == 'failure'
         uses: appleboy/ssh-action@v1
         env:
@@ -152,4 +154,35 @@ jobs:
           username: ubuntu
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           envs: GHCR_TOKEN,OWNER,GIT_SHA,LITESTREAM_ACCESS_KEY_ID,LITESTREAM_SECRET_ACCESS_KEY,LITESTREAM_BUCKET,LITESTREAM_ENDPOINT,DEPLOY_HOST,DJANGO_SECRET_KEY,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,MICROSOFT_CLIENT_ID,MICROSOFT_CLIENT_SECRET,ADMIN_EMAILS
-          script_file: bin/deploy-prod.sh
+          capture_stdout: true
+          script_path: bin/deploy-prod.sh
+
+      # Proof that bin/deploy-prod.sh actually ran, independent of the SSH
+      # step's own exit code.
+      #
+      # This is the guard the `script_file:` bug needed and did not have:
+      # appleboy/ssh-action only warns about an unknown input name, so it
+      # connected, ran nothing, and still exited 0 for three days of "green"
+      # deploys. Any check living inside the script is skipped in exactly that
+      # case, so this greps the marker the script prints on success out of the
+      # captured stdout — no marker means no script ran.
+      #
+      # It reads captured stdout rather than curling the public URL because
+      # exe.dev fronts the app with its own login gate: an unauthenticated
+      # runner gets a redirect to /__exe.dev/login, never /api/health.
+      - name: Verify the deploy script ran
+        env:
+          DEPLOY_STDOUT: ${{ steps.deploy.outputs.stdout }}${{ steps.deploy_retry.outputs.stdout }}
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          short_sha="${GIT_SHA:0:7}"
+          case "$DEPLOY_STDOUT" in
+            *"is healthy and running ${short_sha}"*)
+              echo "bin/deploy-prod.sh ran and confirmed ${short_sha} serving on the host."
+              ;;
+            *)
+              echo "::error::bin/deploy-prod.sh never reported ${short_sha} healthy. The SSH step exited 0 but produced no success marker, which is what a silently-skipped script looks like. Captured stdout follows:"
+              printf '%s\n' "${DEPLOY_STDOUT:-<empty>}"
+              exit 1
+              ;;
+          esac

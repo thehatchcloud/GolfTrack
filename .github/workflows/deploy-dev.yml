@@ -79,9 +79,11 @@ jobs:
           username: ubuntu
           key: ${{ secrets.DEV_DEPLOY_SSH_KEY }}
           envs: OWNER,GHCR_TOKEN,GIT_SHA,DJANGO_SECRET_KEY,ADMIN_EMAILS,BRANCH
-          script_file: bin/deploy-dev.sh
+          capture_stdout: true
+          script_path: bin/deploy-dev.sh
 
       - name: SSH deploy (retry)
+        id: deploy_retry
         if: steps.check.outputs.skip != 'true' && steps.deploy.outcome == 'failure'
         uses: appleboy/ssh-action@v1
         env:
@@ -96,4 +98,26 @@ jobs:
           username: ubuntu
           key: ${{ secrets.DEV_DEPLOY_SSH_KEY }}
           envs: OWNER,GHCR_TOKEN,GIT_SHA,DJANGO_SECRET_KEY,ADMIN_EMAILS,BRANCH
-          script_file: bin/deploy-dev.sh
+          capture_stdout: true
+          script_path: bin/deploy-dev.sh
+
+      # Same guard as the production workflow — see its comment. Reads the SSH
+      # step's captured stdout rather than the public URL, because exe.dev's
+      # login gate makes /api/health unreachable to an unauthenticated runner.
+      - name: Verify the deploy script ran
+        if: steps.check.outputs.skip != 'true'
+        env:
+          DEPLOY_STDOUT: ${{ steps.deploy.outputs.stdout }}${{ steps.deploy_retry.outputs.stdout }}
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          short_sha="${GIT_SHA:0:7}"
+          case "$DEPLOY_STDOUT" in
+            *"is healthy and running ${short_sha}"*)
+              echo "bin/deploy-dev.sh ran and confirmed ${short_sha} serving on the host."
+              ;;
+            *)
+              echo "::error::bin/deploy-dev.sh never reported ${short_sha} healthy. The SSH step exited 0 but produced no success marker, which is what a silently-skipped script looks like. Captured stdout follows:"
+              printf '%s\n' "${DEPLOY_STDOUT:-<empty>}"
+              exit 1
+              ;;
+          esac

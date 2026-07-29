@@ -58,4 +58,8 @@ if [ "$healthy" != "1" ]; then
 fi
 
 docker image prune -f
+# The workflow greps this exact marker out of the SSH step's captured stdout
+# to prove the script ran at all — see "Verify the deploy script ran" in
+# .github/workflows/deploy-dev.yml. Keep the wording in sync with it.
+echo "golftrack-dev is healthy and running ${short_sha}."
 echo "Deployed branch '${BRANCH}' — https://golftrack-dev.exe.xyz:8000"
