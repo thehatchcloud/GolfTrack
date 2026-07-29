@@ -8,6 +8,14 @@
 >
 > **The Django app is no longer deployed anywhere.** Its code, tests and CI job stay in-tree only until Phase 11 (#132) removes them, so that the rollback path keeps working. Everything below this line describes the Next.js app, which has been dead since #94.
 
+## Schema changes are additive
+
+**Add fields to `pocketbase/pb_schema.json`; do not remove them.** A field dropped from that file takes its column and every value in it on the next container restart, with no confirmation step and no migration to reverse — it is the one edit in this repository that silently destroys production data. Keeping a column nobody reads is close to free; removing one is not.
+
+Retire a field by **stopping the Go code from reading it**, not by deleting it from the schema. Leave it in `pb_schema.json`, make sure it is not `required` (or every future create still has to supply it), and note the deprecation and its date. Deleting it is a separate, later decision that needs a compelling technical reason of its own — a genuine conflict, a security problem, or a storage cost that actually matters. Treat renames the same way: PocketBase matches fields by id, so a rename is a drop plus an add unless the id is preserved. Add the new field, backfill, leave the old one.
+
+The startup sync does not protect you here. `ImportCollectionsByMarshaledJSON(schemaJSON, false)` passes `deleteMissing=false`, so a whole *collection* missing from the file is left alone — but the fields inside a collection the file does list are reconciled to exactly what it lists. Nothing in the deploy path warns about a dropped field. Details and the deprecation checklist: `pocketbase/README.md` § "Schema changes are additive by default".
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 > **Important:** The installed Next.js version has breaking API changes from earlier releases. Before writing any Next.js-specific code, check the relevant guide in `node_modules/next/dist/docs/`.

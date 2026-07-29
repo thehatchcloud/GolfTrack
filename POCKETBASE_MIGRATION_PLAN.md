@@ -631,6 +631,7 @@ deliberately not done".*
 3. **Data Migration:** In-place migration (preserves history), not "clean slate"
 4. **Deployment Model:** Single container, SQLite + Litestream (same as Django)
 5. **Zero-Downtime Strategy:** Dual-stack period recommended to minimize risk
+6. **Schema Evolution:** Additive by default — fields are added, not removed. A field dropped from `pb_schema.json` is deleted, with its data, at the next startup sync, and `deleteMissing=false` guards collections rather than fields. Retire a field by ceasing to read it in Go and leaving it non-required in the schema; deleting it needs a compelling technical reason of its own. *(Adopted during #131; the rule is stated in `CLAUDE.md` and `pocketbase/README.md` § "Schema changes are additive by default".)*
 
 ---
 

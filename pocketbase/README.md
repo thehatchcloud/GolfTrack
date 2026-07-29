@@ -770,6 +770,36 @@ imported at every startup (an upsert by collection id — idempotent, and it
 reconciles a drifted dev database). This is also the deterministic startup
 path the Phase 9 (#130) container relies on.
 
+### Schema changes are additive by default
+
+**Add fields; do not remove them.** A field dropped from `pb_schema.json` takes
+its column and every value in it with it on the next restart, irreversibly and
+with no confirmation step — that is the one edit to this file that destroys
+production data. Retiring a field only when there is a compelling technical
+reason to (a genuine conflict, a security problem, a storage cost that actually
+matters) costs a column nobody reads; removing one costs the data.
+
+The protection the startup sync gives you stops at the collection boundary:
+`ImportCollectionsByMarshaledJSON(schemaJSON, false)` passes `deleteMissing=false`,
+so a collection missing from the file is left alone — but fields *within* a
+collection present in the file are reconciled to exactly what the file lists.
+Nothing in the deploy path re-checks that, so this convention is the guard.
+
+In practice, when a field falls out of use:
+
+- **Leave it in `pb_schema.json`**, and mark it in the JSON comment-free way
+  available here — a `// deprecated` note in this document's table, plus the
+  reason and the date.
+- **Make sure it is not `required`**, or every future create has to keep
+  supplying a value for a field nothing reads.
+- **Stop reading it in Go**, which is the change that actually retires it.
+  Removing it from the schema is a separate, later decision that needs its own
+  justification.
+
+Renames are removals wearing a hat: PocketBase matches fields by id, so a
+renamed field is a drop plus an add unless the id is preserved. Add the new
+field, backfill, then leave the old one.
+
 To change the schema:
 
 - **Edit `pb_schema.json`**, then restart (`dev.sh`) — the startup sync
