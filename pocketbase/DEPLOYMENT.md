@@ -54,9 +54,13 @@ Build from the `pocketbase/` directory (the Go module root):
 docker build -t golftrack-pb pocketbase/
 ```
 
-Without `LITESTREAM_BUCKET`, the container runs standalone — no replication:
+Without `LITESTREAM_BUCKET`, the container runs standalone — no replication.
+Create the bind-mount directory first: Docker Desktop (macOS/Windows) does not
+auto-create a missing host path for `-v`, unlike the Linux engine, and fails
+with `statfs ...: no such file or directory` if it's missing.
 
 ```bash
+mkdir -p pb-data
 docker run --rm -p 8090:8090 \
   -e GOLFTRACK_ALLOW_PASSWORD_LOGIN=true \
   -e ADMIN_EMAILS="you@example.com" \
