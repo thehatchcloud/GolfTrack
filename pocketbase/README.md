@@ -1,14 +1,16 @@
 # GolfTrack on PocketBase
 
 Phases 1 (#122), 2 (#123), 3 (#124), 4 (#125), 5 (#126), 7A (#128), 7B, 8
-(#129) and 9 (#130) of the Django → PocketBase migration tracked in epic
-#121. The overall plan lives in
+(#129), 9 (#130) and 10 (#131) of the Django → PocketBase migration tracked in
+epic #121. The overall plan lives in
 [`POCKETBASE_MIGRATION_PLAN.md`](../POCKETBASE_MIGRATION_PLAN.md).
 
-**Nothing in this directory is wired into the deployed app.** The Django app in
-the repository root is still the only thing built and shipped (see
-[`DJANGO.md`](../DJANGO.md) and [`DEPLOYMENT.md`](../DEPLOYMENT.md)). This
-directory is a parallel, local-only environment until the Phase 10 cutover.
+**This directory is the deployed app.** As of the Phase 10 cutover (#131), CI
+builds the container from `pocketbase/Dockerfile` and both the dev server and
+production run it; the Django app in the repository root is no longer deployed
+anywhere and is removed in Phase 11 (#132). See [`DEPLOYMENT.md`](DEPLOYMENT.md)
+for the container and [`../DEPLOYMENT.md`](../DEPLOYMENT.md) for the pipeline,
+the cutover runbook and the rollback.
 
 What is here so far: a PocketBase application you can build and run locally, the
 six collections defined and reproducible from a committed schema file, their
@@ -18,9 +20,9 @@ cannot cover, OAuth sign-in with the admin role assigned from `ADMIN_EMAILS`,
 and — since Phase 7B — the **frontend**: every page the Django app serves,
 rebuilt as server-rendered Go templates inside the same binary. `go run . serve`
 now gives you the whole app, not just an API. Since Phase 9 (#130), it also
-builds and runs as the **container** that Phase 10 (#131) will deploy —
-`Dockerfile`, `litestream.yml`, `entrypoint.sh` — documented in
-[`DEPLOYMENT.md`](DEPLOYMENT.md), not deployed yet either.
+builds and runs as a **container** — `Dockerfile`, `litestream.yml`,
+`entrypoint.sh`, documented in [`DEPLOYMENT.md`](DEPLOYMENT.md) — and since
+Phase 10 (#131) that container is what CI builds and what both servers run.
 
 ## One Go binary
 
@@ -768,6 +770,36 @@ imported at every startup (an upsert by collection id — idempotent, and it
 reconciles a drifted dev database). This is also the deterministic startup
 path the Phase 9 (#130) container relies on.
 
+### Schema changes are additive by default
+
+**Add fields; do not remove them.** A field dropped from `pb_schema.json` takes
+its column and every value in it with it on the next restart, irreversibly and
+with no confirmation step — that is the one edit to this file that destroys
+production data. Retiring a field only when there is a compelling technical
+reason to (a genuine conflict, a security problem, a storage cost that actually
+matters) costs a column nobody reads; removing one costs the data.
+
+The protection the startup sync gives you stops at the collection boundary:
+`ImportCollectionsByMarshaledJSON(schemaJSON, false)` passes `deleteMissing=false`,
+so a collection missing from the file is left alone — but fields *within* a
+collection present in the file are reconciled to exactly what the file lists.
+Nothing in the deploy path re-checks that, so this convention is the guard.
+
+In practice, when a field falls out of use:
+
+- **Leave it in `pb_schema.json`**, and mark it in the JSON comment-free way
+  available here — a `// deprecated` note in this document's table, plus the
+  reason and the date.
+- **Make sure it is not `required`**, or every future create has to keep
+  supplying a value for a field nothing reads.
+- **Stop reading it in Go**, which is the change that actually retires it.
+  Removing it from the schema is a separate, later decision that needs its own
+  justification.
+
+Renames are removals wearing a hat: PocketBase matches fields by id, so a
+renamed field is a drop plus an add unless the id is preserved. Add the new
+field, backfill, then leave the old one.
+
 To change the schema:
 
 - **Edit `pb_schema.json`**, then restart (`dev.sh`) — the startup sync
@@ -864,5 +896,7 @@ Phase 4 adds two, against #125:
 
 | Phase | Issue | Adds |
 |---|---|---|
-| 10 — CI/CD & rollout | #131 | A CI job that builds and pushes the Phase 9 image; deploy scripts updated to run it; the cutover strategy and its rollback plan; `DEPLOYMENT.md` § "What Phase 10 (#131) still has to do" has the punch list |
-| 11 — Decommissioning | #132 | Django and Next.js removed; the duplicate `rounds` indexes noted above are a cleanup candidate here |
+| 11 — Decommissioning | #132 | Django and Next.js removed, and with them the rollback path (`bin/rollback-prod.sh`, the `:django-latest` tag, the legacy CI job, the Django OAuth redirect URIs); the duplicate `rounds` indexes noted above are a cleanup candidate here |
+
+Phase 10 (#131) is done — see [`DEPLOYMENT.md`](DEPLOYMENT.md) § "How Phase 10
+(#131) ships it".

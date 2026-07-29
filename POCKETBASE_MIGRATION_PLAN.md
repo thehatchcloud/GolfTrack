@@ -511,22 +511,24 @@ deliberately not done".*
 5. Monitor logs for 24 hours post-deployment
 
 #### Deployment Strategy Options:
-- **Zero-downtime:** Run Django and Pocketbase side-by-side, switch proxy after validation
-- **Single-server:** Maintenance window to migrate data and switch containers
+- ~~**Zero-downtime:** Run Django and Pocketbase side-by-side, switch proxy after validation~~ — *not available. There is no proxy layer to switch: exe.dev publishes one fixed host port per VM (3000 in production, 8000 on dev) straight to a container, so "both up, flip the route" has nowhere to live, and the two containers cannot both hold the port. Adding a reverse proxy purely to enable this was rejected — it would be new production infrastructure introduced during a cutover, for an app whose downtime budget is a container restart.*
+- **Single-server:** ~~Maintenance window to migrate data and~~ switch containers — *the strategy used. No maintenance window and no data migration: #127 established that no data was ever entered in production, so the swap is `docker stop` + `docker run`, a few seconds of 502 while the new container boots.*
 
 #### Rollback Plan:
-- Keep Django image available in GHCR
-- Point proxy back to Django if issues arise
-- Recovery time: <30 minutes
+- Keep Django image available in GHCR — `:django-latest`, copied aside by the `build` job once, before it first overwrites `:latest`
+- ~~Point proxy back to Django if issues arise~~ — run `bin/rollback-prod.sh`, which swaps the container back (same reason as above: no proxy)
+- Recovery time: <30 minutes — *in practice a pull plus a boot, because the cutover never touches Django's data directory or its `django` Litestream replica path; rollback is a container swap, not a restore*
 - Test rollback procedure in staging first
 
 #### Validation Gate:
-- [ ] CI/CD pipeline passes
-- [ ] Pocketbase image pushed to GHCR
-- [ ] Dev server deployment succeeds
-- [ ] Staging deployment succeeds
-- [ ] Production deployment succeeds
+- [x] CI/CD pipeline passes
+- [x] Pocketbase image pushed to GHCR — `:latest` and `:pocketbase-<sha>` from `main`, `:pocketbase-dev` from branches
+- [x] Dev server deployment succeeds
+- [ ] ~~Staging deployment succeeds~~ — *there is no staging environment; the dev server is it. Every branch push deploys to `golftrack-dev.exe.xyz`, which runs the same image production does. What it cannot exercise is OAuth (dev has no client apps and uses password login), so "full staging test with real OAuth" in task 3 is necessarily a production check, listed in `DEPLOYMENT.md` § "After the deploy goes green".*
+- [ ] Production deployment succeeds — *happens on the first push to `main` after the cutover merges*
 - [ ] Users can log in and use app
+
+*Delivered in #131.*
 
 ---
 
@@ -629,6 +631,7 @@ deliberately not done".*
 3. **Data Migration:** In-place migration (preserves history), not "clean slate"
 4. **Deployment Model:** Single container, SQLite + Litestream (same as Django)
 5. **Zero-Downtime Strategy:** Dual-stack period recommended to minimize risk
+6. **Schema Evolution:** Additive by default — fields are added, not removed. A field dropped from `pb_schema.json` is deleted, with its data, at the next startup sync, and `deleteMissing=false` guards collections rather than fields. Retire a field by ceasing to read it in Go and leaving it non-required in the schema; deleting it needs a compelling technical reason of its own. *(Adopted during #131; the rule is stated in `CLAUDE.md` and `pocketbase/README.md` § "Schema changes are additive by default".)*
 
 ---
 

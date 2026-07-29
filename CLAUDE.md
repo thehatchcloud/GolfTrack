@@ -2,7 +2,19 @@
 
 > **Rewrite in progress (#85):** GolfTrack is being migrated to **Django + Django Ninja + Tailwind CSS**. The Django app currently lives alongside this Next.js app — see `DJANGO.md` for its layout and dev commands. The guidance below describes the existing Next.js app, which remains authoritative until the Phase 8 cutover.
 
-> **PocketBase migration (#121):** a second migration, Django → PocketBase, is under way in `pocketbase/` — see `pocketbase/README.md`. As of Phase 7B it is a complete application (schema, domain hooks, API, and a frontend serving every page the Django app serves) that builds and runs locally with `make pb-dev`, but it is **not deployed**: the Django app remains the shipped artifact until the Phase 10 cutover. Its tests are `make pb-test`; its Tailwind build is `make pb-css`. Phase 8 (#129) added `make pb-bench` and `make pb-loadtest` — neither runs with `pb-test`, and both are written up in `pocketbase/performance_report.md`. Phase 9 (#130) added `pocketbase/Dockerfile`, `pocketbase/litestream.yml` and `pocketbase/entrypoint.sh` — a container that builds and runs (`pocketbase/DEPLOYMENT.md`), still not wired into CI or the exe.dev VM until Phase 10 (#131) actually cuts over.
+> **PocketBase migration (#121) — cut over as of Phase 10 (#131):** the app in `pocketbase/` is now **the deployed artifact**. CI builds `pocketbase/Dockerfile` from the `pocketbase/` context and pushes it to `ghcr.io/<owner>/golftrack:latest`; `bin/deploy-prod.sh` and `bin/deploy-dev.sh` run it as the `golftrack-pb` container and remove the Django one. See `pocketbase/README.md` for the app, `pocketbase/DEPLOYMENT.md` for the container, and `DEPLOYMENT.md` for the pipeline, the cutover runbook and the rollback (`bin/rollback-prod.sh`, against the preserved `:django-latest` tag).
+>
+> Its tests are `make pb-test`; its Tailwind build is `make pb-css`; `make pb-dev` runs it locally. `make pb-bench` and `make pb-loadtest` are separate from `pb-test` and written up in `pocketbase/performance_report.md`.
+>
+> **The Django app is no longer deployed anywhere.** Its code, tests and CI job stay in-tree only until Phase 11 (#132) removes them, so that the rollback path keeps working. Everything below this line describes the Next.js app, which has been dead since #94.
+
+## Schema changes are additive
+
+**Add fields to `pocketbase/pb_schema.json`; do not remove them.** A field dropped from that file takes its column and every value in it on the next container restart, with no confirmation step and no migration to reverse — it is the one edit in this repository that silently destroys production data. Keeping a column nobody reads is close to free; removing one is not.
+
+Retire a field by **stopping the Go code from reading it**, not by deleting it from the schema. Leave it in `pb_schema.json`, make sure it is not `required` (or every future create still has to supply it), and note the deprecation and its date. Deleting it is a separate, later decision that needs a compelling technical reason of its own — a genuine conflict, a security problem, or a storage cost that actually matters. Treat renames the same way: PocketBase matches fields by id, so a rename is a drop plus an add unless the id is preserved. Add the new field, backfill, leave the old one.
+
+The startup sync does not protect you here. `ImportCollectionsByMarshaledJSON(schemaJSON, false)` passes `deleteMissing=false`, so a whole *collection* missing from the file is left alone — but the fields inside a collection the file does list are reconciled to exactly what it lists. Nothing in the deploy path warns about a dropped field. Details and the deprecation checklist: `pocketbase/README.md` § "Schema changes are additive by default".
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -114,31 +126,34 @@ When Claude writes a PR test plan, items in the first group are ones Claude shou
 
 ## Deployment
 
-> **As of Phase 7 (#93)** the deployed artifact is the **Django** app — the root
-> `Dockerfile` is Python/gunicorn/WhiteNoise/Litestream and CI builds it. The
-> details below describe that container. The legacy Next.js app still lives in-tree
-> until the Phase 8 cutover (#94) but is no longer built or deployed. Full docs:
-> `DEPLOYMENT.md`; Django dev commands: `DJANGO.md`.
+> **As of Phase 10 (#131)** the deployed artifact is the **PocketBase** app —
+> `pocketbase/Dockerfile` (static Go binary + Litestream), built by CI from the
+> `pocketbase/` context. The details below describe that container. The Django app
+> still lives in-tree until Phase 11 (#132) but is no longer built or deployed;
+> its image survives in GHCR as `:django-latest` for rollback. Full docs:
+> `DEPLOYMENT.md` (pipeline, cutover, rollback) and `pocketbase/DEPLOYMENT.md`
+> (the container).
 
-Docker-based, single container, SQLite on a persistent volume mounted at `/data`. The container runs [Litestream](https://litestream.io) as its supervising process, replicating SQLite to an S3-compatible bucket (DO Spaces in production). gunicorn listens on port 8000 inside the container; the production deploy maps host 3000 → 8000 so the public URL stays `…:3000`.
+Docker-based, single container, SQLite on a persistent volume mounted at `/data`. The container runs [Litestream](https://litestream.io) as its supervising process, replicating SQLite to an S3-compatible bucket (DO Spaces in production). `golftrack-pb` listens on port 8090 inside the container; the production deploy maps host 3000 → 8090 so the public URL stays `…:3000`, and the dev deploy maps 8000 → 8090.
 
 ```bash
-docker build -t golftrack .
-docker run --rm -p 8000:8000 \
-  -e DATABASE_URL="file:/data/prod.db" \
-  -e DJANGO_SECRET_KEY="local-dev-secret" \
-  -e DJANGO_DEBUG=false \
-  -e DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1" \
-  -v $(pwd)/data:/data \
-  golftrack
+mkdir -p pb-data
+docker build -t golftrack-pb pocketbase/
+docker run --rm -p 8090:8090 \
+  -e GOLFTRACK_ALLOW_PASSWORD_LOGIN=true \
+  -e ADMIN_EMAILS="you@example.com" \
+  -v "$(pwd)/pb-data:/data" \
+  golftrack-pb
 ```
 
-Without `LITESTREAM_BUCKET` set, the container skips replication and runs the app standalone (migrate → gunicorn) — that's the path the command above uses.
+Without `LITESTREAM_BUCKET` set, the container skips replication and runs the app standalone — that's the path the command above uses.
 
 ### Container startup contract
 
-`entrypoint.sh` is the container's `CMD`. It is structured so that **`litestream replicate -exec` only ever wraps a single executable, never a shell pipeline.** Litestream v0.5's `-exec` does not invoke `sh -c`, so chaining commands with `&&` inside `-exec` would silently pass them as literal arguments to the first binary. `manage.py migrate` therefore runs as a separate shell step *before* `litestream replicate -exec "gunicorn …"` starts. Keep this structure when modifying the entrypoint.
+`pocketbase/entrypoint.sh` is the container's `CMD`. It is structured so that **`litestream replicate -exec` only ever wraps a single executable, never a shell pipeline.** Litestream v0.5's `-exec` does not invoke `sh -c`, so chaining commands with `&&` inside `-exec` would silently pass them as literal arguments to the first binary. There is nothing to chain here — `golftrack-pb serve` reconciles the database to its embedded `pb_schema.json` inside its own startup, so no migration step precedes it. Keep it that way when modifying the entrypoint. (The Django entrypoint met the same constraint differently, by running `manage.py migrate` as a separate step first.)
 
-If you change the S3-compatible backend (e.g. away from DO Spaces), revisit `litestream.yml` — `force-path-style` is provider-specific (DO Spaces rejects it; B2 requires it). The `LITESTREAM_ENDPOINT` secret must be the region root, not the full bucket URL. Details in `DEPLOYMENT.md`.
+Two SQLite databases are replicated, not one: `data.db` (the collections) and `auxiliary.db` (logs), under the `pocketbase/*` bucket paths — distinct from the Django app's `django` path.
 
-Migrations run automatically at container startup (`manage.py migrate`). See `DEPLOYMENT.md` for full details.
+If you change the S3-compatible backend (e.g. away from DO Spaces), revisit `pocketbase/litestream.yml` — `force-path-style` is provider-specific (DO Spaces rejects it; B2 requires it). The `LITESTREAM_ENDPOINT` secret must be the region root, not the full bucket URL. Details in `DEPLOYMENT.md`.
+
+The deploy scripts health-check `/api/version` (not `/api/health`, which carries no build identity) and fail the deploy unless the container reports the deploying commit's short SHA.
