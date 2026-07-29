@@ -79,7 +79,7 @@ jobs:
           username: ubuntu
           key: ${{ secrets.DEV_DEPLOY_SSH_KEY }}
           envs: OWNER,GHCR_TOKEN,GIT_SHA,DJANGO_SECRET_KEY,ADMIN_EMAILS,BRANCH
-          script_file: bin/deploy-dev.sh
+          script_path: bin/deploy-dev.sh
 
       - name: SSH deploy (retry)
         if: steps.check.outputs.skip != 'true' && steps.deploy.outcome == 'failure'
@@ -96,4 +96,28 @@ jobs:
           username: ubuntu
           key: ${{ secrets.DEV_DEPLOY_SSH_KEY }}
           envs: OWNER,GHCR_TOKEN,GIT_SHA,DJANGO_SECRET_KEY,ADMIN_EMAILS,BRANCH
-          script_file: bin/deploy-dev.sh
+          script_path: bin/deploy-dev.sh
+
+      # Same independent check as the production workflow: appleboy/ssh-action
+      # only warns about an unknown input name and still exits 0, so a deploy
+      # step that ran nothing at all reported success for three days. Ask the
+      # public dev URL what version it is actually serving.
+      - name: Verify dev is serving this commit
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          short_sha="${GIT_SHA:0:7}"
+          for attempt in $(seq 1 10); do
+            response="$(curl -fsS --max-time 10 "https://golftrack-dev.exe.xyz:8000/api/health" || true)"
+            case "$response" in
+              *"$short_sha"*)
+                echo "Dev is serving ${short_sha}: ${response}"
+                exit 0
+                ;;
+            esac
+            echo "Attempt ${attempt}/10: /api/health reported '${response:-<unreachable>}', want version containing ${short_sha}."
+            sleep 6
+          done
+          echo "::error::Dev is not serving ${short_sha} after ~60s. Last /api/health response: '${response:-<unreachable>}'. The deploy step reported success but the running container did not change."
+          exit 1
