@@ -7,7 +7,7 @@
 # inline YAML block is not.
 #
 # Environment comes from the workflow's `envs:` list: OWNER, GHCR_TOKEN,
-# DJANGO_SECRET_KEY, ADMIN_EMAILS, BRANCH.
+# GIT_SHA, DJANGO_SECRET_KEY, ADMIN_EMAILS, BRANCH.
 #
 # Re-running this is safe: it stops and replaces the container each time.
 
@@ -34,20 +34,25 @@ docker run -d \
   -v golftrack-dev-data:/data \
   "$IMAGE"
 
-# docker run -d returns before the app boots; verify the container
-# actually serves /api/health and fail loudly with logs if it does not.
+# docker run -d returns before the app boots; verify the container actually
+# serves /api/health and fail loudly with logs if it does not. A bare 200
+# isn't proof it's the *new* image — set -e above stops this script on a
+# failed pull/run, but compare against GIT_SHA's short form too so a
+# leftover stale container (from outside this script) can't pass silently.
 echo "Waiting for golftrack-dev to become healthy..."
 healthy=0
+short_sha="${GIT_SHA%"${GIT_SHA#???????}"}" # first 7 chars, POSIX-sh only
 for _ in $(seq 1 20); do
   sleep 3
-  if docker exec golftrack-dev curl -fsS -H "Host: golftrack-dev.exe.xyz" \
-       http://127.0.0.1:8000/api/health >/dev/null 2>&1; then
-    healthy=1
-    break
-  fi
+  response="$(docker exec golftrack-dev curl -fsS -H "Host: golftrack-dev.exe.xyz" \
+       http://127.0.0.1:8000/api/health 2>/dev/null)" || continue
+  case "$response" in
+    *"$short_sha"*) healthy=1 ;;
+  esac
+  [ "$healthy" = "1" ] && break
 done
 if [ "$healthy" != "1" ]; then
-  echo "::error::golftrack-dev failed its health check after ~60s. Recent logs:"
+  echo "::error::golftrack-dev never reported version containing ${short_sha} on /api/health after ~60s (last response: ${response:-<none>}). Recent logs:"
   docker logs --tail 120 golftrack-dev 2>&1 || true
   exit 1
 fi
