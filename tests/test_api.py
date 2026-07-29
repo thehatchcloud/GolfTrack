@@ -1,4 +1,5 @@
 import json
+import re
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -81,7 +82,9 @@ def patch_json(client, url, body):
 def test_health(client):
     res = client.get("/api/health")
     assert res.status_code == 200
-    assert res.json() == {"status": "ok"}
+    body = res.json()
+    assert body["status"] == "ok"
+    assert re.fullmatch(r"\d{4}\.\d{2}\.\d{2}\+\S+", body["version"])
 
 
 # --- GET /api/courses -----------------------------------------------------

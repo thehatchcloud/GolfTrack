@@ -31,6 +31,7 @@
         </nav>
       </header>
       <main class="flex-1 px-4 py-6">{% block content %}{% endblock %}</main>
+      <footer class="px-4 py-3 text-center text-xs text-stone-400">{{ app_version }}</footer>
     </div>
     {% block extra_scripts %}{% endblock %}
   </body>

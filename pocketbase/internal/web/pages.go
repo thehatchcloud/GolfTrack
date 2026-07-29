@@ -10,6 +10,7 @@ import (
 	"github.com/thehatchcloud/golftrack/pocketbase/internal/hooks/domain/courses"
 	"github.com/thehatchcloud/golftrack/pocketbase/internal/hooks/domain/rounds"
 	"github.com/thehatchcloud/golftrack/pocketbase/internal/hooks/domain/scoring"
+	"github.com/thehatchcloud/golftrack/pocketbase/internal/version"
 )
 
 // The page handlers, one per Django view, in the same order as courses/urls.py
@@ -21,16 +22,17 @@ import (
 // once.
 
 // Layout is what every page needs from the request regardless of what it
-// renders: the title, the path (for `next=` on a sign-in redirect) and who is
-// looking.
+// renders: the title, the path (for `next=` on a sign-in redirect), who is
+// looking, and the running build's version (base.html's footer).
 type Layout struct {
-	Title  string
-	Path   string
-	Viewer *viewer
+	Title   string
+	Path    string
+	Viewer  *viewer
+	Version string
 }
 
 func (s *server) layout(e *core.RequestEvent, v *viewer, title string) Layout {
-	return Layout{Title: title, Path: e.Request.URL.Path, Viewer: v}
+	return Layout{Title: title, Path: e.Request.URL.Path, Viewer: v, Version: version.Get()}
 }
 
 type errorPage struct {

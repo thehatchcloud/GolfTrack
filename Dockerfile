@@ -19,6 +19,14 @@ RUN uv pip install --system --no-cache \
 
 COPY . .
 
+# GIT_SHA is passed by CI (--build-arg GIT_SHA=<commit>); .git itself is
+# .dockerignore'd, so this is the only way the image learns which commit it
+# was built from. core/version.py reads this file first, and falls back to a
+# live `git rev-parse` for local (non-Docker) development where it doesn't
+# exist.
+ARG GIT_SHA=dev
+RUN printf '%s+%s\n' "$(date -u +%Y.%m.%d)" "$(echo "$GIT_SHA" | cut -c1-7)" > VERSION
+
 # bin/build-css.sh downloads the tailwindcss standalone CLI over HTTPS.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends curl ca-certificates \
