@@ -2,17 +2,17 @@
 
 A mobile-first golf score tracking web app.
 
-> **Rewrite in progress (#85):** GolfTrack is being migrated to **Django + Django
-> Ninja + Tailwind CSS**. The Django app is now what builds and deploys (see
-> `DEPLOYMENT.md`); the legacy Next.js app remains in-tree until the Phase 8
-> cutover (#94). See `DJANGO.md` for the Django app's layout and dev commands.
+> **Now running on PocketBase (#121, Phase 10 / #131):** the app in `pocketbase/`
+> is what builds and deploys — see `pocketbase/README.md` for its layout and dev
+> commands, and `DEPLOYMENT.md` for the pipeline. The Django app it replaced
+> (#85) is still in-tree, and no longer deployed, until Phase 11 (#132) removes
+> it along with the legacy Next.js code.
 
-Stack (Django rewrite):
-- Django + Django Ninja
+Stack:
+- PocketBase consumed as a Go framework — one binary embedding the server, schema, domain hooks and frontend
+- Server-rendered Go `html/template` pages with Alpine.js islands
 - Tailwind CSS (standalone CLI)
 - SQLite + Litestream
-- HTMX + Alpine.js
-- gunicorn + WhiteNoise
 
 ## Features
 
@@ -33,41 +33,40 @@ Stack (Django rewrite):
 ## Local development
 
 ```bash
-make install     # create .venv (Python 3.14) and install deps
-make migrate     # apply migrations (creates db.sqlite3)
-make dev         # runserver
+make pb-css      # compile Tailwind into the binary's embedded stylesheet
+make pb-dev      # serve the app
 ```
 
 Open:
 
 ```text
-http://localhost:8000
+http://127.0.0.1:8090
 ```
 
-See `DJANGO.md` for the full command list (CSS build, seeding, tests, lint).
+See `pocketbase/README.md` for the full command list (schema, auth setup, tests).
 
 ## Database
 
-Local development uses SQLite (`db.sqlite3`). In production, set:
-
-```env
-DATABASE_URL="file:/data/prod.db"
-```
+SQLite, managed by PocketBase in its data directory — `pocketbase/.local/` in
+development, `/data` in the container. There is no `DATABASE_URL`: the directory
+is passed as `--dir`, and the schema is reconciled to the binary's embedded
+`pb_schema.json` at every startup.
 
 ## Tests
 
 ```bash
-make test        # pytest, verbose, with coverage
+make pb-test     # go vet + the full Go suite
 ```
 
 ## Production / deployment
 
 See:
-- `DEPLOYMENT.md`
-- `.env.example`
-- `Dockerfile`
+- `DEPLOYMENT.md` — pipeline, cutover and rollback
+- `pocketbase/DEPLOYMENT.md` — the container itself
+- `pocketbase/.env.example`
+- `pocketbase/Dockerfile`
 
-Recommended production setup:
-- Docker container (gunicorn + WhiteNoise + Litestream)
+Production setup:
+- Docker container (one static Go binary, supervised by Litestream)
 - persistent volume mounted at `/data`
-- `DATABASE_URL=file:/data/prod.db`
+- port 8090 in the container, published as 3000 on the host

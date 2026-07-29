@@ -1,12 +1,11 @@
-# PocketBase deployment (Phase 9, #130)
+# PocketBase deployment (Phase 9, #130; shipped by Phase 10, #131)
 
-> **Not deployed.** This documents the container built by `pocketbase/Dockerfile`
-> so it can be built and exercised ahead of the cutover. The Django app
-> described in the repository root's [`DEPLOYMENT.md`](../DEPLOYMENT.md) remains
-> the artifact CI builds and the exe.dev VM runs until Phase 10 (#131) — see
-> [`../CLAUDE.md`](../CLAUDE.md) and [`README.md`](README.md) § "Next phases".
-> Wiring CI/CD to build and ship this image, deploying it to the dev server,
-> and the production cutover itself are Phase 10's tasks, not this one's.
+> **This is the deployed app.** As of the Phase 10 cutover (#131), CI builds the
+> container documented here from the `pocketbase/` context and both the dev
+> server and the exe.dev production VM run it. The pipeline, the cutover
+> runbook and the rollback to Django live in the repository root's
+> [`DEPLOYMENT.md`](../DEPLOYMENT.md); this file stays the reference for the
+> container itself — what it needs, how it starts, and how its backups work.
 
 ## What Phase 9 adds
 
@@ -104,8 +103,9 @@ Admin UI (`http://localhost:8090/_/`), same as local dev — see
 
 Redirect URI to register with both OAuth providers: `{origin}/api/oauth2-redirect`
 (see `AUTH.md`) — different from Django's `/accounts/{google,microsoft}/login/callback/`,
-so both apps' client registrations can carry both URIs during the side-by-side
-period before cutover.
+so both apps' client registrations carry both URIs. Phase 10 keeps the Django URIs
+registered for as long as the rollback path exists; see the root `DEPLOYMENT.md`
+§ "OAuth provider setup".
 
 ## Health check
 
@@ -176,19 +176,32 @@ docker run --rm \
   restore -config /app/litestream.yml /out/data.db
 ```
 
-## What Phase 10 (#131) still has to do
+## How Phase 10 (#131) ships it
 
-This phase produces a container that builds and runs; it does not change
-what CI builds or what the exe.dev VM serves. Left for Phase 10:
+Phase 9 produced a container that builds and runs. Phase 10 made it the
+deployed artifact:
 
-- A CI job that builds and pushes this image to GHCR (the existing
-  `pocketbase` CI job only vets, builds and tests the Go module — see
-  `.github/workflows/deploy.yml`).
-- Deploy scripts (`bin/deploy-dev.sh`, `bin/deploy-prod.sh`) updated to run
-  this image instead of, or alongside, the Django one.
-- The actual cutover strategy (side-by-side with a proxy switch, or a
-  maintenance-window swap — both sketched in
-  `../POCKETBASE_MIGRATION_PLAN.md` § "PHASE 10") and its rollback plan.
-- Fresh OAuth redirect URIs registered on the production client apps
-  (`{origin}/api/oauth2-redirect`), alongside the Django ones during the
-  side-by-side period.
+- **CI builds and pushes it.** The `build` job in
+  `.github/workflows/deploy.yml` builds the `pocketbase/` context and pushes
+  `ghcr.io/<owner>/golftrack:latest` plus an immutable `:pocketbase-<sha>`.
+  The `pocketbase` job (vet, build, test) now gates that build. Dev branches
+  get `:pocketbase-dev` from `.github/workflows/deploy-dev.yml`.
+- **The deploy scripts run it.** `bin/deploy-dev.sh` and `bin/deploy-prod.sh`
+  start `golftrack-pb` (8090, published as 8000 on dev and 3000 in
+  production), health-check `/api/version` against the deploying commit's
+  short SHA, and remove the Django container — failing the deploy if anything
+  named `golftrack`/`golftrack-dev` survives.
+- **The cutover is a container swap, not a data migration.** #127 established
+  that no data was ever entered in production, and the two apps keep separate
+  data directories (`/data/golftrack-pb` vs `/data/golftrack`) and separate
+  Litestream replica paths, so nothing of Django's is touched or needed.
+- **Rollback is `bin/rollback-prod.sh`**, against the `:django-latest` tag the
+  build job preserves once, before it first overwrites `:latest`. Both the
+  runbook and its caveats are in the root `DEPLOYMENT.md` § "Rollback to
+  Django".
+- **OAuth** URIs (`{origin}/api/oauth2-redirect`) are added to the existing
+  client apps rather than replacing the Django ones, so the rollback still
+  authenticates.
+
+Phase 11 (#132) removes the Django code, and with it the rollback path,
+`:django-latest`, the legacy CI job and the Django OAuth redirect URIs.

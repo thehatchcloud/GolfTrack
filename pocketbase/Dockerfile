@@ -31,8 +31,13 @@ ARG GIT_SHA=dev
 # go:embed'd source (see main.go, schema.go, internal/web) and already
 # committed, so `go build` is the whole asset pipeline; unlike the Django
 # image, there is no separate collectstatic/Tailwind step to run here.
+#
+# GIT_SHA is truncated to 7 characters to match the short form the local
+# `git rev-parse --short HEAD` fallback produces, and the Django image's
+# `cut -c1-7` (root Dockerfile) — so /api/version reads the same either way,
+# and the deploy scripts' short-SHA check has one shape to look for.
 RUN CGO_ENABLED=0 go build -ldflags "\
-      -X github.com/thehatchcloud/golftrack/pocketbase/internal/version.GitSHA=${GIT_SHA} \
+      -X github.com/thehatchcloud/golftrack/pocketbase/internal/version.GitSHA=$(echo "${GIT_SHA}" | cut -c1-7) \
       -X github.com/thehatchcloud/golftrack/pocketbase/internal/version.BuildDate=$(date -u +%Y.%m.%d) \
     " -o /out/golftrack-pb .
 

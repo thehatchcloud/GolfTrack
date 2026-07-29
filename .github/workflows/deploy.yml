@@ -8,8 +8,12 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Django is no longer the deployed artifact (Phase 10 cutover, #131) but its
+  # code is still in-tree until Phase 11 (#132) removes it, so this keeps
+  # running to catch accidental breakage during the overlap. It no longer
+  # gates the image build — `build` needs `pocketbase` now.
   test:
-    name: Lint, build, and test
+    name: Lint, build, and test (Django, legacy)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -36,10 +40,9 @@ jobs:
   pocketbase:
     name: PocketBase (Go)
     runs-on: ubuntu-latest
-    # The PocketBase app in pocketbase/ is not the deployed artifact yet (that
-    # is still the Django image below), so this job runs alongside `test`
-    # rather than gating the build. It keeps the schema, its access rules and
-    # the hooks honest while the migration in #121 is in progress.
+    # As of the Phase 10 cutover (#131) the PocketBase app *is* the deployed
+    # artifact, so this job gates the image build below — the schema, its
+    # access rules and the hooks have to be green before anything ships.
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v5
@@ -62,11 +65,13 @@ jobs:
   build:
     name: Build and push image
     runs-on: ubuntu-latest
-    needs: test
+    needs: pocketbase
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
       packages: write
+    env:
+      REPO: ghcr.io/${{ github.repository_owner }}/golftrack
     steps:
       - uses: actions/checkout@v6
       - uses: docker/setup-buildx-action@v3
@@ -75,12 +80,42 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Rollback anchor for the cutover (#131). Until this workflow changed,
+      # `:latest` was the Django image; from here on it is the PocketBase one,
+      # so the last Django build is copied to a tag of its own *before* the
+      # push overwrites it. That is what makes the rollback plan a tag name
+      # (bin/rollback-prod.sh) rather than "go find the right digest".
+      #
+      # Idempotent, and deliberately one-way: once `:django-latest` exists it
+      # is never rewritten, so it keeps pointing at the final Django image
+      # instead of drifting forward onto a PocketBase one on the next push.
+      # `buildx imagetools`, not `docker manifest` — the latter is still gated
+      # behind the experimental CLI flag on some runner images.
+      - name: Preserve the Django image for rollback
+        run: |
+          if docker buildx imagetools inspect "$REPO:django-latest" >/dev/null 2>&1; then
+            echo "$REPO:django-latest already exists — leaving it untouched."
+          elif docker buildx imagetools inspect "$REPO:latest" >/dev/null 2>&1; then
+            docker buildx imagetools create -t "$REPO:django-latest" "$REPO:latest"
+            echo "Copied the outgoing Django $REPO:latest to $REPO:django-latest."
+          else
+            echo "No $REPO:latest to preserve — nothing to do."
+          fi
+
+      # Context is pocketbase/ (the Go module root), not the repository root:
+      # the PocketBase image is built from pocketbase/Dockerfile and needs
+      # nothing from the Django tree. `:latest` is what bin/deploy-prod.sh
+      # pulls; the commit-tagged copy is immutable, so a bad deploy can be
+      # rolled forward or back to an exact PocketBase build too.
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: pocketbase
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/golftrack:latest
+          tags: |
+            ${{ env.REPO }}:latest
+            ${{ env.REPO }}:pocketbase-${{ github.sha }}
           build-args: |
             GIT_SHA=${{ github.sha }}
           cache-from: type=gha
@@ -115,8 +150,6 @@ jobs:
           LITESTREAM_SECRET_ACCESS_KEY: ${{ secrets.LITESTREAM_SECRET_ACCESS_KEY }}
           LITESTREAM_BUCKET: ${{ secrets.LITESTREAM_BUCKET }}
           LITESTREAM_ENDPOINT: ${{ secrets.LITESTREAM_ENDPOINT }}
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           MICROSOFT_CLIENT_ID: ${{ secrets.MICROSOFT_CLIENT_ID }}
@@ -126,7 +159,7 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ubuntu
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: GHCR_TOKEN,OWNER,GIT_SHA,LITESTREAM_ACCESS_KEY_ID,LITESTREAM_SECRET_ACCESS_KEY,LITESTREAM_BUCKET,LITESTREAM_ENDPOINT,DEPLOY_HOST,DJANGO_SECRET_KEY,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,MICROSOFT_CLIENT_ID,MICROSOFT_CLIENT_SECRET,ADMIN_EMAILS
+          envs: GHCR_TOKEN,OWNER,GIT_SHA,LITESTREAM_ACCESS_KEY_ID,LITESTREAM_SECRET_ACCESS_KEY,LITESTREAM_BUCKET,LITESTREAM_ENDPOINT,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,MICROSOFT_CLIENT_ID,MICROSOFT_CLIENT_SECRET,ADMIN_EMAILS
           capture_stdout: true
           script_path: bin/deploy-prod.sh
 
@@ -142,8 +175,6 @@ jobs:
           LITESTREAM_SECRET_ACCESS_KEY: ${{ secrets.LITESTREAM_SECRET_ACCESS_KEY }}
           LITESTREAM_BUCKET: ${{ secrets.LITESTREAM_BUCKET }}
           LITESTREAM_ENDPOINT: ${{ secrets.LITESTREAM_ENDPOINT }}
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           MICROSOFT_CLIENT_ID: ${{ secrets.MICROSOFT_CLIENT_ID }}
@@ -153,7 +184,7 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ubuntu
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: GHCR_TOKEN,OWNER,GIT_SHA,LITESTREAM_ACCESS_KEY_ID,LITESTREAM_SECRET_ACCESS_KEY,LITESTREAM_BUCKET,LITESTREAM_ENDPOINT,DEPLOY_HOST,DJANGO_SECRET_KEY,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,MICROSOFT_CLIENT_ID,MICROSOFT_CLIENT_SECRET,ADMIN_EMAILS
+          envs: GHCR_TOKEN,OWNER,GIT_SHA,LITESTREAM_ACCESS_KEY_ID,LITESTREAM_SECRET_ACCESS_KEY,LITESTREAM_BUCKET,LITESTREAM_ENDPOINT,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,MICROSOFT_CLIENT_ID,MICROSOFT_CLIENT_SECRET,ADMIN_EMAILS
           capture_stdout: true
           script_path: bin/deploy-prod.sh
 
