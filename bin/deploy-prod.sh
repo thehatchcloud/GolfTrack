@@ -2,28 +2,19 @@
 # Production deploy, run on the production server over SSH by the `deploy` job
 # in .github/workflows/deploy.yml.
 #
-# As of the Phase 10 cutover (#131) this deploys the **PocketBase** app
-# (pocketbase/Dockerfile), not the Django one. What changed on this host:
+# Deploys the **PocketBase** app (pocketbase/Dockerfile): container name
+# golftrack-pb, listening on 8090 and published as 3000:8090 so the public URL
+# (https://<host>:3000) is unchanged. Its data directory is /data/golftrack-pb;
+# Litestream replicates to the `pocketbase/*` bucket paths
+# (pocketbase/litestream.yml). No migrate step: the binary reconciles the
+# database to its embedded schema during its own startup, inside the process
+# Litestream supervises.
 #
-#   - Container name golftrack-pb, replacing golftrack. The Django container is
-#     stopped and removed below; it holds host port 3000, so it could not stay
-#     up alongside this one even if we wanted it to.
-#   - golftrack-pb listens on 8090, so the mapping is 3000:8090. The public URL
-#     (https://<host>:3000) is unchanged, as it was across the Next.js → Django
-#     cutover before it.
-#   - Its own data directory, /data/golftrack-pb, so the Django database under
-#     /data/golftrack survives untouched for rollback. Litestream likewise
-#     replicates to the `pocketbase/*` bucket paths rather than `django`
-#     (pocketbase/litestream.yml), so the two generations never collide.
-#   - None of the DJANGO_* variables are needed: no secret key, no
-#     ALLOWED_HOSTS, no CSRF origins, no DATABASE_URL — see
-#     pocketbase/DEPLOYMENT.md § "Environment variables" for why each has no
-#     equivalent.
-#   - No migrate step: the binary reconciles the database to its embedded
-#     schema during its own startup, inside the process Litestream supervises.
-#
-# Rollback is bin/rollback-prod.sh, which puts the Django container back from
-# the ghcr.io/<owner>/golftrack:django-latest tag.
+# Rollback to the pre-PocketBase Django app, if ever needed, is a manual
+# recovery from the preserved `ghcr.io/<owner>/golftrack:django-latest` image
+# and the `django-final` git tag — see DEPLOYMENT.md § "Rollback to Django".
+# The in-repo rollback script was retired in Phase 11 (#132) once production
+# had proven stable on PocketBase.
 #
 # Lives in the repo rather than inline in the workflow so the deploy step can be
 # retried without a second copy of the script drifting from the first — see the
@@ -49,16 +40,6 @@ echo "$GHCR_TOKEN" | docker login ghcr.io -u "$OWNER" --password-stdin
 if ! docker pull "$IMAGE"; then
   echo "::error::docker pull $IMAGE failed — aborting rather than running whatever is already cached locally."
   exit 1
-fi
-
-# The Django container this replaces. Removing it is the cutover on this host.
-# Only the container goes: /data/golftrack (its SQLite database) and the
-# `django` Litestream replica are both left in place, so a rollback restores a
-# running app rather than an empty one.
-if [ -n "$(docker ps -aq -f name='^golftrack$')" ]; then
-  echo "Removing the Django container (golftrack) — PocketBase takes over port 3000."
-  docker stop golftrack >/dev/null 2>&1 || true
-  docker rm   golftrack >/dev/null 2>&1 || true
 fi
 
 docker stop golftrack-pb 2>/dev/null || true
@@ -121,16 +102,8 @@ if [ "$healthy" != "1" ]; then
   exit 1
 fi
 
-# Cutover evidence, printed into the workflow log: what is actually running on
-# this host, and that nothing named golftrack (the Django container) survived
-# it.
 echo "Containers running on the production host:"
 docker ps --format '  {{.Names}}  {{.Image}}  {{.Status}}  {{.Ports}}'
-if [ -n "$(docker ps -aq -f name='^golftrack$')" ]; then
-  echo "::error::the Django container golftrack is still present after the cutover deploy."
-  exit 1
-fi
-echo "Django container golftrack: absent."
 
 # The workflow greps this exact marker out of the SSH step's captured stdout
 # to prove the script ran at all — see "Verify the deploy script ran" in

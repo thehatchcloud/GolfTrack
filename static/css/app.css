@@ -1,7 +1,0 @@
-/*
- * Placeholder stylesheet committed so the app renders and `collectstatic`
- * succeeds before the Tailwind standalone CLI runs. Regenerate the real,
- * minified build with `./bin/build-css.sh` (overwrites this file).
- */
-*, ::before, ::after { box-sizing: border-box; }
-body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
