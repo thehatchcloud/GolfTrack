@@ -52,12 +52,24 @@ self-service signup OAuth2-only regardless of `GOLFTRACK_ALLOW_PASSWORD_LOGIN`
 hand: create a superuser, then add the app user from the Admin UI.
 
 ```bash
-# 1. A superuser for the Admin UI (https://golftrack-dev.exe.xyz:8000/_/)
+# 1. A superuser for the Admin UI, at /_/ on the dev server
 docker exec golftrack-pb-dev ./golftrack-pb superuser upsert your@email.com 'choose-a-password' --dir /data
 
 # 2. In the Admin UI, add a record to the `users` collection with your email,
 #    a password, and role = ADMIN. Then sign in at /accounts/login/.
 ```
+
+PocketBase also prints a one-time installer link (`{origin}/_/#/pbinstall/<token>`)
+at startup when no superuser exists, but in a container it goes to `docker logs`,
+names the container-internal origin `http://0.0.0.0:8090`, and the token expires
+after 30 minutes — so `superuser upsert` above is the practical route. It is also
+the password-reset path later.
+
+> **`:8000` in the dev URLs below is the host port, not necessarily the public
+> one.** Production turned out to be served by exe.dev on the default HTTPS port
+> with no port in the URL (see [Getting `{origin}` right](#getting-origin-right));
+> the dev entries here still carry `:8000` and have not been re-checked. It costs
+> nothing on dev — no OAuth is registered there — but don't copy these as origins.
 
 ### 4. GitHub Actions secrets for dev
 
@@ -96,7 +108,7 @@ The dev database persists in the `golftrack-pb-dev-data` Docker named volume acr
 - **Litestream** runs as the container's supervising process, continuously replicating both databases to an S3-compatible bucket and restoring them on first boot
 - Container restarts automatically when the VM reboots (`--restart unless-stopped`)
 - There is no migrate step: the binary reconciles the database to its embedded `pb_schema.json` during startup, in the same process Litestream supervises
-- The binary listens on port **8090** inside the container; the deploy maps host port **3000 → 8090**, so exe.dev proxies the app at `https://<vmname>.exe.xyz:3000/` (the public URL is unchanged from both the Next.js and Django eras)
+- The binary listens on port **8090** inside the container; the deploy maps host port **3000 → 8090**, unchanged from both the Next.js and Django eras. **The host port is not part of the public URL** — exe.dev fronts the VM and serves the app at `https://<vmname>.exe.xyz/` on the default HTTPS port. That distinction matters when registering OAuth redirect URIs; see [Getting `{origin}` right](#getting-origin-right)
 - The deploy script health-checks `/api/version` inside the container after `docker run` and **fails the deploy (with `docker logs`) if the app doesn't come up serving this commit's SHA**. `/api/version` rather than `/api/health` because PocketBase's own health endpoint carries no build identity, so it cannot distinguish the new container from a stale one
 - The container is named `golftrack-pb`. The deploy script removes the Django container (`golftrack`) before starting it and fails if anything named `golftrack` survives, so "both apps running" is not a reachable state
 
@@ -122,7 +134,7 @@ Three things keep the two apps' state apart, which is what makes the rollback be
 
 ### Before merging the cutover
 
-- [ ] Register the PocketBase redirect URI `https://golftrack.exe.xyz:3000/api/oauth2-redirect` on **both** OAuth client apps — see [OAuth provider setup](#oauth-provider-setup). Add it alongside the Django callback URLs rather than replacing them, so a rollback still authenticates.
+- [ ] Register the PocketBase redirect URI `{origin}/api/oauth2-redirect` on **both** OAuth client apps, where `{origin}` is the public origin **without** the deploy's host port — see [Getting `{origin}` right](#getting-origin-right), which gives the one-line console expression that produces the exact string. Add it alongside the Django callback URLs rather than replacing them, so a rollback still authenticates.
 - [ ] Confirm the dev deploy is green and `golftrack-dev.exe.xyz:8000` serves the PocketBase app (this is what every branch push exercises).
 - [ ] Take a final backup of the Django database if you want one for the archive — `/data/golftrack/prod.db` on the VM. It survives the cutover either way; this is belt and braces.
 
@@ -142,7 +154,7 @@ Recovery is a container swap, well inside the <30 minute budget in #131: the Dja
 ssh <prod-vmhost>
 # copy bin/rollback-prod.sh over first (scp, or curl it from the repo)
 GHCR_TOKEN=… OWNER=thehatchcloud \
-DJANGO_SECRET_KEY=… DEPLOY_HOST=golftrack.exe.xyz \
+DJANGO_SECRET_KEY=… DEPLOY_HOST=<the DEPLOY_HOST secret's value> \
 GOOGLE_CLIENT_ID=… GOOGLE_CLIENT_SECRET=… \
 MICROSOFT_CLIENT_ID=… MICROSOFT_CLIENT_SECRET=… \
 ADMIN_EMAILS=… \
@@ -241,8 +253,20 @@ In the repository: **Settings → Secrets and variables → Actions → New repo
 | `ADMIN_EMAILS` | Comma-separated emails to grant `ADMIN` role at sign-in |
 | `LITESTREAM_ACCESS_KEY_ID` / `LITESTREAM_SECRET_ACCESS_KEY` / `LITESTREAM_BUCKET` / `LITESTREAM_ENDPOINT` | See [Backups (Litestream)](#backups-litestream) |
 
-`DJANGO_ALLOWED_HOSTS` and `DJANGO_CSRF_TRUSTED_ORIGINS` are not secrets — the
-workflow derives them from `DEPLOY_HOST` (`<host>` and `https://<host>:3000`).
+`DEPLOY_HOST` and `DJANGO_SECRET_KEY` are no longer passed to the deploy — the
+PocketBase container needs neither. They are kept only for
+[`bin/rollback-prod.sh`](bin/rollback-prod.sh), which still starts Django and
+derives `DJANGO_ALLOWED_HOSTS` and `DJANGO_CSRF_TRUSTED_ORIGINS` from
+`DEPLOY_HOST`. Delete both secrets with the rollback path in Phase 11.
+
+> **Note on the rollback script's CSRF origin.** It sets
+> `DJANGO_CSRF_TRUSTED_ORIGINS="https://$DEPLOY_HOST:3000"`, carried over verbatim
+> from the Django deploy it replaced. Now that we know the public origin carries no
+> port (see [Getting `{origin}` right](#getting-origin-right)), that value looks
+> wrong — a rolled-back Django would reject form posts from the real origin. It is
+> untested either way. If you ever exercise the rollback, set
+> `DJANGO_CSRF_TRUSTED_ORIGINS` to the portless origin, or list both
+> comma-separated.
 
 > **Migrating from the Next.js deploy:** The old workflow used `AUTH_SECRET`,
 > `AUTH_URL`, `AUTH_GOOGLE_*`, and `AUTH_MICROSOFT_ENTRA_ID_*`. The Django deploy
@@ -353,21 +377,59 @@ PocketBase reuses the **same OAuth client apps** as Django — same
 `GOOGLE_*`/`MICROSOFT_*` credentials — but its redirect URI is its own, so the
 client registrations need one more URI **added** (not replaced):
 
-- **Google** — [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials)
-  Redirect URI: `https://golftrack.exe.xyz:3000/api/oauth2-redirect`
-- **Microsoft Entra ID** — [entra.microsoft.com → App registrations](https://entra.microsoft.com)
-  Redirect URI: `https://golftrack.exe.xyz:3000/api/oauth2-redirect`
+```text
+{origin}/api/oauth2-redirect
+```
+
+- **Google** — [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials),
+  under **Authorized redirect URIs**. (Not "Authorized JavaScript origins" — that
+  is a different field on the same page, and putting it there does nothing.)
+- **Microsoft Entra ID** — [entra.microsoft.com → App registrations](https://entra.microsoft.com),
+  under the **Web** platform. Not "Single-page application": PocketBase exchanges
+  the code server-side with the client secret, and the SPA platform requires PKCE
+  and rejects that.
   Audience: "Accounts in any organizational directory and personal Microsoft accounts" (required for the default `common` tenant to accept both work and personal accounts)
+
+#### Getting `{origin}` right
+
+**`{origin}` is the origin your browser shows on the sign-in page — which does
+not include the deploy's `3000`.** That number is the *host* port on the VM;
+exe.dev fronts it and serves the app on the default HTTPS port, so the public
+origin is `https://<host>.exe.xyz`. Registering the URI with `:3000` in it is a
+mismatch, and Google rejects the sign-in with `Error 400: redirect_uri_mismatch`.
+
+Don't derive it by hand. The frontend builds the redirect URI from
+`window.location.origin` (`internal/web/static/js/golftrack.js` calls
+`authWithOAuth2` with no `redirectURL` override, so the JS SDK uses
+`client.buildURL('/api/oauth2-redirect')` on a client constructed as
+`new PocketBase(window.location.origin)`). So open the app's sign-in page,
+open the browser console, and run the same expression the SDK does:
+
+```js
+window.location.origin + '/api/oauth2-redirect'
+```
+
+Register exactly what that prints. To debug a mismatch, compare it against the
+`redirect_uri` Google reports under **Error details** on its error page.
+
+Two things that look like a wrong URI but are not: Google takes anywhere from
+5 minutes to a few hours to apply credential changes, and a URI added to a
+different OAuth client in the same project has no effect — the app
+authenticates with whatever `GOOGLE_CLIENT_ID` is in the Actions secret.
 
 `/api/oauth2-redirect` is PocketBase's own endpoint — nothing in `pocketbase/`
 implements it. Details and the local-development URI
-(`http://127.0.0.1:8090/api/oauth2-redirect`) are in
-[`pocketbase/AUTH.md`](pocketbase/AUTH.md).
+(`http://127.0.0.1:8090/api/oauth2-redirect`, where the port *is* part of the
+origin) are in [`pocketbase/AUTH.md`](pocketbase/AUTH.md).
+
+The dev server needs no redirect URI at all: `bin/deploy-dev.sh` passes no
+`GOOGLE_*`/`MICROSOFT_*` variables, so no providers are registered there and
+sign-in is password-only.
 
 **Keep the Django callback URLs registered** —
-`https://golftrack.exe.xyz:3000/accounts/{google,microsoft}/login/callback/` — for as
-long as the rollback path exists. Rolling back to a Django container whose provider
-apps no longer accept its callback URL would trade an outage for a worse one. Retire
+`{origin}/accounts/{google,microsoft}/login/callback/` — for as long as the
+rollback path exists. Rolling back to a Django container whose provider apps no
+longer accept its callback URL would trade an outage for a worse one. Retire
 them with the rest of the Django path in Phase 11.
 
 > **Cutover note (#94, done):** The Next.js callback URLs
