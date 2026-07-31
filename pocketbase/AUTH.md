@@ -1,24 +1,18 @@
 # Authentication
 
 How a person signs in to GolfTrack on PocketBase, how they become an
-administrator, and what a deployment has to supply for either to work. Written
-in Phase 4 (#125).
-
-The reference implementation is the Django app: `config/settings.py`
-(`SOCIALACCOUNT_PROVIDERS`, `ADMIN_EMAILS`, `ALLOW_PASSWORD_LOGIN`) and
-`accounts/signals.py` (`sync_admin_role`). Behaviour is not supposed to change
-in this migration, and where it does, the difference is called out below.
+administrator, and what a deployment has to supply for either to work.
 
 ## The shape of it
 
-| Concern | Django | PocketBase |
-|---|---|---|
-| Identity provider | django-allauth, Google + Microsoft | PocketBase's own OAuth2, same two providers |
-| Session | Django session cookie | a JWT the client stores and sends as `Authorization` |
-| Sign-up | `SOCIALACCOUNT_AUTO_SIGNUP`, self-service registration disabled | the `users` create rule, `@request.context = "oauth2"` |
-| `role` default | `default=Role.USER` on the model | `internal/hooks/users.go` |
-| `role` from `ADMIN_EMAILS` | `user_logged_in` receiver | `internal/hooks/adminrole.go`, on `OnRecordAuthWithOAuth2Request` |
-| Password login | `DJANGO_ALLOW_PASSWORD_LOGIN`, default off | `GOLFTRACK_ALLOW_PASSWORD_LOGIN`, default off |
+| Concern | How |
+|---|---|
+| Identity provider | PocketBase's own OAuth2, Google + Microsoft Entra ID |
+| Session | a JWT the client stores and sends as `Authorization` |
+| Sign-up | the `users` create rule, `@request.context = "oauth2"` |
+| `role` default | `internal/hooks/users.go` |
+| `role` from `ADMIN_EMAILS` | `internal/hooks/adminrole.go`, on `OnRecordAuthWithOAuth2Request` |
+| Password login | `GOLFTRACK_ALLOW_PASSWORD_LOGIN`, default off |
 
 ## Environment variables
 
@@ -38,14 +32,9 @@ source, applied deterministically on boot.
 | `GOLFTRACK_ALLOW_PASSWORD_LOGIN` | `false` | Allows email+password authentication for accounts that already exist |
 | `GOLFTRACK_SCHEMA_SYNC` | `1` | Unrelated, listed for completeness: `0` skips the startup schema sync |
 
-The names are Django's on purpose (`GOLFTRACK_ALLOW_PASSWORD_LOGIN` being the
-one rename, from `DJANGO_ALLOW_PASSWORD_LOGIN`), so a host that already sets
-them for the shipped app needs no new secrets when the PocketBase container
-arrives in Phase 9 (#130). `ADMIN_EMAILS` is parsed the same way too —
-lower-cased, trimmed, blanks dropped — so one list means the same thing to both
-applications during a dual-stack rollout, and
-`GOLFTRACK_ALLOW_PASSWORD_LOGIN` accepts the same truthy values Django's
-`_bool_env` does (`1`, `true`, `yes`, `on`, case-insensitively).
+`ADMIN_EMAILS` is parsed lower-cased, trimmed, with blanks dropped.
+`GOLFTRACK_ALLOW_PASSWORD_LOGIN` accepts common truthy values (`1`, `true`,
+`yes`, `on`, case-insensitively).
 
 Three behaviours worth knowing before debugging a deployment:
 
@@ -65,11 +54,6 @@ which is read per sign-in.
 
 ## Registering the OAuth apps
 
-PocketBase's redirect URI is its own, and differs from Django's, so the
-existing OAuth client apps can be reused by *adding* a redirect URI rather than
-registering new apps. Whether to reuse or register fresh is a deployment call;
-the URI to add is the same either way.
-
 | Provider | Console | Redirect URI to add |
 |---|---|---|
 | Google | console.cloud.google.com → APIs & Services → Credentials | `{origin}/api/oauth2-redirect` |
@@ -83,10 +67,8 @@ and passes it as `redirectURL`.
 
 For Microsoft, register the app with the "any organizational directory and
 personal Microsoft accounts" account type — PocketBase's provider uses the
-`common` tenant endpoint, matching Django's `"TENANT": "common"`. It reads the
-signed-in user's address from the Graph API's `mail` field, which is also what
-allauth does, so the same accounts resolve to the same addresses across the
-two stacks.
+`common` tenant endpoint. It reads the signed-in user's address from the
+Graph API's `mail` field.
 
 ## Sign-in, step by step
 
@@ -105,12 +87,9 @@ two stacks.
 
 Steps 5 and 6 are in that order deliberately: the role is settled *before* the
 response is built, so the `record.role` a client reads straight out of the
-login call is already correct. Django's `user_logged_in` receiver has the same
-property.
+login call is already correct.
 
 ### `role` and `ADMIN_EMAILS`
-
-The rule is Django's, ported line for line:
 
 - an address on the list gets `ADMIN`, on their first sign-in as much as their
   hundredth;
@@ -128,8 +107,8 @@ diverge, and only the provider-verified address is evidence of who is knocking.
 
 Promotion still only happens on an OAuth sign-in. An account that has never
 signed in since being listed keeps its old role, and the Admin UI remains the
-manual path — the `users` update rule blocks self-assignment of `role`
-(Phase 2, #123), so a superuser is the only other way to set it.
+manual path — the `users` update rule blocks self-assignment of `role`, so a
+superuser is the only other way to set it.
 
 ### What a caller may not smuggle in
 
@@ -159,23 +138,20 @@ three payloads.
 password *authentication* is available for already-provisioned accounts, behind
 `GOLFTRACK_ALLOW_PASSWORD_LOGIN`, off by default.**
 
-#125 framed this as a decision rather than a toggle because the two halves are
-not the same switch:
+This is a decision rather than a toggle because the two halves are not the
+same switch:
 
 - **Registration** is the `users` create rule. Relaxing it to admit password
-  sign-up would reopen the account-minting half of a privilege-escalation path
-  that Phase 2 closed deliberately, and any replacement rule would have to keep
-  `role` unsettable by the client anyway. Nothing in GolfTrack needs walk-in
-  accounts — the shipped app disables self-service signup in every environment,
-  including the dev server — so the rule is unchanged:
-  `@request.context = "oauth2"`. `acl_test.go`'s `TestSignupIsOAuth2Only` pins
-  it, including with password login enabled.
-- **Authentication** is `passwordAuth.enabled` on the collection. Django gates
-  the equivalent behind `DJANGO_ALLOW_PASSWORD_LOGIN` so that an environment
-  with no OAuth apps registered — the dev server, per `deploy-dev.yml` — can
-  still be signed in to with accounts an operator created by hand. PocketBase
-  gets the same switch, defaulting the same way, applied from the environment
-  alongside the providers.
+  sign-up would reopen a privilege-escalation path, and any replacement rule
+  would have to keep `role` unsettable by the client anyway. Nothing in
+  GolfTrack needs walk-in accounts — the shipped app disables self-service
+  signup in every environment, including the dev server — so the rule is
+  unchanged: `@request.context = "oauth2"`. `acl_test.go`'s
+  `TestSignupIsOAuth2Only` pins it, including with password login enabled.
+- **Authentication** is `passwordAuth.enabled` on the collection, gated behind
+  `GOLFTRACK_ALLOW_PASSWORD_LOGIN` so that an environment with no OAuth apps
+  registered — the dev server, per `deploy-dev.yml` — can still be signed in
+  to with accounts an operator created by hand.
 
 So a deployment can be OAuth-only (the default and what production runs),
 OAuth + password, or password-only for an environment with no OAuth apps. It
@@ -186,19 +162,16 @@ with the binary's CLI. Nothing else changes: the account is an ordinary `users`
 record, and its `role` is whatever the Admin UI sets, since `ADMIN_EMAILS` is
 only consulted on an OAuth sign-in.
 
-## For the frontend (Phase 7, #128)
+## For the frontend
 
-Phase 7 owns the frontend adaptation; this is the auth slice of it, and the
-contract it can build against.
+This is the auth slice the frontend builds against.
 
 **The session is a token, not a cookie.** `auth-with-oauth2` and
 `auth-with-password` both answer `{"token": …, "record": {…}, "meta": {…}}`.
 The client stores the token and sends it as `Authorization: <token>` on every
 request; PocketBase's JS SDK does this out of the box, and its `authStore` can
 be persisted to a cookie (`pb.authStore.exportToCookie()`) for a server-rendered
-page to read. That is a difference from the Django app, where the session lives
-in an `HttpOnly` cookie the JavaScript never sees, and it is the one auth
-decision Phase 7 has to make explicitly:
+page to read. Two options were on the table:
 
 - a **token in `localStorage`** is the SDK's default and the simplest, but is
   readable by any script on the origin;
@@ -210,26 +183,23 @@ Either way the token is a JWT signed by the instance, valid for 5 days
 (`authToken.duration` in `pb_schema.json`), refreshable via
 `POST /api/collections/users/auth-refresh`.
 
-**Decision (#128):** a cookie, not `localStorage`. The current Django templates
-(`templates/base.html`, `static/js/round-play.js`) are server-rendered with
-Alpine.js/htmx sprinkled on top rather than a client-side SPA, and a PocketBase
-frontend built the same way needs the token on the *server* request too, not
-just the browser's `fetch` calls — `localStorage` cannot do that without an
-extra round trip through JavaScript on every page load. `pb.authStore.
-exportToCookie()` writes the same JWT into a cookie the server can read
-directly, so a page render and an API call authenticate the same way. The
-cookie is `Secure` and `SameSite=Lax` like Django's `sessionid`, but cannot be
-`HttpOnly`: the client-side SDK has to read it back out to set the
+**Decision: a cookie, not `localStorage`.** The frontend is server-rendered
+with Alpine.js islands rather than a client-side SPA, and needs the token on
+the *server* request too, not just the browser's `fetch` calls —
+`localStorage` cannot do that without an extra round trip through JavaScript
+on every page load. `pb.authStore.exportToCookie()` writes the same JWT into
+a cookie the server can read directly, so a page render and an API call
+authenticate the same way. The cookie is `Secure` and `SameSite=Lax`, but
+cannot be `HttpOnly`: the client-side SDK has to read it back out to set the
 `Authorization` header itself, since PocketBase's API does not accept the
-cookie as credentials the way Django's session middleware does. That is the
-trade-off the two bullets above describe, made explicit: this phase accepts
-"readable by the page's own scripts" as the cost of keeping the server able to
-gate a page render before any JavaScript runs.
+cookie as credentials directly. That is the trade-off the two bullets above
+describe, made explicit: this accepts "readable by the page's own scripts" as
+the cost of keeping the server able to gate a page render before any
+JavaScript runs.
 
-**Built in Phase 7B.** `internal/web/auth.go` reads the cookie server-side and
+`internal/web/auth.go` reads the cookie server-side and
 `static/js/golftrack.js` writes it (through `authStore.exportToCookie`) and
-attaches the token to every API call. Two details the decision above did not
-pin down, settled by the implementation:
+attaches the token to every API call. Two details worth knowing:
 
 - **Only the token is trusted.** `exportToCookie` writes `{"token": …,
   "record": {…}}`, and the record half is as forgeable as anything else the
@@ -248,7 +218,7 @@ noted above (a frontend that drives the redirect itself and registers its own
 callback) stays available if the popup proves awkward in a particular mobile
 browser; it would need a second redirect URI added to each OAuth app.
 
-What the frontend needs from this phase:
+What the frontend needs:
 
 | Need | Where it comes from |
 |---|---|
@@ -280,16 +250,16 @@ with `GOOGLE_CLIENT_ID` set would have it.
 | `TestAuthMethodsAdvertiseTheProvidersWithoutSecrets` | what the frontend reads, and what it must never contain |
 | `TestOAuth2IsRefusedWhenNoProviderIsConfigured` | the closed baseline |
 | `TestPasswordLoginIsOffByDefault` / `…CanBeEnabledForProvisionedAccounts` | both halves of the recorded decision |
-| `TestFirstOAuth2SignInCreatesTheUserWithRoleUser` | the gate item: `role = USER` through the real OAuth path |
+| `TestFirstOAuth2SignInCreatesTheUserWithRoleUser` | `role = USER` through the real OAuth path |
 | `TestSecondOAuth2SignInUpdatesTheExistingUser` | a repeat sign-in links, and does not duplicate |
 | `TestAdminEmailsGrantsAdminOnFirstSignIn` | promotion of a brand-new account |
-| `TestAdminEmailsPromotesAnExistingUser` | the gate item: a `USER` whose address was added later |
-| `TestAdminEmailsRevokesAdminWhenTheAddressIsRemoved` | the revocation half Django also has |
+| `TestAdminEmailsPromotesAnExistingUser` | a `USER` whose address was added later |
+| `TestAdminEmailsRevokesAdminWhenTheAddressIsRemoved` | the revocation half |
 | `TestEmptyAdminEmailsLeavesRolesAlone` | the safety valve |
-| `TestAdminEmailsIgnoresCaseAndSurroundingSpace` | parsing parity with Django |
+| `TestAdminEmailsIgnoresCaseAndSurroundingSpace` | parsing normalises case and whitespace |
 | `TestOAuth2CreateDataCannotMintAnAdmin` / `…SetAKnownPassword` / `…ChooseAnotherAddress` | the three `createData` payloads |
 | `internal/authenv/authenv_test.go` | the parsing itself, as plain unit tests |
-| `acl_test.go` — `TestRoleIsNotSelfAssignable`, `TestSignupIsOAuth2Only` | unchanged in substance: a non-admin still cannot self-assign `ADMIN`, and sign-up is still OAuth2-only |
+| `acl_test.go` — `TestRoleIsNotSelfAssignable`, `TestSignupIsOAuth2Only` | a non-admin still cannot self-assign `ADMIN`, and sign-up is still OAuth2-only |
 
 What the automated tests deliberately do **not** cover is the token exchange
 itself — a real round trip to Google and to Microsoft. That is a live-credential

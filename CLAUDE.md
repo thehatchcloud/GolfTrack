@@ -6,12 +6,7 @@ GolfTrack runs on **PocketBase**, consumed as a Go framework: one binary
 (`pocketbase/`) embeds the server, the collection schema, the domain hooks,
 and the server-rendered frontend. It is the only app in this repository.
 
-Previously the app was rewritten from Next.js to Django (#85), then from
-Django to PocketBase (#121); both were removed in Phase 11 (#132) once
-production had proven stable on PocketBase. See
-[`POCKETBASE.md`](POCKETBASE.md) for the architecture and that history,
-[`POCKETBASE_MIGRATION_PLAN.md`](POCKETBASE_MIGRATION_PLAN.md) for the
-original migration plan (historical record), and
+See [`POCKETBASE.md`](POCKETBASE.md) for the architecture and
 [`pocketbase/README.md`](pocketbase/README.md) for the full layout and dev
 command reference.
 
@@ -130,4 +125,4 @@ If you change the S3-compatible backend (e.g. away from DO Spaces), revisit `poc
 
 The deploy scripts health-check `/api/version` (not `/api/health`, which carries no build identity) and fail the deploy unless the container reports the deploying commit's short SHA.
 
-Full deployment pipeline, cutover history, and the manual Django rollback path: [`DEPLOYMENT.md`](DEPLOYMENT.md). The container itself: [`pocketbase/DEPLOYMENT.md`](pocketbase/DEPLOYMENT.md).
+Full deployment pipeline: [`DEPLOYMENT.md`](DEPLOYMENT.md). The container itself: [`pocketbase/DEPLOYMENT.md`](pocketbase/DEPLOYMENT.md).
