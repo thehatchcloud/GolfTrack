@@ -2,11 +2,10 @@
 
 A mobile-first golf score tracking web app.
 
-> **Now running on PocketBase (#121, Phase 10 / #131):** the app in `pocketbase/`
-> is what builds and deploys — see `pocketbase/README.md` for its layout and dev
-> commands, and `DEPLOYMENT.md` for the pipeline. The Django app it replaced
-> (#85) is still in-tree, and no longer deployed, until Phase 11 (#132) removes
-> it along with the legacy Next.js code.
+> **Runs on PocketBase** (migrated from Django, then from Next.js before that —
+> see `POCKETBASE.md` for the app's architecture and history). The app in
+> `pocketbase/` is the entire repository now — see `pocketbase/README.md` for
+> its layout and dev commands, and `DEPLOYMENT.md` for the pipeline.
 
 Stack:
 - PocketBase consumed as a Go framework — one binary embedding the server, schema, domain hooks and frontend

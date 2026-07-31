@@ -184,24 +184,26 @@ deployed artifact:
 - **CI builds and pushes it.** The `build` job in
   `.github/workflows/deploy.yml` builds the `pocketbase/` context and pushes
   `ghcr.io/<owner>/golftrack:latest` plus an immutable `:pocketbase-<sha>`.
-  The `pocketbase` job (vet, build, test) now gates that build. Dev branches
+  The `pocketbase` job (vet, build, test) gates that build. Dev branches
   get `:pocketbase-dev` from `.github/workflows/deploy-dev.yml`.
 - **The deploy scripts run it.** `bin/deploy-dev.sh` and `bin/deploy-prod.sh`
   start `golftrack-pb` (8090, published as 8000 on dev and 3000 in
-  production), health-check `/api/version` against the deploying commit's
-  short SHA, and remove the Django container — failing the deploy if anything
-  named `golftrack`/`golftrack-dev` survives.
-- **The cutover is a container swap, not a data migration.** #127 established
-  that no data was ever entered in production, and the two apps keep separate
+  production) and health-check `/api/version` against the deploying commit's
+  short SHA. At the time of the cutover they also removed the Django
+  container as their first act; that logic was retired in Phase 11 (#132)
+  once the Django container was long gone from both hosts.
+- **The cutover was a container swap, not a data migration.** #127 established
+  that no data was ever entered in production, and the two apps kept separate
   data directories (`/data/golftrack-pb` vs `/data/golftrack`) and separate
-  Litestream replica paths, so nothing of Django's is touched or needed.
-- **Rollback is `bin/rollback-prod.sh`**, against the `:django-latest` tag the
-  build job preserves once, before it first overwrites `:latest`. Both the
-  runbook and its caveats are in the root `DEPLOYMENT.md` § "Rollback to
-  Django".
-- **OAuth** URIs (`{origin}/api/oauth2-redirect`) are added to the existing
+  Litestream replica paths, so nothing of Django's was touched or needed.
+- **Rollback was `bin/rollback-prod.sh`**, against the `:django-latest` tag the
+  build job preserved once, before it first overwrote `:latest`. That script
+  was removed in Phase 11 (#132); the equivalent manual recovery steps and
+  their caveats are in the root `DEPLOYMENT.md` § "Rollback to Django".
+- **OAuth** URIs (`{origin}/api/oauth2-redirect`) were added to the existing
   client apps rather than replacing the Django ones, so the rollback still
   authenticates.
 
-Phase 11 (#132) removes the Django code, and with it the rollback path,
-`:django-latest`, the legacy CI job and the Django OAuth redirect URIs.
+Phase 11 (#132) removed the Django source, the in-repo rollback script, and
+the legacy Django CI job. The `:django-latest` GHCR tag and the Django OAuth
+redirect URIs are kept for the manual rollback.

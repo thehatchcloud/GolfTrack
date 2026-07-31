@@ -1,16 +1,17 @@
 # GolfTrack on PocketBase
 
-Phases 1 (#122), 2 (#123), 3 (#124), 4 (#125), 5 (#126), 7A (#128), 7B, 8
-(#129), 9 (#130) and 10 (#131) of the Django → PocketBase migration tracked in
-epic #121. The overall plan lives in
-[`POCKETBASE_MIGRATION_PLAN.md`](../POCKETBASE_MIGRATION_PLAN.md).
+The Django → PocketBase migration tracked in epic #121 (phases #122–#132) is
+complete. The plan and phase-by-phase history live in
+[`POCKETBASE_MIGRATION_PLAN.md`](../POCKETBASE_MIGRATION_PLAN.md) and
+[`../POCKETBASE.md`](../POCKETBASE.md) — historical record now, not a
+description of the current layout.
 
-**This directory is the deployed app.** As of the Phase 10 cutover (#131), CI
-builds the container from `pocketbase/Dockerfile` and both the dev server and
-production run it; the Django app in the repository root is no longer deployed
-anywhere and is removed in Phase 11 (#132). See [`DEPLOYMENT.md`](DEPLOYMENT.md)
-for the container and [`../DEPLOYMENT.md`](../DEPLOYMENT.md) for the pipeline,
-the cutover runbook and the rollback.
+**This directory is the entire app.** CI builds the container from
+`pocketbase/Dockerfile`; both the dev server and production run it. The Django
+app it replaced, and the Next.js app before that, were removed from the
+repository in Phase 11 (#132). See [`DEPLOYMENT.md`](DEPLOYMENT.md) for the
+container and [`../DEPLOYMENT.md`](../DEPLOYMENT.md) for the pipeline and the
+manual Django rollback path.
 
 What is here so far: a PocketBase application you can build and run locally, the
 six collections defined and reproducible from a committed schema file, their
@@ -197,13 +198,14 @@ either export the OAuth variables or use
 make pb-css          # bin/build-pb-css.sh — Tailwind -> internal/web/static/css/app.css
 ```
 
-`tailwind.pocketbase.config.js` scans `internal/web/templates`; the Django
-build (`make css`, `tailwind.config.js`) still scans the Django tree and writes
-`static/css/app.css`. Both exist until the Phase 11 cleanup and share a Tailwind
-version, so the ported markup renders identically. **The compiled CSS is
-committed**, because `go:embed` needs it at build time — a checkout must be able
-to `go build` with no Tailwind toolchain installed. Re-run `make pb-css` after
-touching a template's classes.
+Root `tailwind.config.js` scans `internal/web/templates`. Until Phase 11
+(#132) this was `tailwind.pocketbase.config.js`, alongside a Django-scoped
+`tailwind.config.js` that scanned the Django tree and wrote `static/css/app.css`;
+that config and the Django tree it scanned were both removed, so this one was
+renamed into the name it now has to itself. **The compiled CSS is committed**,
+because `go:embed` needs it at build time — a checkout must be able to
+`go build` with no Tailwind toolchain installed. Re-run `make pb-css` after touching a
+template's classes.
 
 Alpine and the PocketBase JS SDK are vendored under `internal/web/static/js/`
 for the same reason the CSS is committed, and because a PWA that needs unpkg.com
@@ -892,11 +894,18 @@ Phase 4 adds two, against #125:
   specifically to stop it. Closing it belongs in the phase that opens it. See
   `AUTH.md`.
 
-## Next phases
+## Migration status
 
-| Phase | Issue | Adds |
-|---|---|---|
-| 11 — Decommissioning | #132 | Django and Next.js removed, and with them the rollback path (`bin/rollback-prod.sh`, the `:django-latest` tag, the legacy CI job, the Django OAuth redirect URIs); the duplicate `rounds` indexes noted above are a cleanup candidate here |
+All 11 phases of epic #121 are done. Phase 11 (#132) removed the Django and
+Next.js source, the in-repo Django rollback script (`bin/rollback-prod.sh`),
+and the legacy Django CI job; the `:django-latest` GHCR tag and the Django
+OAuth redirect URIs are kept for the manual rollback documented in
+[`../DEPLOYMENT.md`](../DEPLOYMENT.md) § "Rollback to Django".
 
-Phase 10 (#131) is done — see [`DEPLOYMENT.md`](DEPLOYMENT.md) § "How Phase 10
-(#131) ships it".
+The redundant `idx_rounds_user` / `idx_rounds_status` indexes noted above
+(superseded by `idx_rounds_user_status_finished` but kept because they mirror
+the old Django model's indexes) are a follow-up cleanup candidate, not
+addressed by Phase 11 — see the index discussion above before touching them.
+
+See [`DEPLOYMENT.md`](DEPLOYMENT.md) § "How Phase 10 (#131) ships it" for how
+the container reached production.

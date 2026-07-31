@@ -4,10 +4,6 @@ name: Dev Deploy
 # non-main branch to golftrack-dev.exe.xyz for testing. Runs without Litestream
 # (LITESTREAM_BUCKET unset). No OAuth — sign in with email+password
 # (GOLFTRACK_ALLOW_PASSWORD_LOGIN).
-#
-# The Django image this used to build is no longer deployed anywhere as of the
-# Phase 10 cutover (#131); bin/deploy-dev.sh removes the container it left
-# behind on the dev VM.
 on:
   push:
     branches-ignore: [main]
@@ -48,9 +44,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # Context is pocketbase/ (the Go module root) — see the same step in
-      # deploy.yml. The tag changes with it: the dev VM used to run
-      # `:django-dev`, which stays in GHCR untouched as the dev-side rollback
-      # image.
+      # deploy.yml.
       - name: Build and push dev image
         if: steps.check.outputs.skip != 'true'
         uses: docker/build-push-action@v6

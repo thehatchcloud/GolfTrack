@@ -1,16 +1,10 @@
 #!/bin/sh
 # Build Tailwind CSS for the PocketBase frontend (Phase 7B).
 #
-# The twin of bin/build-css.sh, which does the same for the Django templates.
-# Both exist until the Phase 11 cleanup removes the Django tree; they share a
-# Tailwind version so the ported markup renders identically, and differ only in
-# which templates they scan and where the output lands:
-#
-#   build-css.sh     templates/**            -> static/css/app.css
-#   build-pb-css.sh  pocketbase/internal/web -> pocketbase/internal/web/static/css/app.css
-#
-# The output is committed, because the binary embeds it with go:embed — a
-# checkout has to be able to `go build` without a Tailwind toolchain.
+# Scans pocketbase/internal/web and writes
+# pocketbase/internal/web/static/css/app.css. The output is committed, because
+# the binary embeds it with go:embed — a checkout has to be able to `go build`
+# without a Tailwind toolchain.
 set -e
 
 cd "$(dirname "$0")/.."
@@ -24,7 +18,7 @@ OUT="./pocketbase/internal/web/static/css/app.css"
 # the standalone binary cannot be downloaded (a locked-down network, an
 # unsupported platform).
 if [ -n "$TAILWIND_NODE_CLI" ]; then
-  node "$TAILWIND_NODE_CLI" -c tailwind.pocketbase.config.js -i "$IN" -o "$OUT" --minify "$@"
+  node "$TAILWIND_NODE_CLI" -c tailwind.config.js -i "$IN" -o "$OUT" --minify "$@"
   exit 0
 fi
 
@@ -42,4 +36,4 @@ if [ ! -x "$BIN" ]; then
   chmod +x "$BIN"
 fi
 
-"$BIN" -c tailwind.pocketbase.config.js -i "$IN" -o "$OUT" --minify "$@"
+"$BIN" -c tailwind.config.js -i "$IN" -o "$OUT" --minify "$@"

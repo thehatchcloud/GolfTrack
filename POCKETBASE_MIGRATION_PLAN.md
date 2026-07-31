@@ -1,5 +1,12 @@
 # Pocketbase Migration Plan for GolfTrack
 
+> **Migration complete.** All 11 phases of epic #121 are done as of Phase 11
+> (#132), which removed the Django and Next.js source this plan describes
+> migrating away from. This document is kept as a historical record of the
+> plan and its phase-by-phase decisions — it no longer describes the current
+> repository layout. See [`POCKETBASE.md`](POCKETBASE.md) for the current
+> architecture.
+
 ## Executive Summary
 
 GolfTrack is transitioning from Django + Django Ninja backend to Pocketbase. This is a backend-replacement operation that preserves the domain model and business logic while adopting Pocketbase's simpler deployment and operational model. The migration is sequenced to maintain production availability and data integrity throughout.

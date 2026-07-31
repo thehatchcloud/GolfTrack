@@ -8,41 +8,12 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Django is no longer the deployed artifact (Phase 10 cutover, #131) but its
-  # code is still in-tree until Phase 11 (#132) removes it, so this keeps
-  # running to catch accidental breakage during the overlap. It no longer
-  # gates the image build — `build` needs `pocketbase` now.
-  test:
-    name: Lint, build, and test (Django, legacy)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v5
-      - run: uv python install 3.14
-      - run: make install
-      - name: Lint (ruff)
-        run: make lint
-      - name: Production static build (Tailwind + collectstatic)
-        run: make collectstatic
-      - name: Test (pytest)
-        run: make test
-      - name: Coverage summary
-        if: always()
-        run: |
-          if [ -f .coverage ]; then
-            {
-              echo "### Python test coverage"
-              echo
-              .venv/bin/coverage report --format=markdown
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
-
   pocketbase:
     name: PocketBase (Go)
     runs-on: ubuntu-latest
-    # As of the Phase 10 cutover (#131) the PocketBase app *is* the deployed
-    # artifact, so this job gates the image build below — the schema, its
-    # access rules and the hooks have to be green before anything ships.
+    # The PocketBase app is the deployed artifact, so this job gates the image
+    # build below — the schema, its access rules and the hooks have to be
+    # green before anything ships.
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v5
@@ -81,33 +52,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Rollback anchor for the cutover (#131). Until this workflow changed,
-      # `:latest` was the Django image; from here on it is the PocketBase one,
-      # so the last Django build is copied to a tag of its own *before* the
-      # push overwrites it. That is what makes the rollback plan a tag name
-      # (bin/rollback-prod.sh) rather than "go find the right digest".
+      # Context is pocketbase/ (the Go module root), not the repository root —
+      # the PocketBase image is built from pocketbase/Dockerfile. `:latest` is
+      # what bin/deploy-prod.sh pulls; the commit-tagged copy is immutable, so
+      # a bad deploy can be rolled forward or back to an exact build.
       #
-      # Idempotent, and deliberately one-way: once `:django-latest` exists it
-      # is never rewritten, so it keeps pointing at the final Django image
-      # instead of drifting forward onto a PocketBase one on the next push.
-      # `buildx imagetools`, not `docker manifest` — the latter is still gated
-      # behind the experimental CLI flag on some runner images.
-      - name: Preserve the Django image for rollback
-        run: |
-          if docker buildx imagetools inspect "$REPO:django-latest" >/dev/null 2>&1; then
-            echo "$REPO:django-latest already exists — leaving it untouched."
-          elif docker buildx imagetools inspect "$REPO:latest" >/dev/null 2>&1; then
-            docker buildx imagetools create -t "$REPO:django-latest" "$REPO:latest"
-            echo "Copied the outgoing Django $REPO:latest to $REPO:django-latest."
-          else
-            echo "No $REPO:latest to preserve — nothing to do."
-          fi
-
-      # Context is pocketbase/ (the Go module root), not the repository root:
-      # the PocketBase image is built from pocketbase/Dockerfile and needs
-      # nothing from the Django tree. `:latest` is what bin/deploy-prod.sh
-      # pulls; the commit-tagged copy is immutable, so a bad deploy can be
-      # rolled forward or back to an exact PocketBase build too.
+      # Rollback to the pre-PocketBase Django app, if ever needed, is via the
+      # preserved `ghcr.io/<owner>/golftrack:django-latest` image tag and the
+      # `django-final` git tag (Phase 11, #132) — the Django source and its
+      # own rollback script were removed from this repo once production had
+      # proven stable on PocketBase.
       - name: Build and push
         uses: docker/build-push-action@v6
         with:

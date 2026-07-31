@@ -9,12 +9,12 @@ schema: spec-driven
 #     We use conventional commits
 #     Domain: e-commerce platform
 context: |
-  GolfTrack: a golf round-tracking app, mid-migration (#85) from Next.js to
-  Django + Django Ninja + Tailwind CSS. The Django app is the deployed
-  artifact as of Phase 7 (#93); the legacy Next.js app remains in-tree until
-  the Phase 8 cutover (#94) and is described as authoritative for its own
-  code in CLAUDE.md. See CLAUDE.md (Next.js/legacy) and DJANGO.md (Django/
-  current) for architecture, layout, and dev commands. Domain: courses hold
+  GolfTrack: a golf round-tracking app running on PocketBase, consumed as a Go
+  framework (one binary embedding the server, schema, hooks and frontend).
+  Previously Next.js, then Django + Django Ninja + Tailwind CSS; both were
+  removed from the repository in Phase 11 (#132) of the PocketBase migration
+  (#121). See CLAUDE.md and POCKETBASE.md for architecture, and
+  pocketbase/README.md for layout and dev commands. Domain: courses hold
   holes with par; rounds snapshot course pars into RoundHole at creation and
   cache stroke counts; shots are sequentially numbered per hole.
   All changes happen on a feature branch and land via PR — never commit
