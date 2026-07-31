@@ -47,12 +47,24 @@ self-service signup OAuth2-only regardless of `GOLFTRACK_ALLOW_PASSWORD_LOGIN`
 hand: create a superuser, then add the app user from the Admin UI.
 
 ```bash
-# 1. A superuser for the Admin UI (https://golftrack-dev.exe.xyz:8000/_/)
+# 1. A superuser for the Admin UI, at /_/ on the dev server
 docker exec golftrack-pb-dev ./golftrack-pb superuser upsert your@email.com 'choose-a-password' --dir /data
 
 # 2. In the Admin UI, add a record to the `users` collection with your email,
 #    a password, and role = ADMIN. Then sign in at /accounts/login/.
 ```
+
+PocketBase also prints a one-time installer link (`{origin}/_/#/pbinstall/<token>`)
+at startup when no superuser exists, but in a container it goes to `docker logs`,
+names the container-internal origin `http://0.0.0.0:8090`, and the token expires
+after 30 minutes — so `superuser upsert` above is the practical route. It is also
+the password-reset path later.
+
+> **`:8000` in the dev URLs below is the host port, not necessarily the public
+> one.** Production turned out to be served by exe.dev on the default HTTPS port
+> with no port in the URL (see [Getting `{origin}` right](#getting-origin-right));
+> the dev entries here still carry `:8000` and have not been re-checked. It costs
+> nothing on dev — no OAuth is registered there — but don't copy these as origins.
 
 ### 4. GitHub Actions secrets for dev
 
@@ -86,7 +98,7 @@ The dev database persists in the `golftrack-pb-dev-data` Docker named volume acr
 - **Litestream** runs as the container's supervising process, continuously replicating both databases to an S3-compatible bucket and restoring them on first boot
 - Container restarts automatically when the VM reboots (`--restart unless-stopped`)
 - There is no migrate step: the binary reconciles the database to its embedded `pb_schema.json` during startup, in the same process Litestream supervises
-- The binary listens on port **8090** inside the container; the deploy maps host port **3000 → 8090**, so exe.dev proxies the app at `https://<vmname>.exe.xyz:3000/` (the public URL has been stable across every stack this app has run on)
+- The binary listens on port **8090** inside the container; the deploy maps host port **3000 → 8090**, unchanged from every stack this app has run on. **The host port is not part of the public URL** — exe.dev fronts the VM and serves the app at `https://<vmname>.exe.xyz/` on the default HTTPS port. That distinction matters when registering OAuth redirect URIs; see [Getting `{origin}` right](#getting-origin-right)
 - The deploy script health-checks `/api/version` inside the container after `docker run` and **fails the deploy (with `docker logs`) if the app doesn't come up serving this commit's SHA**. `/api/version` rather than `/api/health` because PocketBase's own health endpoint carries no build identity, so it cannot distinguish the new container from a stale one
 - The container is named `golftrack-pb`
 
@@ -135,7 +147,7 @@ docker run -d --name golftrack --restart unless-stopped \
   -e DATABASE_URL="file:/data/prod.db" \
   -e DJANGO_SECRET_KEY="…" -e DJANGO_DEBUG=false \
   -e DJANGO_ALLOWED_HOSTS="golftrack.exe.xyz" \
-  -e DJANGO_CSRF_TRUSTED_ORIGINS="https://golftrack.exe.xyz:3000" \
+  -e DJANGO_CSRF_TRUSTED_ORIGINS="https://golftrack.exe.xyz" \
   -e LITESTREAM_ACCESS_KEY_ID="…" -e LITESTREAM_SECRET_ACCESS_KEY="…" \
   -e LITESTREAM_BUCKET="…" -e LITESTREAM_ENDPOINT="…" \
   -e GOOGLE_CLIENT_ID="…" -e GOOGLE_CLIENT_SECRET="…" \
@@ -151,6 +163,13 @@ store (or your password manager). This is what `bin/rollback-prod.sh` did
 before it was retired — see its last version at the `django-final` tag if you
 want the full health-check/verification logic rather than the bare `docker
 run` above.
+
+`DJANGO_CSRF_TRUSTED_ORIGINS` above is the portless public origin, not
+`https://golftrack.exe.xyz:3000` — see [Getting `{origin}`
+right](#getting-origin-right). The retired rollback script used the ported
+form, carried over from the original Django deploy; that would have made a
+rolled-back Django reject form posts from the real origin. Untested either
+way, since the rollback hasn't been exercised since the fix.
 
 Two things this deliberately does not do:
 
@@ -314,18 +333,56 @@ recreated.
 
 PocketBase's redirect URI needs to be registered on both OAuth client apps:
 
-- **Google** — [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials)
-  Redirect URI: `https://golftrack.exe.xyz:3000/api/oauth2-redirect`
-- **Microsoft Entra ID** — [entra.microsoft.com → App registrations](https://entra.microsoft.com)
-  Redirect URI: `https://golftrack.exe.xyz:3000/api/oauth2-redirect`
+```text
+{origin}/api/oauth2-redirect
+```
+
+- **Google** — [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials),
+  under **Authorized redirect URIs**. (Not "Authorized JavaScript origins" — that
+  is a different field on the same page, and putting it there does nothing.)
+- **Microsoft Entra ID** — [entra.microsoft.com → App registrations](https://entra.microsoft.com),
+  under the **Web** platform. Not "Single-page application": PocketBase exchanges
+  the code server-side with the client secret, and the SPA platform requires PKCE
+  and rejects that.
   Audience: "Accounts in any organizational directory and personal Microsoft accounts" (required for the default `common` tenant to accept both work and personal accounts)
+
+#### Getting `{origin}` right
+
+**`{origin}` is the origin your browser shows on the sign-in page — which does
+not include the deploy's `3000`.** That number is the *host* port on the VM;
+exe.dev fronts it and serves the app on the default HTTPS port, so the public
+origin is `https://<host>.exe.xyz`. Registering the URI with `:3000` in it is a
+mismatch, and Google rejects the sign-in with `Error 400: redirect_uri_mismatch`.
+
+Don't derive it by hand. The frontend builds the redirect URI from
+`window.location.origin` (`internal/web/static/js/golftrack.js` calls
+`authWithOAuth2` with no `redirectURL` override, so the JS SDK uses
+`client.buildURL('/api/oauth2-redirect')` on a client constructed as
+`new PocketBase(window.location.origin)`). So open the app's sign-in page,
+open the browser console, and run the same expression the SDK does:
+
+```js
+window.location.origin + '/api/oauth2-redirect'
+```
+
+Register exactly what that prints. To debug a mismatch, compare it against the
+`redirect_uri` Google reports under **Error details** on its error page.
+
+Two things that look like a wrong URI but are not: Google takes anywhere from
+5 minutes to a few hours to apply credential changes, and a URI added to a
+different OAuth client in the same project has no effect — the app
+authenticates with whatever `GOOGLE_CLIENT_ID` is in the Actions secret.
 
 `/api/oauth2-redirect` is PocketBase's own endpoint — nothing in `pocketbase/`
 implements it. Details and the local-development URI
-(`http://127.0.0.1:8090/api/oauth2-redirect`) are in
-[`pocketbase/AUTH.md`](pocketbase/AUTH.md).
+(`http://127.0.0.1:8090/api/oauth2-redirect`, where the port *is* part of the
+origin) are in [`pocketbase/AUTH.md`](pocketbase/AUTH.md).
 
-The Django callback URLs (`https://golftrack.exe.xyz:3000/accounts/{google,microsoft}/login/callback/`)
+The dev server needs no redirect URI at all: `bin/deploy-dev.sh` passes no
+`GOOGLE_*`/`MICROSOFT_*` variables, so no providers are registered there and
+sign-in is password-only.
+
+The Django callback URLs (`{origin}/accounts/{google,microsoft}/login/callback/`)
 are still registered on the same client apps, kept alongside PocketBase's for
 as long as the [manual Django rollback](#rollback-to-django) is meant to keep
 working. The Next.js-era callback URLs from before that were removed when the
