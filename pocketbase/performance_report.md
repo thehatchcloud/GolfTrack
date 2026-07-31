@@ -1,8 +1,8 @@
-# Performance report — Phase 8 (#129)
+# Performance report
 
-The Phase 8 deliverable: what the PocketBase app costs, how that compares with
-the Django app it replaces, what this phase changed, and what the numbers say
-about running it in production.
+What the PocketBase app costs, an optimisation pass that removed a set of
+per-record read queries, and what the numbers say about running it in
+production.
 
 Everything here is reproducible from the repository:
 
@@ -10,8 +10,6 @@ Everything here is reproducible from the repository:
 make pb-test          # includes the query-count and no-leak assertions
 make pb-bench         # the timings
 make pb-loadtest      # the 10/50/100 concurrency sweep (slow)
-
-GOLFTRACK_BASELINE=1 .venv/bin/pytest tests/test_django_baseline.py -s   # the Django side
 ```
 
 Measurements were taken on the machine this phase was developed on — an Intel
@@ -24,7 +22,7 @@ any of these loops.
 
 ## Summary
 
-| Gate item (#129) | Status |
+| Gate item | Status |
 |---|---|
 | Response times acceptable (<200 ms p95 for most endpoints) | **Met.** Every read endpoint is under budget at 100 concurrent players; every endpoint including writes is under 5 ms p95 at a realistic offered load. The one qualification — writes driven to saturation — is set out in "Concurrency" below |
 | No memory leaks | **Met.** `TestSustainedTrafficDoesNotLeak`: heap flat across ~13 000 requests, goroutines flat |
@@ -46,17 +44,8 @@ for _, round := range rounds {
 }
 ```
 
-That is a faithful port — it is what `rounds/services.py` looks like — but
-Django's version is not doing what it appears to. `get_round_by_id` is
-
-```python
-Round.objects.select_related("course").prefetch_related("course__holes", "holes__shots")
-```
-
-and the ORM turns the whole tree into four queries. PocketBase has no
-`prefetch_related`, so the port kept the shape and lost the batching, and nothing
-failed: the responses were correct, the tests passed, and the cost was invisible
-at fixture size and quadratic at season size.
+Nothing failed: the responses were correct, the tests passed, and the cost
+was invisible at fixture size and quadratic at season size.
 
 Measured, before this phase, over one HTTP request:
 
@@ -135,10 +124,9 @@ CREATE INDEX idx_courses_archived_name        ON courses (is_archived, name)
 CREATE INDEX idx_rounds_user_status_finished  ON rounds (user, status, finished_at DESC, started_at DESC)
 ```
 
-`idx_rounds_user` and `idx_rounds_status` are left in place: they mirror the
-Django model's `Meta.indexes`, Phase 6 imported against them, and with the
-composite available the planner no longer chooses them. Dropping them is a
-Phase 11 cleanup question, not a performance one.
+`idx_rounds_user` and `idx_rounds_status` are left in place: with the
+composite available the planner no longer chooses them, but dropping them is
+a follow-up cleanup question, not a performance one.
 
 ### Three redundant reads in the write transaction
 
@@ -178,7 +166,7 @@ twelve rounds — 26 statements to 4. **This is why the query counts are the
 assertion and the timings are the illustration**: a benchmark on a small fixture
 is exactly the instrument that fails to see an N+1.
 
-Unchanged Phase 5 baselines, for continuity — these measure the *generated*
+Unchanged baselines, for continuity — these measure the *generated*
 endpoints, which the frontend does not use:
 
 | Benchmark | ns/op |
@@ -191,94 +179,6 @@ endpoints, which the frontend does not use:
 Note that the custom round-detail route (789 µs) is now **faster than the
 generated endpoint with `expand`** (1 893 µs) for the same data, on top of
 returning it in the shape the contract asks for.
-
----
-
-## Versus Django
-
-`tests/test_django_baseline.py`, same machine, same session, same fixture shape.
-
-**What is compared, and what is not.** The Django side measures the service layer
-plus a full walk of the object graph each schema serialises — so the
-`prefetch_related` queries have run and every value that would reach the JSON has
-been produced. It does **not** include HTTP routing, authentication or
-serialisation. The PocketBase side is a complete HTTP request and *does* include
-all three. The comparison is therefore conservative in Django's favour: the
-PocketBase column is doing strictly more work.
-
-The reason it is drawn this way is an environment limitation, and worth stating
-precisely so nobody goes hunting for a defect that is not there.
-`config/urls.py` imports the django-ninja API at module scope, so every Django
-HTTP request depends on pydantic importing. On CPython **3.14.0rc2** it does not
-— pydantic's `eval_type_backport` trips an assertion — and rc2 was the only 3.14
-build available in the container this phase was measured in, so `uv venv
---python 3.14` resolved to it. With that interpreter the repository's own suite
-fails identically (`tests/test_api.py` 40 of 40, `tests/test_views.py` 11 of 11),
-which is how we know it is the interpreter rather than the measurement.
-
-CI runs `uv python install 3.14` with network access and gets a released build,
-where this very likely does not arise. **Nothing here is evidence of a problem
-with the Django app.** If you re-run the baseline on a released 3.14 and the HTTP
-layer imports, extending `tests/test_django_baseline.py` to use
-`django.test.Client` would tighten the comparison — it would let both sides be
-measured as complete requests instead of one of each.
-
-### Queries
-
-| Operation | Django | PocketBase | Note |
-|---|---|---|---|
-| round detail | 4 | 6 | PocketBase's 6 includes the auth-token lookup Django's 4 excludes |
-| in-progress round | 4 | 6 | same |
-| completed rounds list | 2 | 4 | same |
-| courses list | 2 | 3 | same |
-| course by id | 2 | 3 | same |
-| add shot | 6 | 15 | see below |
-| set current hole | 5 | — | not separately counted |
-
-Net of authentication the read paths are within one statement of Django's
-`prefetch_related`, which is the target: the ORM's batching, reproduced by hand.
-
-### Time
-
-| Operation | Django (service layer only) | PocketBase (full HTTP request) |
-|---|---|---|
-| round detail | 3 129 µs | **789 µs** |
-| in-progress round | 3 291 µs | **840 µs** |
-| completed rounds list | 1 467 µs | **489 µs** |
-| courses list | 956 µs | **417 µs** |
-| add shot | 1 645 µs | **1 384 µs** |
-| set current hole | 1 129 µs | **883 µs** |
-
-PocketBase answers a complete authenticated HTTP request, JSON included, in less
-time than Django's service layer alone takes to assemble the same data — roughly
-4× on the read paths and 1.2× on the writes. Before Phase 8 the read comparison
-was the other way round (2 544 µs vs 3 129 µs is only 1.2×, and the 18-hole
-fixture understates it: at twelve completed rounds PocketBase was issuing 26
-statements to Django's 2).
-
-**Do not read this as "Go is four times faster than Python."** Most of the gap on
-the reads is that Django is building ORM model instances for every row and
-PocketBase is building `core.Record`s, and the two are not the same weight; some
-of it is the interpreter. The useful conclusion is narrower and sufficient: *the
-migration does not cost performance*, which is the question #129 asks.
-
-### What the write path still spends
-
-Add-shot is PocketBase's one operation with materially more statements than
-Django's — 15 against 6 — while still being faster in wall time. The difference
-is deliberate and worth stating rather than optimising away.
-
-Django enforces "a completed round cannot be scored" inside `add_shot`, once, in
-the service function. PocketBase enforces it in an `OnRecordCreate` hook on
-`shots`, which means it also holds when a shot is written through the generated
-records endpoint (which the round's owner may call) or from the Admin UI. That
-hook has only the shot record to work from, so it re-reads the hole and the
-round — two statements the service function does not need because its caller
-already had them. `RefreshStrokes` re-reads the hole for the same reason.
-
-That is the cost of enforcing an invariant at the record layer instead of the
-service layer, and it buys a property Django does not have. It is not fat, and it
-should not be removed to make this table tidier.
 
 ---
 
@@ -356,8 +256,7 @@ to be at the same club.
 
 SQLite's single writer is not a risk for this application. If it ever became one,
 the answer is not a code change; it is that the deployment model
-(`DEPLOYMENT.md`) needs revisiting, and Phase 9 (#130) should hear about it
-first.
+(`DEPLOYMENT.md`) needs revisiting.
 
 ---
 
@@ -401,10 +300,6 @@ registration.
   same snapshot as the write. The measured cost of keeping it is small and the
   throughput is far beyond need.
 - **No `rounds` index removal.** See "Two indexes" above.
-- **The Django HTTP layer was not measured**, because django-ninja's pydantic
-  does not import on the only Python 3.14 build available in the container this
-  was measured in. That is a limitation of the measurement, not a finding about
-  the Django app. See "Versus Django".
 
 ---
 
@@ -414,7 +309,6 @@ registration.
 |---|---|
 | `perf_test.go` | statement counts per route at two data sizes, query plans, the no-leak check — all part of `make pb-test` |
 | `loadtest_test.go` | the 10/50/100 sweep and the realistic-pace run; gated on `GOLFTRACK_LOADTEST` |
-| `bench_test.go` | the timings, including the custom read routes added this phase |
-| `../tests/test_django_baseline.py` | the Django side; gated on `GOLFTRACK_BASELINE` |
+| `bench_test.go` | the timings, including the custom read routes |
 | `pb_schema.json` | the two added indexes |
 | `internal/records/records.go` | the batched lookups and the two write-path aggregates |

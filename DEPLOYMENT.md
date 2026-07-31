@@ -4,9 +4,7 @@ Pushes to `main` automatically test, build, and deploy the **PocketBase** app to
 
 Non-`main` branches deploy to the **dev server** (`golftrack-dev.exe.xyz`) via `.github/workflows/deploy-dev.yml`. See [Dev server setup](#dev-server-setup-golftrack-devexexyz) below.
 
-> **Stack note:** The deployed artifact is the **PocketBase** app — `pocketbase/Dockerfile` → a single static Go binary (PocketBase as a framework, embedded schema, hooks and frontend) plus Litestream. CI builds that image from the `pocketbase/` context and both servers run it. This is the only app in the repository — see [`POCKETBASE.md`](POCKETBASE.md) for the architecture and the retired Django/Next.js history.
->
-> The Django app PocketBase replaced was removed from this repository in Phase 11 (#132), once production had proven stable on PocketBase. Its last image stays in GHCR as `ghcr.io/<owner>/golftrack:django-latest` and the last commit that had it in-tree is tagged `django-final`, for manual disaster recovery — see [Rollback to Django](#rollback-to-django). PocketBase's own container reference — environment variables and what each removed Django variable used to map to (or didn't) — is [`pocketbase/DEPLOYMENT.md`](pocketbase/DEPLOYMENT.md).
+> **Stack note:** The deployed artifact is the **PocketBase** app — `pocketbase/Dockerfile` → a single static Go binary (PocketBase as a framework, embedded schema, hooks and frontend) plus Litestream. CI builds that image from the `pocketbase/` context and both servers run it. This is the only app in the repository — see [`POCKETBASE.md`](POCKETBASE.md) for the architecture. PocketBase's own container reference — environment variables and what each one does — is [`pocketbase/DEPLOYMENT.md`](pocketbase/DEPLOYMENT.md).
 
 ---
 
@@ -98,85 +96,9 @@ The dev database persists in the `golftrack-pb-dev-data` Docker named volume acr
 - **Litestream** runs as the container's supervising process, continuously replicating both databases to an S3-compatible bucket and restoring them on first boot
 - Container restarts automatically when the VM reboots (`--restart unless-stopped`)
 - There is no migrate step: the binary reconciles the database to its embedded `pb_schema.json` during startup, in the same process Litestream supervises
-- The binary listens on port **8090** inside the container; the deploy maps host port **3000 → 8090**, unchanged from every stack this app has run on. **The host port is not part of the public URL** — exe.dev fronts the VM and serves the app at `https://<vmname>.exe.xyz/` on the default HTTPS port. That distinction matters when registering OAuth redirect URIs; see [Getting `{origin}` right](#getting-origin-right)
+- The binary listens on port **8090** inside the container; the deploy maps host port **3000 → 8090**. **The host port is not part of the public URL** — exe.dev fronts the VM and serves the app at `https://<vmname>.exe.xyz/` on the default HTTPS port. That distinction matters when registering OAuth redirect URIs; see [Getting `{origin}` right](#getting-origin-right)
 - The deploy script health-checks `/api/version` inside the container after `docker run` and **fails the deploy (with `docker logs`) if the app doesn't come up serving this commit's SHA**. `/api/version` rather than `/api/health` because PocketBase's own health endpoint carries no build identity, so it cannot distinguish the new container from a stale one
 - The container is named `golftrack-pb`
-
----
-
-## Cutover history (historical record)
-
-GolfTrack has changed backend stacks twice: Next.js → Django (#94), then Django →
-PocketBase (#131). Both cutovers were container swaps on the exe.dev VMs, done
-without downtime or data migration, using the same pattern this deploy still
-uses: a distinct container name, a distinct `/data` subdirectory, and a distinct
-Litestream replica path per stack, so the outgoing stack's state was never
-touched by the incoming one. The runbooks for those one-time migrations are not
-reproduced here — see git history around #94 and #131 (`d7e9038`, `1df688d`) if
-you need the exact steps that were run. What survives from them:
-
-- The `nextjs-final` and `django-final` git tags mark the last commit of each
-  retired stack (see [`POCKETBASE.md`](POCKETBASE.md) § "Historical stacks").
-- `ghcr.io/<owner>/golftrack:django-latest` is the last Django image, kept in
-  GHCR for the rollback below. The equivalent Next.js image was not preserved —
-  that rollback path was retired when Django's cutover completed (#94).
-- The Django SQLite database and its Litestream replica (`django` bucket path)
-  were left untouched by the PocketBase cutover, under `/data/golftrack` on the
-  VM — distinct from PocketBase's own `/data/golftrack-pb` and `pocketbase/*`
-  replica paths.
-
-## Rollback to Django
-
-There is no longer an in-repo script for this — `bin/rollback-prod.sh` was
-removed in Phase 11 (#132) once production had run stably on PocketBase long
-enough that the automated rollback path was no longer worth maintaining
-against a deleted Django tree. Recovery is still possible by hand, since the
-Django database and its Litestream replica were never touched by the
-PocketBase cutover:
-
-```bash
-ssh <prod-vmhost>
-echo "$GHCR_TOKEN" | docker login ghcr.io -u thehatchcloud --password-stdin
-docker pull ghcr.io/thehatchcloud/golftrack:django-latest
-
-docker stop golftrack-pb && docker rm golftrack-pb   # /data/golftrack-pb is left in place
-
-sudo chown -R 1001:1001 /data/golftrack
-docker run -d --name golftrack --restart unless-stopped \
-  -p 3000:8000 \
-  -e DATABASE_URL="file:/data/prod.db" \
-  -e DJANGO_SECRET_KEY="…" -e DJANGO_DEBUG=false \
-  -e DJANGO_ALLOWED_HOSTS="golftrack.exe.xyz" \
-  -e DJANGO_CSRF_TRUSTED_ORIGINS="https://golftrack.exe.xyz" \
-  -e LITESTREAM_ACCESS_KEY_ID="…" -e LITESTREAM_SECRET_ACCESS_KEY="…" \
-  -e LITESTREAM_BUCKET="…" -e LITESTREAM_ENDPOINT="…" \
-  -e GOOGLE_CLIENT_ID="…" -e GOOGLE_CLIENT_SECRET="…" \
-  -e MICROSOFT_CLIENT_ID="…" -e MICROSOFT_CLIENT_SECRET="…" \
-  -e ADMIN_EMAILS="…" \
-  -v /data/golftrack:/data \
-  ghcr.io/thehatchcloud/golftrack:django-latest
-```
-
-The secret values are the same ones `deploy.yml` used before Phase 11 removed
-Django from the workflow's `env:` block; read them out of the Actions secret
-store (or your password manager). This is what `bin/rollback-prod.sh` did
-before it was retired — see its last version at the `django-final` tag if you
-want the full health-check/verification logic rather than the bare `docker
-run` above.
-
-`DJANGO_CSRF_TRUSTED_ORIGINS` above is the portless public origin, not
-`https://golftrack.exe.xyz:3000` — see [Getting `{origin}`
-right](#getting-origin-right). The retired rollback script used the ported
-form, carried over from the original Django deploy; that would have made a
-rolled-back Django reject form posts from the real origin. Untested either
-way, since the rollback hasn't been exercised since the fix.
-
-Two things this deliberately does not do:
-
-- **It leaves `/data/golftrack-pb` in place**, so whatever the PocketBase app recorded while it was live is still there to inspect (and still in the bucket under `pocketbase/*`).
-- **It does not roll back the repository.** `main` still builds the PocketBase image, so the next push re-deploys it. Revert to the `django-final` tag, or disable the deploy workflow, if the rollback is meant to hold — and note that reverting the repo to `django-final` would also need the CI/CD workflow files restored from that tag, since the current ones no longer build a Django image at all.
-
-> This is now a rare, deliberately manual recovery path — not something exercised in CI or automated in the repo.
 
 ---
 
@@ -230,12 +152,6 @@ In the repository: **Settings → Secrets and variables → Actions → New repo
 | `ADMIN_EMAILS` | Comma-separated emails to grant `ADMIN` role at sign-in |
 | `LITESTREAM_ACCESS_KEY_ID` / `LITESTREAM_SECRET_ACCESS_KEY` / `LITESTREAM_BUCKET` / `LITESTREAM_ENDPOINT` | See [Backups (Litestream)](#backups-litestream) |
 
-`DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS`, and `DJANGO_CSRF_TRUSTED_ORIGINS`
-are no longer read by anything in this repository. If they are still present
-in the Actions secret store from before Phase 11 (#132), they are dead weight
-kept only for the manual rollback in [Rollback to Django](#rollback-to-django)
-and may be deleted once that rollback path is no longer needed.
-
 ### 5. Make the GHCR package visible to the VM
 
 After the first successful workflow run, a package named `golftrack` will appear under
@@ -271,19 +187,14 @@ Set directly in the `docker run` command in the deploy workflow — no `.env` fi
 | `ADMIN_EMAILS` | Comma-separated emails to grant `ADMIN` role at sign-in |
 | `LITESTREAM_*` | Replication credentials/endpoint — see [Backups](#backups-litestream) |
 
-PocketBase has no equivalent for four variables the Django container needed —
-`DJANGO_SECRET_KEY` (PocketBase keeps its encryption key in the data directory),
-`DJANGO_ALLOWED_HOSTS` (it does not validate the `Host` header),
-`DJANGO_CSRF_TRUSTED_ORIGINS` (writes are token-authenticated JSON calls, not
-cookie-authenticated form posts, so there is no CSRF token to protect) and
-`DATABASE_URL` (the data directory passed as `--dir /data` plays that role). The
-full mapping, including `GOLFTRACK_ALLOW_PASSWORD_LOGIN` and
+PocketBase keeps its encryption key in the data directory rather than an
+env-supplied secret, does not validate the request `Host` header, and every
+write is a token-authenticated JSON API call rather than a cookie-authenticated
+form post, so there is no CSRF token to protect. The data directory is passed
+as `--dir /data`, so there is no `DATABASE_URL` either. The full variable
+mapping, including `GOLFTRACK_ALLOW_PASSWORD_LOGIN` and
 `GOLFTRACK_SCHEMA_SYNC`, is in
 [`pocketbase/DEPLOYMENT.md`](pocketbase/DEPLOYMENT.md) § "Environment variables".
-
-None of the four are passed by `deploy.yml` any more. If they are still sitting
-in the Actions secret store, they are only there for the manual [Rollback to
-Django](#rollback-to-django).
 
 ### Changing an environment variable in production
 
@@ -304,15 +215,14 @@ production values live only in the Actions secrets store.
 `ADMIN_EMAILS` is a **comma-separated list**, not a single address
 (`alice@example.com,bob@example.com`). It is parsed into a lowercased set by
 `pocketbase/internal/authenv`, so whitespace around the commas and letter case do
-not matter. Unlike Django's, it is read **per sign-in** rather than cached at
-startup — but the container still only sees the value it was started with, so
-the recreate step above is unchanged.
+not matter. It is read **per sign-in** rather than cached at startup — but the
+container still only sees the value it was started with, so the recreate step
+above is unchanged.
 
 `syncAdminRole` in `pocketbase/internal/hooks/adminrole.go` runs on **every OAuth2
 sign-in** and both grants *and* revokes: a user whose provider-verified email is in
-the list is promoted to `ADMIN`, and any other user is demoted to `USER`. It is a
-direct port of Django's `sync_admin_role` receiver, so the same two consequences
-apply when editing the secret:
+the list is promoted to `ADMIN`, and any other user is demoted to `USER`. Two
+consequences follow:
 
 - **Replacing the value silently demotes anyone you drop from the list** — they
   lose `ADMIN` at their next sign-in. To keep an existing admin while adding a
@@ -382,12 +292,6 @@ The dev server needs no redirect URI at all: `bin/deploy-dev.sh` passes no
 `GOOGLE_*`/`MICROSOFT_*` variables, so no providers are registered there and
 sign-in is password-only.
 
-The Django callback URLs (`{origin}/accounts/{google,microsoft}/login/callback/`)
-are still registered on the same client apps, kept alongside PocketBase's for
-as long as the [manual Django rollback](#rollback-to-django) is meant to keep
-working. The Next.js-era callback URLs from before that were removed when the
-Django cutover completed (#94) and its own rollback path was retired.
-
 ---
 
 ## Local development
@@ -436,7 +340,7 @@ The container runs [Litestream](https://litestream.io) as its supervising proces
    - Restores `/data/data.db` and `/data/auxiliary.db` from the replica if they don't exist.
    - Starts `litestream replicate -exec "./golftrack-pb serve …"`, which supervises the app process and streams WAL changes to the bucket.
 
-PocketBase keeps **two** SQLite databases: `data.db` (the six collections) and `auxiliary.db` (request/cron logs). Both are replicated, under `pocketbase/data` and `pocketbase/auxiliary` — distinct from the retired Django app's `django` bucket path (still there, for the manual rollback), so the generations never collide. Losing `auxiliary.db` between backups costs log history, not application data.
+PocketBase keeps **two** SQLite databases: `data.db` (the six collections) and `auxiliary.db` (request/cron logs). Both are replicated, under `pocketbase/data` and `pocketbase/auxiliary`. Losing `auxiliary.db` between backups costs log history, not application data.
 
 > **Litestream v0.5 gotcha:** `-exec` does *not* run the command through `sh -c`. Pass a single executable, not a shell pipeline. The schema sync happens inside the serve process, so there is only ever one command to wrap — preserve that when editing `pocketbase/entrypoint.sh`.
 

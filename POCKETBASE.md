@@ -6,12 +6,6 @@ module that builds a single static binary (`golftrack-pb`) embedding the
 PocketBase server, the collection schema, the domain hooks, and the
 server-rendered frontend.
 
-This is the result of a three-stack history — **Next.js → Django →
-PocketBase** — tracked end to end in epic #121 and its predecessor #85.
-Phase 11 (#132) removed the Django and Next.js source from this repository;
-their code lives on in git history and in the `nextjs-final` / `django-final`
-tags (see "Historical stacks" below).
-
 ## Layout
 
 ```
@@ -37,8 +31,6 @@ for the hook and business-logic design, and [`pocketbase/API.md`](pocketbase/API
 for the endpoint contract.
 
 ## Domain rules
-
-Preserved unchanged through every rewrite:
 
 - **Course snapshotting** — a round's hole pars are copied from the course at
   round creation; later course edits never affect past rounds.
@@ -66,24 +58,3 @@ Docker, single container, SQLite on a persistent volume, replicated by
 Litestream. See [`DEPLOYMENT.md`](DEPLOYMENT.md) for the pipeline and
 [`pocketbase/DEPLOYMENT.md`](pocketbase/DEPLOYMENT.md) for the container
 itself.
-
-## Historical stacks
-
-The migration plan, decisions, and phase-by-phase history are in
-[`POCKETBASE_MIGRATION_PLAN.md`](POCKETBASE_MIGRATION_PLAN.md) — kept as a
-historical record; nothing in it describes the current repository layout
-anymore.
-
-Two git tags mark the last commit of each retired stack, for reference or
-disaster recovery:
-
-- `nextjs-final` — the last commit before the Django rewrite began (#85),
-  when `app/`, `components/`, `lib/`, and `prisma/` were the deployed app.
-- `django-final` — the last commit before Phase 11 (#132) removed the Django
-  source, when `config/`, `accounts/`, `courses/`, and `rounds/` were still
-  in-tree (though no longer deployed — PocketBase had already taken over in
-  Phase 10, #131).
-
-The last Django container image is preserved in GHCR as
-`ghcr.io/<owner>/golftrack:django-latest` for manual recovery; see
-[`DEPLOYMENT.md`](DEPLOYMENT.md) § "Rollback to Django".
