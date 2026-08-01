@@ -17,9 +17,18 @@
     <link rel="manifest" href="/static/manifest.webmanifest" />
     {{/* Explicit, so the browser does not fall back to requesting /favicon.ico
          and logging a 404 in the console. */}}
-    <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png?v={{.Version}}" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png?v={{.Version}}" />
+    {{/* iOS Safari ignores the manifest's icons for "Add to Home Screen" —
+         it only ever reads this link tag, and it must be a plain opaque PNG
+         at exactly the size given or Safari silently falls back to a
+         screenshot. The `?v=` query string busts Safari's aggressive
+         per-origin icon cache, which otherwise keeps serving whatever it
+         fetched on a prior visit even after this file's content changes. */}}
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-touch-icon.png?v={{.Version}}" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="GolfTrack" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>{{block "title" .}}GolfTrack{{end}}</title>
     <link rel="stylesheet" href="/static/css/app.css" />
     <script src="/static/js/golftrack.js" defer></script>
@@ -30,7 +39,7 @@
     <div class="mx-auto flex min-h-full max-w-2xl flex-col">
       <header class="sticky top-0 z-10 flex items-center justify-between border-b border-stone-200 bg-white px-4 py-3 shadow-sm">
         <a href="/" class="flex items-center gap-2 text-lg font-bold tracking-tight text-emerald-700">
-          <img src="/static/icons/icon-192.png" alt="" width="24" height="24" class="h-6 w-6 rounded-md" /> GolfTrack
+          <img src="/static/icons/icon-192.png?v={{.Version}}" alt="" width="24" height="24" class="h-6 w-6 rounded-md" /> GolfTrack
         </a>
         <nav class="flex items-center gap-5 text-sm">
           {{if .Viewer.SignedIn}}
