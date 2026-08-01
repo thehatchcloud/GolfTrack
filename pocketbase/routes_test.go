@@ -146,6 +146,7 @@ func TestCustomRoutesRequireAuth(t *testing.T) {
 		{http.MethodPost, "/api/rounds/"},
 		{http.MethodPost, "/api/rounds/" + idPlayRound + "/complete"},
 		{http.MethodPost, "/api/rounds/" + idPlayRound + "/cancel"},
+		{http.MethodPatch, "/api/rounds/" + idPlayRound},
 		{http.MethodPatch, "/api/rounds/" + idPlayRound + "/current-hole"},
 		{http.MethodPost, "/api/rounds/" + idPlayRound + "/holes/1/shots"},
 		{http.MethodPost, "/api/rounds/" + idPlayRound + "/holes/1/undo"},
@@ -278,6 +279,27 @@ func TestCompleteRoundRoute(t *testing.T) {
 	})
 
 	runPlay(t, playOwner, tests.ApiScenario{
+		Name:            "complete the round with edited times",
+		Method:          http.MethodPost,
+		URL:             "/api/rounds/" + idPlayRound + "/complete",
+		Body:            body(`{"startedAt":"2026-05-04T06:07","finishedAt":"2026-05-04T10:15"}`),
+		ExpectedStatus:  200,
+		ExpectedContent: []string{`{"id":"` + idPlayRound + `"}`},
+		AfterTestFunc: func(t testing.TB, app *tests.TestApp, _ *http.Response) {
+			round, err := app.FindRecordById(collections.NameRounds, idPlayRound)
+			if err != nil {
+				t.Fatalf("reload round: %v", err)
+			}
+			if got := round.GetDateTime(collections.FieldStartedAt).String(); got != "2026-05-04 06:07:00.000Z" {
+				t.Errorf("started_at = %q, want %q", got, "2026-05-04 06:07:00.000Z")
+			}
+			if got := round.GetDateTime(collections.FieldFinishedAt).String(); got != "2026-05-04 10:15:00.000Z" {
+				t.Errorf("finished_at = %q, want %q", got, "2026-05-04 10:15:00.000Z")
+			}
+		},
+	})
+
+	runPlay(t, playOwner, tests.ApiScenario{
 		Name:            "completing a finished round is a conflict",
 		Method:          http.MethodPost,
 		URL:             "/api/rounds/" + idDoneRound + "/complete",
@@ -289,6 +311,48 @@ func TestCompleteRoundRoute(t *testing.T) {
 		Name:            "another player's round is not found",
 		Method:          http.MethodPost,
 		URL:             "/api/rounds/" + idPlayRound + "/complete",
+		ExpectedStatus:  404,
+		ExpectedContent: []string{`{"error":"Round not found"}`},
+	})
+}
+
+func TestUpdateRoundTimesRoute(t *testing.T) {
+	runPlay(t, playOwner, tests.ApiScenario{
+		Name:           "edit a completed round's times",
+		Method:         http.MethodPatch,
+		URL:            "/api/rounds/" + idDoneRound,
+		Body:           body(`{"startedAt":"2026-05-04T06:07","finishedAt":"2026-05-04T10:15"}`),
+		ExpectedStatus: 200,
+		ExpectedContent: []string{
+			`"id":"` + idDoneRound + `"`,
+			`"startedAt":"2026-05-04 06:07:00.000Z"`,
+			`"finishedAt":"2026-05-04 10:15:00.000Z"`,
+		},
+	})
+
+	runPlay(t, playOwner, tests.ApiScenario{
+		Name:            "only completed rounds can be edited",
+		Method:          http.MethodPatch,
+		URL:             "/api/rounds/" + idPlayRound,
+		Body:            body(`{"startedAt":"2026-05-04T06:07","finishedAt":"2026-05-04T10:15"}`),
+		ExpectedStatus:  409,
+		ExpectedContent: []string{`{"error":"Only completed rounds can be updated"}`},
+	})
+
+	runPlay(t, playOwner, tests.ApiScenario{
+		Name:            "finish cannot be before start",
+		Method:          http.MethodPatch,
+		URL:             "/api/rounds/" + idDoneRound,
+		Body:            body(`{"startedAt":"2026-05-04T10:15","finishedAt":"2026-05-04T06:07"}`),
+		ExpectedStatus:  400,
+		ExpectedContent: []string{`{"error":"Finished time must be on or after the start time"}`},
+	})
+
+	runPlay(t, playOther, tests.ApiScenario{
+		Name:            "another player's completed round is not found",
+		Method:          http.MethodPatch,
+		URL:             "/api/rounds/" + idDoneRound,
+		Body:            body(`{"startedAt":"2026-05-04T06:07","finishedAt":"2026-05-04T10:15"}`),
 		ExpectedStatus:  404,
 		ExpectedContent: []string{`{"error":"Round not found"}`},
 	})

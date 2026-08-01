@@ -29,6 +29,7 @@ func registerRoutes(app core.App) {
 
 		se.Router.POST("/api/rounds/{id}/complete", apierr.Handler(complete)).Bind(apis.RequireAuth())
 		se.Router.POST("/api/rounds/{id}/cancel", apierr.Handler(cancel)).Bind(apis.RequireAuth())
+		se.Router.PATCH("/api/rounds/{id}", apierr.Handler(patchTimes)).Bind(apis.RequireAuth())
 		se.Router.PATCH("/api/rounds/{id}/current-hole", apierr.Handler(patchCurrentHole)).Bind(apis.RequireAuth())
 
 		// The read routes (Phase 7, #128): the generated CRUD reaches every
@@ -69,18 +70,42 @@ func create(e *core.RequestEvent) error {
 // POST /api/rounds/{id}/complete — Django CompleteRoundIn, response IdOut.
 func complete(e *core.RequestEvent) error {
 	payload := struct {
-		Note string `json:"note" form:"note"`
+		Note       string  `json:"note" form:"note"`
+		StartedAt  *string `json:"startedAt" form:"startedAt"`
+		FinishedAt *string `json:"finishedAt" form:"finishedAt"`
 	}{}
 	if err := e.BindBody(&payload); err != nil {
 		return apierr.Validation("Invalid request body")
 	}
 
-	round, err := Complete(e.App, e.Auth.Id, e.Request.PathValue("id"), payload.Note)
+	round, err := Complete(e.App, e.Auth.Id, e.Request.PathValue("id"), payload.Note, payload.StartedAt, payload.FinishedAt)
 	if err != nil {
 		return err
 	}
 
 	return e.JSON(http.StatusOK, map[string]any{"id": round.Id})
+}
+
+// PATCH /api/rounds/{id} — update a completed round's editable timestamps.
+func patchTimes(e *core.RequestEvent) error {
+	payload := struct {
+		StartedAt  *string `json:"startedAt" form:"startedAt"`
+		FinishedAt *string `json:"finishedAt" form:"finishedAt"`
+	}{}
+	if err := e.BindBody(&payload); err != nil {
+		return apierr.Validation("Invalid request body")
+	}
+
+	round, err := UpdateTimes(e.App, e.Auth.Id, e.Request.PathValue("id"), payload.StartedAt, payload.FinishedAt)
+	if err != nil {
+		return err
+	}
+
+	return e.JSON(http.StatusOK, map[string]any{
+		"id":         round.Id,
+		"startedAt":  round.GetDateTime(collections.FieldStartedAt).String(),
+		"finishedAt": round.GetDateTime(collections.FieldFinishedAt).String(),
+	})
 }
 
 // POST /api/rounds/{id}/cancel — response CancelOut.

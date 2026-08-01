@@ -185,7 +185,7 @@ func TestConcurrentCompleteAndAddShot(t *testing.T) {
 
 	errs := runConcurrently(
 		func() error {
-			_, err := rounds.Complete(g.app, g.user.Id, round.Id, "Done")
+			_, err := rounds.Complete(g.app, g.user.Id, round.Id, "Done", nil, nil)
 			return err
 		},
 		func() error {

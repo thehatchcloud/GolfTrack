@@ -4,9 +4,11 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
+	"github.com/pocketbase/pocketbase/tools/types"
 
 	"github.com/thehatchcloud/golftrack/pocketbase/internal/collections"
 	"github.com/thehatchcloud/golftrack/pocketbase/internal/hooks/domain/rounds"
@@ -560,7 +562,7 @@ func TestCompleteRoundSetsTotals(t *testing.T) {
 
 	mustAddShots(t, g, round, 1, "Driver")
 
-	completed, err := rounds.Complete(g.app, g.user.Id, round.Id, "  Great round  ")
+	completed, err := rounds.Complete(g.app, g.user.Id, round.Id, "  Great round  ", nil, nil)
 	if err != nil {
 		t.Fatalf("complete round: %v", err)
 	}
@@ -585,16 +587,35 @@ func TestCompleteRoundSetsTotals(t *testing.T) {
 	}
 }
 
+func TestCompleteRoundCanOverrideTimes(t *testing.T) {
+	g := newGame(t)
+	round := g.start(t)
+
+	startedAt := "2026-05-04T06:07"
+	finishedAt := "2026-05-04T10:15"
+	completed, err := rounds.Complete(g.app, g.user.Id, round.Id, "", &startedAt, &finishedAt)
+	if err != nil {
+		t.Fatalf("complete round with edited times: %v", err)
+	}
+
+	if got := completed.GetDateTime(collections.FieldStartedAt).String(); got != "2026-05-04 06:07:00.000Z" {
+		t.Errorf("started_at = %q, want %q", got, "2026-05-04 06:07:00.000Z")
+	}
+	if got := completed.GetDateTime(collections.FieldFinishedAt).String(); got != "2026-05-04 10:15:00.000Z" {
+		t.Errorf("finished_at = %q, want %q", got, "2026-05-04 10:15:00.000Z")
+	}
+}
+
 func TestCompleteRoundRejections(t *testing.T) {
 	t.Run("twice", func(t *testing.T) {
 		g := newGame(t)
 		round := g.start(t)
 
-		if _, err := rounds.Complete(g.app, g.user.Id, round.Id, ""); err != nil {
+		if _, err := rounds.Complete(g.app, g.user.Id, round.Id, "", nil, nil); err != nil {
 			t.Fatalf("complete round: %v", err)
 		}
 
-		_, err := rounds.Complete(g.app, g.user.Id, round.Id, "")
+		_, err := rounds.Complete(g.app, g.user.Id, round.Id, "", nil, nil)
 		wantAPIError(t, err, http.StatusConflict, "Round is already completed")
 	})
 
@@ -602,7 +623,7 @@ func TestCompleteRoundRejections(t *testing.T) {
 		g := newGame(t)
 		round := g.start(t)
 
-		_, err := rounds.Complete(g.app, g.other.Id, round.Id, "")
+		_, err := rounds.Complete(g.app, g.other.Id, round.Id, "", nil, nil)
 		wantAPIError(t, err, http.StatusNotFound, "Round not found")
 	})
 
@@ -610,20 +631,30 @@ func TestCompleteRoundRejections(t *testing.T) {
 		g := newGame(t)
 		round := g.start(t)
 
-		_, err := rounds.Complete(g.app, g.user.Id, round.Id, strings.Repeat("x", 1001))
+		_, err := rounds.Complete(g.app, g.user.Id, round.Id, strings.Repeat("x", 1001), nil, nil)
 		wantAPIError(t, err, http.StatusBadRequest, "Note is too long")
+	})
+
+	t.Run("finish before start", func(t *testing.T) {
+		g := newGame(t)
+		round := g.start(t)
+		startedAt := "2026-05-04T10:15"
+		finishedAt := "2026-05-04T06:07"
+
+		_, err := rounds.Complete(g.app, g.user.Id, round.Id, "", &startedAt, &finishedAt)
+		wantAPIError(t, err, http.StatusBadRequest, "Finished time must be on or after the start time")
 	})
 }
 
-// TestCompletedRoundIsImmutable covers the rule at the level the custom routes
-// cannot reach: a direct record save, which the round's owner is allowed to make
-// through the generated PATCH endpoint.
-func TestCompletedRoundIsImmutable(t *testing.T) {
+// TestCompletedRoundTimestampEditingIsNarrow covers the rule at the level the
+// custom routes cannot reach: a direct record save, which the round's owner is
+// allowed to make through the generated PATCH endpoint.
+func TestCompletedRoundTimestampEditingIsNarrow(t *testing.T) {
 	g := newGame(t)
 	round := g.start(t)
 	hole := g.hole(t, round, 1)
 
-	if _, err := rounds.Complete(g.app, g.user.Id, round.Id, ""); err != nil {
+	if _, err := rounds.Complete(g.app, g.user.Id, round.Id, "", nil, nil); err != nil {
 		t.Fatalf("complete round: %v", err)
 	}
 
@@ -631,6 +662,32 @@ func TestCompletedRoundIsImmutable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload round: %v", err)
 	}
+
+	startedAt, err := types.ParseDateTime(time.Date(2026, time.May, 4, 6, 7, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("parse started_at: %v", err)
+	}
+	finishedAt, err := types.ParseDateTime(time.Date(2026, time.May, 4, 10, 15, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("parse finished_at: %v", err)
+	}
+	reloaded.Set(collections.FieldStartedAt, startedAt)
+	reloaded.Set(collections.FieldFinishedAt, finishedAt)
+	if err := g.app.Save(reloaded); err != nil {
+		t.Fatalf("save edited timestamps: %v", err)
+	}
+
+	reloaded, err = g.app.FindRecordById(collections.NameRounds, round.Id)
+	if err != nil {
+		t.Fatalf("reload round after timestamp edit: %v", err)
+	}
+	if got := reloaded.GetDateTime(collections.FieldStartedAt).String(); got != "2026-05-04 06:07:00.000Z" {
+		t.Errorf("started_at after save = %q, want %q", got, "2026-05-04 06:07:00.000Z")
+	}
+	if got := reloaded.GetDateTime(collections.FieldFinishedAt).String(); got != "2026-05-04 10:15:00.000Z" {
+		t.Errorf("finished_at after save = %q, want %q", got, "2026-05-04 10:15:00.000Z")
+	}
+
 	reloaded.Set(collections.FieldCurrentHole, 7)
 	saveShouldFail(t, g.app, reloaded, collections.FieldStatus)
 
@@ -650,6 +707,47 @@ func TestCompletedRoundIsImmutable(t *testing.T) {
 		"round_hole": hole.Id, "shot_number": 1, "club": "Driver",
 	})
 	saveShouldFail(t, g.app, stray, collections.FieldRoundHole)
+}
+
+func TestUpdateRoundTimes(t *testing.T) {
+	g := newGame(t)
+	round := g.start(t)
+
+	if _, err := rounds.Complete(g.app, g.user.Id, round.Id, "", nil, nil); err != nil {
+		t.Fatalf("complete round: %v", err)
+	}
+
+	startedAt := "2026-05-04T06:07"
+	finishedAt := "2026-05-04T10:15"
+	updated, err := rounds.UpdateTimes(g.app, g.user.Id, round.Id, &startedAt, &finishedAt)
+	if err != nil {
+		t.Fatalf("update round times: %v", err)
+	}
+
+	if got := updated.GetDateTime(collections.FieldStartedAt).String(); got != "2026-05-04 06:07:00.000Z" {
+		t.Errorf("started_at = %q, want %q", got, "2026-05-04 06:07:00.000Z")
+	}
+	if got := updated.GetDateTime(collections.FieldFinishedAt).String(); got != "2026-05-04 10:15:00.000Z" {
+		t.Errorf("finished_at = %q, want %q", got, "2026-05-04 10:15:00.000Z")
+	}
+
+	t.Run("in-progress round", func(t *testing.T) {
+		fresh := g.start(t)
+		_, err := rounds.UpdateTimes(g.app, g.user.Id, fresh.Id, &startedAt, &finishedAt)
+		wantAPIError(t, err, http.StatusConflict, "Only completed rounds can be updated")
+	})
+
+	t.Run("another user's round", func(t *testing.T) {
+		_, err := rounds.UpdateTimes(g.app, g.other.Id, round.Id, &startedAt, &finishedAt)
+		wantAPIError(t, err, http.StatusNotFound, "Round not found")
+	})
+
+	t.Run("finish before start", func(t *testing.T) {
+		badStart := "2026-05-04T10:15"
+		badFinish := "2026-05-04T06:07"
+		_, err := rounds.UpdateTimes(g.app, g.user.Id, round.Id, &badStart, &badFinish)
+		wantAPIError(t, err, http.StatusBadRequest, "Finished time must be on or after the start time")
+	})
 }
 
 // -----------------------------------------------------------------------------
@@ -686,7 +784,7 @@ func TestCancelRoundRejections(t *testing.T) {
 	wantAPIError(t, rounds.Cancel(g.app, g.other.Id, round.Id), http.StatusNotFound, "Round not found")
 	wantAPIError(t, rounds.Cancel(g.app, g.user.Id, fixedID("nosuchround")), http.StatusNotFound, "Round not found")
 
-	if _, err := rounds.Complete(g.app, g.user.Id, round.Id, ""); err != nil {
+	if _, err := rounds.Complete(g.app, g.user.Id, round.Id, "", nil, nil); err != nil {
 		t.Fatalf("complete round: %v", err)
 	}
 	wantAPIError(t, rounds.Cancel(g.app, g.user.Id, round.Id),
