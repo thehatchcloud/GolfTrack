@@ -13,12 +13,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#047857" />
+    <meta name="theme-color" content="#123d2e" />
     <link rel="manifest" href="/static/manifest.webmanifest" />
     {{/* Explicit, so the browser does not fall back to requesting /favicon.ico
          and logging a 404 in the console. */}}
-    <link rel="icon" href="/static/icons/icon-192.png" />
-    <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-touch-icon.png" />
     <title>{{block "title" .}}GolfTrack{{end}}</title>
     <link rel="stylesheet" href="/static/css/app.css" />
     <script src="/static/js/golftrack.js" defer></script>
@@ -29,7 +30,7 @@
     <div class="mx-auto flex min-h-full max-w-2xl flex-col">
       <header class="sticky top-0 z-10 flex items-center justify-between border-b border-stone-200 bg-white px-4 py-3 shadow-sm">
         <a href="/" class="flex items-center gap-2 text-lg font-bold tracking-tight text-emerald-700">
-          <span>⛳</span> GolfTrack
+          <img src="/static/icons/icon-192.png" alt="" width="24" height="24" class="h-6 w-6 rounded-md" /> GolfTrack
         </a>
         <nav class="flex items-center gap-5 text-sm">
           {{if .Viewer.SignedIn}}
