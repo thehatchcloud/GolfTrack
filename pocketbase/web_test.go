@@ -333,6 +333,29 @@ func TestStaticAssetsAreServedFromTheBinary(t *testing.T) {
 	}
 }
 
+// TestIconsAreServedFromTheBinary covers the logo/icon refresh: the favicons,
+// the apple touch icon and the (regular + maskable) PWA icons referenced from
+// base.html and the manifest all resolve from the embedded FS.
+func TestIconsAreServedFromTheBinary(t *testing.T) {
+	for _, path := range []string{
+		"/static/icons/favicon-16.png",
+		"/static/icons/favicon-32.png",
+		"/static/icons/apple-touch-icon.png",
+		"/static/icons/icon-192.png",
+		"/static/icons/icon-192-maskable.png",
+		"/static/icons/icon-512.png",
+		"/static/icons/icon-512-maskable.png",
+	} {
+		runWeb(t, nil, tests.ApiScenario{
+			Name:            path + " is served",
+			Method:          http.MethodGet,
+			URL:             path,
+			ExpectedStatus:  200,
+			ExpectedContent: []string{"PNG"},
+		})
+	}
+}
+
 // TestPagesLoadNothingFromACDN is the "no run-time requests to any external
 // CDN" gate item, asserted where it can regress: in the rendered HTML. The
 // Django base template pulled Alpine and htmx from unpkg.com, which an
