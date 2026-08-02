@@ -319,7 +319,7 @@ func TestStaticAssetsAreServedFromTheBinary(t *testing.T) {
 		{"/static/css/app.css", []string{".bg-emerald-700"}},
 		{"/static/js/alpine.min.js", []string{"Alpine"}},
 		{"/static/js/pocketbase.umd.js", []string{"PocketBase"}},
-		{"/static/js/golftrack.js", []string{"window.gt"}},
+		{"/static/js/golftrack.js", []string{"window.gt", "timeZone || 'UTC'"}},
 		{"/static/js/round-play.js", []string{"roundPlay"}},
 		{"/static/manifest.webmanifest", []string{"GolfTrack", "standalone"}},
 	} {

@@ -370,6 +370,7 @@ function parsePocketBaseDate(value) {
 }
 
 function formatDateTime(date, timeZone) {
+  var targetTimeZone = timeZone || 'UTC';
   var options = {
     year: 'numeric',
     month: '2-digit',
@@ -378,13 +379,13 @@ function formatDateTime(date, timeZone) {
     minute: '2-digit',
     hour12: false,
   };
-  if (timeZone) options.timeZone = timeZone;
+  options.timeZone = targetTimeZone;
 
   var formatter;
   try {
     formatter = new Intl.DateTimeFormat('en-CA', options);
   } catch (_e) {
-    delete options.timeZone;
+    options.timeZone = 'UTC';
     formatter = new Intl.DateTimeFormat('en-CA', options);
   }
 
