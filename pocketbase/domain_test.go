@@ -722,6 +722,24 @@ func TestCancelRoundRejections(t *testing.T) {
 		http.StatusConflict, "Only in-progress rounds can be cancelled")
 }
 
+func TestDeleteRoundRemovesCompletedRoundWithMultipleShots(t *testing.T) {
+	g := newGame(t)
+	round := g.start(t)
+	mustAddShots(t, g, round, 1, "Driver", "7 Iron", "Pitching Wedge", "Putter")
+
+	if _, err := rounds.Complete(g.app, g.user.Id, round.Id, "", nil, nil); err != nil {
+		t.Fatalf("complete round: %v", err)
+	}
+
+	if err := rounds.Delete(g.app, g.user.Id, round.Id); err != nil {
+		t.Fatalf("delete round: %v", err)
+	}
+
+	if _, err := g.app.FindRecordById(collections.NameRounds, round.Id); err == nil {
+		t.Error("the round still exists after being deleted")
+	}
+}
+
 // mustAddShots plays a hole, in order.
 func mustAddShots(t *testing.T, g *game, round *core.Record, holeNumber int, clubs ...string) {
 	t.Helper()
