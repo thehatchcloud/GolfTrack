@@ -604,6 +604,29 @@ func TestCompleteRoundCanOverrideTimes(t *testing.T) {
 	}
 }
 
+func TestCompleteRoundOverridesUseCourseTimeZone(t *testing.T) {
+	g := newGame(t)
+	g.course.Set(collections.FieldTimeZone, "America/New_York")
+	if err := g.app.Save(g.course); err != nil {
+		t.Fatalf("set course time zone: %v", err)
+	}
+	round := g.start(t)
+
+	startedAt := "2026-05-04T06:07"
+	finishedAt := "2026-05-04T10:15"
+	completed, err := rounds.Complete(g.app, g.user.Id, round.Id, "", &startedAt, &finishedAt)
+	if err != nil {
+		t.Fatalf("complete round with course-local times: %v", err)
+	}
+
+	if got := completed.GetDateTime(collections.FieldStartedAt).String(); got != "2026-05-04 10:07:00.000Z" {
+		t.Errorf("started_at = %q, want %q", got, "2026-05-04 10:07:00.000Z")
+	}
+	if got := completed.GetDateTime(collections.FieldFinishedAt).String(); got != "2026-05-04 14:15:00.000Z" {
+		t.Errorf("finished_at = %q, want %q", got, "2026-05-04 14:15:00.000Z")
+	}
+}
+
 func TestCompleteRoundRejections(t *testing.T) {
 	t.Run("twice", func(t *testing.T) {
 		g := newGame(t)

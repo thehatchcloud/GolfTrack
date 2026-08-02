@@ -49,6 +49,7 @@ const (
 	// courses
 	FieldName       = "name"
 	FieldHoleCount  = "hole_count"
+	FieldTimeZone   = "time_zone"
 	FieldIsArchived = "is_archived"
 
 	// timestamps, shared by every collection that has them

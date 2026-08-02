@@ -70,10 +70,16 @@
 <form x-data="reviewForm({
   roundId: {{printf "%q" .Round.ID}},
   startedAt: {{printf "%q" .Round.StartedAt}},
-  finishedAt: {{if .Round.FinishedAt}}{{printf "%q" .Round.FinishedAt}}{{else}}null{{end}}
+  finishedAt: {{if .Round.FinishedAt}}{{printf "%q" .Round.FinishedAt}}{{else}}null{{end}},
+  timeZone: {{printf "%q" .Round.Course.TimeZone}}
 })" @submit.prevent="submit()">
   <div class="mb-5 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
     <h2 class="mb-3 text-sm font-semibold text-stone-700">Round timing</h2>
+    {{if .Round.Course.TimeZone}}
+      <p class="mb-3 text-xs text-stone-500">Times shown in {{.Round.Course.TimeZone}}.</p>
+    {{else}}
+      <p class="mb-3 text-xs text-stone-500">Times shown in UTC (course time zone is not set).</p>
+    {{end}}
     <div class="grid gap-4 sm:grid-cols-2">
       <label class="block text-sm text-stone-600">
         <span class="mb-1 block font-medium">Start time</span>

@@ -25,7 +25,7 @@ import urllib.request
 
 EXPECTED_COLLECTIONS = {
     "users": {"role", "display_name"},
-    "courses": {"name", "hole_count", "is_archived", "created_at", "updated_at"},
+    "courses": {"name", "hole_count", "time_zone", "is_archived", "created_at", "updated_at"},
     "course_holes": {"course", "hole_number", "par"},
     "rounds": {
         "user",

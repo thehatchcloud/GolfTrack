@@ -292,6 +292,21 @@
         "type": "number"
       },
       {
+        "autogeneratePattern": "",
+        "help": "",
+        "hidden": false,
+        "id": "text4121801874",
+        "max": 100,
+        "min": 0,
+        "name": "time_zone",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
+      },
+      {
         "help": "",
         "hidden": false,
         "id": "bool4095221754",

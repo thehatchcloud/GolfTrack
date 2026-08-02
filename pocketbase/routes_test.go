@@ -64,6 +64,8 @@ func newPlayFixture(t testing.TB) *playFixture {
 	f.superuser = createSuperuser(t, app, "super@golftrack.test")
 
 	course := seedCourse(t, app, idPlayCourse, "Play Links", 18, 4)
+	course.Set(collections.FieldTimeZone, "America/New_York")
+	saveAs(t, app, course)
 	seedCourse(t, app, idPlayCourse9, "Nine Acres", 9, 3)
 
 	// A completed round first: the partial unique index only counts
@@ -290,11 +292,11 @@ func TestCompleteRoundRoute(t *testing.T) {
 			if err != nil {
 				t.Fatalf("reload round: %v", err)
 			}
-			if got := round.GetDateTime(collections.FieldStartedAt).String(); got != "2026-05-04 06:07:00.000Z" {
-				t.Errorf("started_at = %q, want %q", got, "2026-05-04 06:07:00.000Z")
+			if got := round.GetDateTime(collections.FieldStartedAt).String(); got != "2026-05-04 10:07:00.000Z" {
+				t.Errorf("started_at = %q, want %q", got, "2026-05-04 10:07:00.000Z")
 			}
-			if got := round.GetDateTime(collections.FieldFinishedAt).String(); got != "2026-05-04 10:15:00.000Z" {
-				t.Errorf("finished_at = %q, want %q", got, "2026-05-04 10:15:00.000Z")
+			if got := round.GetDateTime(collections.FieldFinishedAt).String(); got != "2026-05-04 14:15:00.000Z" {
+				t.Errorf("finished_at = %q, want %q", got, "2026-05-04 14:15:00.000Z")
 			}
 		},
 	})

@@ -12,7 +12,7 @@
   Here it submits to the course write routes instead — one request, one
   transaction — and shows whatever message the API returns in the same box.
 */}}
-<form x-data="courseForm({ courseId: '{{if .Course}}{{.Course.ID}}{{end}}', holeCount: {{.HoleCount}} })"
+<form x-data="courseForm({ courseId: '{{if .Course}}{{.Course.ID}}{{end}}', holeCount: {{.HoleCount}}, timeZone: '{{if .Course}}{{.Course.TimeZone}}{{end}}' })"
       @submit.prevent="submit()">
 
   <div x-show="error" x-cloak class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
@@ -25,6 +25,15 @@
            value="{{if .Course}}{{.Course.Name}}{{end}}"
            class="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
            placeholder="e.g. Pebble Beach" />
+  </div>
+
+  <!-- Time zone -->
+  <div class="mb-5 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+    <label class="mb-1 block text-sm font-semibold text-stone-700" for="timeZone">Course time zone (optional)</label>
+    <input id="timeZone" name="timeZone" type="text" maxlength="100" x-model="timeZone"
+           class="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+           placeholder="e.g. America/New_York" />
+    <p class="mt-2 text-xs text-stone-500">Use an IANA time zone. If left blank, round times are shown in UTC.</p>
   </div>
 
   <!-- Hole count -->
