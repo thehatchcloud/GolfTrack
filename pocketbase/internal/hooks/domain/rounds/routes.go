@@ -29,6 +29,7 @@ func registerRoutes(app core.App) {
 
 		se.Router.POST("/api/rounds/{id}/complete", apierr.Handler(complete)).Bind(apis.RequireAuth())
 		se.Router.POST("/api/rounds/{id}/cancel", apierr.Handler(cancel)).Bind(apis.RequireAuth())
+		se.Router.DELETE("/api/rounds/{id}", apierr.Handler(deleteRound)).Bind(apis.RequireAuth())
 		se.Router.PATCH("/api/rounds/{id}/current-hole", apierr.Handler(patchCurrentHole)).Bind(apis.RequireAuth())
 
 		// The read routes (Phase 7, #128): the generated CRUD reaches every
@@ -94,6 +95,17 @@ func cancel(e *core.RequestEvent) error {
 	}
 
 	return e.JSON(http.StatusOK, map[string]any{"id": roundID, "cancelled": true})
+}
+
+// DELETE /api/rounds/{id} — response DeleteOut.
+func deleteRound(e *core.RequestEvent) error {
+	roundID := e.Request.PathValue("id")
+
+	if err := Delete(e.App, e.Auth.Id, roundID); err != nil {
+		return err
+	}
+
+	return e.JSON(http.StatusOK, map[string]any{"id": roundID, "deleted": true})
 }
 
 // PATCH /api/rounds/{id}/current-hole — Django SetCurrentHoleIn, response

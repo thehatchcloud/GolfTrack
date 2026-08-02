@@ -146,6 +146,7 @@ func TestCustomRoutesRequireAuth(t *testing.T) {
 		{http.MethodPost, "/api/rounds/"},
 		{http.MethodPost, "/api/rounds/" + idPlayRound + "/complete"},
 		{http.MethodPost, "/api/rounds/" + idPlayRound + "/cancel"},
+		{http.MethodDelete, "/api/rounds/" + idPlayRound},
 		{http.MethodPatch, "/api/rounds/" + idPlayRound + "/current-hole"},
 		{http.MethodPost, "/api/rounds/" + idPlayRound + "/holes/1/shots"},
 		{http.MethodPost, "/api/rounds/" + idPlayRound + "/holes/1/undo"},
@@ -342,6 +343,29 @@ func TestCancelRoundRoute(t *testing.T) {
 		URL:             "/api/rounds/" + idDoneRound + "/cancel",
 		ExpectedStatus:  409,
 		ExpectedContent: []string{`{"error":"Only in-progress rounds can be cancelled"}`},
+	})
+}
+
+func TestDeleteRoundRoute(t *testing.T) {
+	runPlay(t, playOwner, tests.ApiScenario{
+		Name:            "delete a finished round",
+		Method:          http.MethodDelete,
+		URL:             "/api/rounds/" + idDoneRound,
+		ExpectedStatus:  200,
+		ExpectedContent: []string{`"id":"` + idDoneRound + `"`, `"deleted":true`},
+		AfterTestFunc: func(t testing.TB, app *tests.TestApp, _ *http.Response) {
+			if _, err := app.FindRecordById(collections.NameRounds, idDoneRound); err == nil {
+				t.Error("the deleted round still exists")
+			}
+		},
+	})
+
+	runPlay(t, playOther, tests.ApiScenario{
+		Name:            "another player's round is not found",
+		Method:          http.MethodDelete,
+		URL:             "/api/rounds/" + idDoneRound,
+		ExpectedStatus:  404,
+		ExpectedContent: []string{`{"error":"Round not found"}`},
 	})
 }
 

@@ -77,6 +77,7 @@ its own record id:
 | `GET` | `/api/rounds/{id}` | a round's full detail — nested `course`/`holes`/`shots`, camelCase |
 | `POST` | `/api/rounds/{id}/complete` | sum the holes into the round's totals, optionally overriding `startedAt`/`finishedAt`, and finish it |
 | `POST` | `/api/rounds/{id}/cancel` | delete an in-progress round and everything under it |
+| `DELETE` | `/api/rounds/{id}` | delete a single owned round after user confirmation in the UI |
 | `PATCH` | `/api/rounds/{id}/current-hole` | move to a hole this round is playing |
 | `POST` | `/api/rounds/{id}/holes/{n}/shots` | add a shot, maintaining the stroke cache |
 | `POST` | `/api/rounds/{id}/holes/{n}/undo` | remove the hole's highest-numbered shot |
