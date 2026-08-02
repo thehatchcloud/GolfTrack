@@ -264,6 +264,22 @@ func Cancel(app core.App, userID, roundID string) error {
 	})
 }
 
+// Delete removes one round the caller owns, regardless of status.
+func Delete(app core.App, userID, roundID string) error {
+	return app.RunInTransaction(func(txApp core.App) error {
+		round, err := records.FindRound(txApp, roundID, userID)
+		if err != nil {
+			return err
+		}
+
+		if err := txApp.Delete(round); err != nil {
+			return fmt.Errorf("delete round %q: %w", roundID, err)
+		}
+
+		return nil
+	})
+}
+
 // SetCurrentHole ports set_current_hole. The hole has to be one this round is
 // actually playing — on a back9 round that is 10–18, not 1–9.
 func SetCurrentHole(app core.App, userID, roundID string, currentHole int) (*core.Record, error) {

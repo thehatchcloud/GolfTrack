@@ -76,8 +76,18 @@ func registerStrokeCache(app core.App) {
 // index. See renumberAfter for why a single statement is not enough either.
 func registerRenumbering(app core.App) {
 	app.OnRecordDelete(collections.NameShots).BindFunc(func(e *core.RecordEvent) error {
-		if err := requireInProgressRound(e.App, e.Record); err != nil {
+		cascadingDelete, err := isCascadingDelete(e.App, e.Record)
+		if err != nil {
 			return err
+		}
+
+		// When the parent round/hole is being deleted, every shot is being removed
+		// anyway, so renumbering is unnecessary and can collide with sibling
+		// deletes still in flight.
+		if !cascadingDelete {
+			if err := requireInProgressRound(e.App, e.Record); err != nil {
+				return err
+			}
 		}
 
 		roundHoleID := e.Record.GetString(collections.FieldRoundHole)
@@ -87,12 +97,33 @@ func registerRenumbering(app core.App) {
 			return err
 		}
 
+		if cascadingDelete {
+			return nil
+		}
+
 		if err := renumberAfter(e.App, roundHoleID, deletedNumber); err != nil {
 			return err
 		}
 
 		return roundholes.RefreshStrokes(e.App, roundHoleID)
 	})
+}
+
+func isCascadingDelete(app core.App, shot *core.Record) (bool, error) {
+	hole, err := findOrGone(app, collections.NameRoundHoles, shot.GetString(collections.FieldRoundHole))
+	if err != nil {
+		return false, err
+	}
+	if hole == nil {
+		return true, nil
+	}
+
+	round, err := findOrGone(app, collections.NameRounds, hole.GetString(collections.FieldRound))
+	if err != nil {
+		return false, err
+	}
+
+	return round == nil, nil
 }
 
 // renumberAfter decrements every shot_number above deletedNumber on the hole,

@@ -325,6 +325,25 @@ function cancelRound(roundId) {
   };
 }
 
+function deleteRound(roundId) {
+  return {
+    open: false,
+    loading: false,
+
+    async confirm() {
+      if (this.loading) return;
+      this.loading = true;
+      try {
+        await window.gt.api('/api/rounds/' + roundId, { method: 'DELETE' });
+        window.location.href = '/rounds/';
+      } catch (e) {
+        this.loading = false;
+        this.open = false;
+      }
+    },
+  };
+}
+
 function roundInputDateTime(value) {
   if (!value || typeof value !== 'string') return '';
 

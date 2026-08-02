@@ -1,15 +1,39 @@
 {{define "title"}}{{.Title}}{{end}}
 
 {{define "content"}}
-<div class="mb-5 flex items-start justify-between">
+<div class="mb-5 flex items-start justify-between" x-data="deleteRound('{{.Round.ID}}')">
   <div>
     <p class="text-xs font-semibold uppercase tracking-widest text-stone-400">Completed Round</p>
     <h1 class="text-xl font-bold">{{.Round.Course.Name}}</h1>
     <p class="text-sm text-stone-500">{{shortDate .Round.FinishedAt}}</p>
   </div>
-  <a href="/rounds/" class="rounded-lg border border-stone-200 px-3 py-1.5 text-sm hover:bg-stone-50">
-    ← Rounds
-  </a>
+  <div class="flex items-center gap-2">
+    <button @click="open = true"
+            class="rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50">
+      Delete Round
+    </button>
+    <a href="/rounds/" class="rounded-lg border border-stone-200 px-3 py-1.5 text-sm hover:bg-stone-50">
+      ← Rounds
+    </a>
+  </div>
+
+  <div x-show="open" x-cloak
+       class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div class="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+      <h2 class="mb-2 text-lg font-bold">Delete this round?</h2>
+      <p class="mb-5 text-sm text-stone-500">This round and all its shots will be deleted. This cannot be undone.</p>
+      <div class="flex gap-3">
+        <button @click="open = false"
+                class="flex-1 rounded-lg border border-stone-200 py-2 text-sm font-medium hover:bg-stone-50">
+          Keep Round
+        </button>
+        <button @click="confirm()" :disabled="loading"
+                class="flex-1 rounded-lg bg-red-600 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60">
+          Yes, Delete
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Score summary -->
