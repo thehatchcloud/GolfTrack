@@ -35,7 +35,7 @@ func TestCourseReadRoutesReturnCamelCase(t *testing.T) {
 		URL:            "/api/courses/",
 		ExpectedStatus: 200,
 		ExpectedContent: []string{
-			`"holeCount":18`, `"isArchived":false`, `"totalPar":72`,
+			`"holeCount":18`, `"timeZone":"America/New_York"`, `"isArchived":false`, `"totalPar":72`,
 			`"holeNumber":1`, `"par":4`,
 		},
 		NotExpectedContent: []string{`"hole_count"`, `"is_archived"`, `"total_par"`},
@@ -87,7 +87,7 @@ func TestRoundDetailRouteReturnsCamelCaseAndNestedCourse(t *testing.T) {
 		ExpectedStatus: 200,
 		ExpectedContent: []string{
 			`"id":"` + idPlayRound + `"`, `"playMode":"full"`, `"currentHole":1`,
-			`"course":{"id":"` + idPlayCourse + `"`, `"name":"Play Links"`,
+			`"course":{"id":"` + idPlayCourse + `"`, `"name":"Play Links"`, `"timeZone":"America/New_York"`,
 			`"holes":[`, `"holeNumber":3`, `"shots":[`, `"club":"Driver"`, `"shotNumber":1`,
 		},
 		NotExpectedContent: []string{

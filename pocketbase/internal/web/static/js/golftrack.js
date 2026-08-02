@@ -167,8 +167,14 @@ function signOut() {
 function courseForm(config) {
   return {
     holeCount: config.holeCount,
+    timeZone: config.timeZone || '',
+    timeZoneOptions: [{ value: '', label: 'UTC (not set)' }],
     loading: false,
     error: null,
+
+    init() {
+      this.timeZoneOptions = buildTimeZoneOptions(this.timeZone);
+    },
 
     holes() {
       const holes = [];
@@ -187,6 +193,7 @@ function courseForm(config) {
         const body = JSON.stringify({
           name: document.getElementById('name').value,
           holeCount: this.holeCount,
+          timeZone: this.timeZone,
           holes: this.holes(),
         });
         const editing = Boolean(config.courseId);
@@ -276,9 +283,10 @@ function startRound() {
 function reviewForm(round) {
   return {
     roundId: round.roundId,
+    timeZone: round.timeZone || '',
     note: '',
-    startedAt: roundInputDateTime(round.startedAt),
-    finishedAt: roundInputDateTime(round.finishedAt) || currentInputDateTime(),
+    startedAt: roundInputDateTime(round.startedAt, round.timeZone),
+    finishedAt: roundInputDateTime(round.finishedAt, round.timeZone) || currentInputDateTime(round.timeZone),
     loading: false,
     error: null,
 
@@ -344,19 +352,99 @@ function deleteRound(roundId) {
   };
 }
 
-function roundInputDateTime(value) {
+function roundInputDateTime(value, timeZone) {
   if (!value || typeof value !== 'string') return '';
 
-  var match = value.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/);
-  return match ? match[1] + 'T' + match[2] : '';
+  var date = parsePocketBaseDate(value);
+  if (!date) {
+    var match = value.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/);
+    return match ? match[1] + 'T' + match[2] : '';
+  }
+
+  return formatDateTime(date, timeZone);
 }
 
-function currentInputDateTime() {
-  var now = new Date();
-  var year = String(now.getFullYear());
-  var month = String(now.getMonth() + 1).padStart(2, '0');
-  var day = String(now.getDate()).padStart(2, '0');
-  var hour = String(now.getHours()).padStart(2, '0');
-  var minute = String(now.getMinutes()).padStart(2, '0');
-  return year + '-' + month + '-' + day + 'T' + hour + ':' + minute;
+function currentInputDateTime(timeZone) {
+  return formatDateTime(new Date(), timeZone);
+}
+
+function parsePocketBaseDate(value) {
+  var normalized = String(value).replace(' ', 'T');
+  var date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatDateTime(date, timeZone) {
+  var targetTimeZone = timeZone || 'UTC';
+  var options = {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  };
+  options.timeZone = targetTimeZone;
+
+  var formatter;
+  try {
+    formatter = new Intl.DateTimeFormat('en-CA', options);
+  } catch (_e) {
+    options.timeZone = 'UTC';
+    formatter = new Intl.DateTimeFormat('en-CA', options);
+  }
+
+  var parts = formatter.formatToParts(date);
+  var values = {};
+  for (var i = 0; i < parts.length; i++) {
+    values[parts[i].type] = parts[i].value;
+  }
+  return values.year + '-' + values.month + '-' + values.day + 'T' + values.hour + ':' + values.minute;
+}
+
+function buildTimeZoneOptions(selectedTimeZone) {
+  var preferredNorthAmerica = [
+    'America/New_York',
+    'America/Chicago',
+    'America/Denver',
+    'America/Phoenix',
+    'America/Los_Angeles',
+    'America/Anchorage',
+    'Pacific/Honolulu',
+    'America/Toronto',
+    'America/Vancouver',
+    'America/Halifax',
+    'America/St_Johns',
+  ];
+
+  var seen = Object.create(null);
+  var options = [{ value: '', label: 'UTC (not set)' }];
+
+  function pushZone(zone) {
+    if (!zone || seen[zone]) return;
+    seen[zone] = true;
+    options.push({ value: zone, label: zone });
+  }
+
+  for (var i = 0; i < preferredNorthAmerica.length; i++) {
+    pushZone(preferredNorthAmerica[i]);
+  }
+
+  var supported = [];
+  if (typeof Intl !== 'undefined' && typeof Intl.supportedValuesOf === 'function') {
+    try {
+      supported = Intl.supportedValuesOf('timeZone');
+    } catch (_e) {
+      supported = [];
+    }
+  }
+  for (var j = 0; j < supported.length; j++) {
+    pushZone(supported[j]);
+  }
+
+  if (selectedTimeZone && !seen[selectedTimeZone]) {
+    options.splice(1, 0, { value: selectedTimeZone, label: selectedTimeZone });
+  }
+
+  return options;
 }

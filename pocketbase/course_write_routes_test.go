@@ -34,11 +34,16 @@ import (
 // coursePayload builds a CourseIn body: holeCount holes of the same par,
 // numbered 1..holeCount.
 func coursePayload(name string, holeCount, par int) string {
+	return coursePayloadWithTimeZone(name, holeCount, par, "")
+}
+
+func coursePayloadWithTimeZone(name string, holeCount, par int, timeZone string) string {
 	holes := make([]string, 0, holeCount)
 	for number := 1; number <= holeCount; number++ {
 		holes = append(holes, fmt.Sprintf(`{"holeNumber":%d,"par":%d}`, number, par))
 	}
-	return fmt.Sprintf(`{"name":%q,"holeCount":%d,"holes":[%s]}`, name, holeCount, strings.Join(holes, ","))
+	return fmt.Sprintf(`{"name":%q,"holeCount":%d,"timeZone":%q,"holes":[%s]}`,
+		name, holeCount, timeZone, strings.Join(holes, ","))
 }
 
 // courseByName reads back a course the request under test created.
@@ -132,13 +137,16 @@ func TestCreateCourseRouteCreatesCourseAndItsHoles(t *testing.T) {
 		Name:            "an admin creates an 18-hole course",
 		Method:          http.MethodPost,
 		URL:             "/api/courses/",
-		Body:            body(coursePayload("Sample Ridge", 18, 5)),
+		Body:            body(coursePayloadWithTimeZone("Sample Ridge", 18, 5, "America/New_York")),
 		ExpectedStatus:  201,
 		ExpectedContent: []string{`{"id":"`},
 		AfterTestFunc: func(t testing.TB, app *tests.TestApp, _ *http.Response) {
 			course := courseByName(t, app, "Sample Ridge")
 			if got := course.GetInt(collections.FieldHoleCount); got != 18 {
 				t.Errorf("hole_count = %d, want 18", got)
+			}
+			if got := course.GetString(collections.FieldTimeZone); got != "America/New_York" {
+				t.Errorf("time_zone = %q, want %q", got, "America/New_York")
 			}
 
 			holeNumbers, pars := courseState(t, app, course.Id)
@@ -274,6 +282,11 @@ func TestCreateCourseRouteRejectsInvalidPayloads(t *testing.T) {
 				`{"holeNumber":7,"par":4},{"holeNumber":8,"par":4},{"holeNumber":9,"par":4}]}`,
 			"Hole number must be between 1 and 18",
 		},
+		{
+			"an invalid time zone",
+			`{"name":"Bad TZ","holeCount":9,"timeZone":"Mars/OlympusMons","holes":` + holesJSON(9, 4) + `}`,
+			"Time zone must be a valid IANA identifier",
+		},
 	} {
 		runPlay(t, playAdmin, tests.ApiScenario{
 			Name:            "create rejects " + tc.name,
@@ -308,7 +321,7 @@ func TestUpdateCourseRouteEditsTheCourse(t *testing.T) {
 		Name:            "an admin renames and re-pars a course",
 		Method:          http.MethodPut,
 		URL:             "/api/courses/" + idPlayCourse9,
-		Body:            body(coursePayload("Nine Acres Renamed", 9, 4)),
+		Body:            body(coursePayloadWithTimeZone("Nine Acres Renamed", 9, 4, "America/Chicago")),
 		ExpectedStatus:  200,
 		ExpectedContent: []string{`{"id":"` + idPlayCourse9 + `"}`},
 		AfterTestFunc: func(t testing.TB, app *tests.TestApp, _ *http.Response) {
@@ -318,6 +331,9 @@ func TestUpdateCourseRouteEditsTheCourse(t *testing.T) {
 			}
 			if got := course.GetString(collections.FieldName); got != "Nine Acres Renamed" {
 				t.Errorf("name = %q, want %q", got, "Nine Acres Renamed")
+			}
+			if got := course.GetString(collections.FieldTimeZone); got != "America/Chicago" {
+				t.Errorf("time_zone = %q, want %q", got, "America/Chicago")
 			}
 
 			holeNumbers, pars := courseState(t, app, idPlayCourse9)

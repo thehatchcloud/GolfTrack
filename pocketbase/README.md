@@ -238,6 +238,7 @@ so they can spell the collection name out in full.
 |---|---|---|
 | `name` | `text` | required, max 100 |
 | `hole_count` | `number` | required, int, 9–18 |
+| `time_zone` | `text` | optional IANA time zone (for example `America/New_York`); blank means UTC in the UI |
 | `is_archived` | `bool` | |
 | `created_at` / `updated_at` | `autodate` | |
 

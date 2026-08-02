@@ -30,12 +30,15 @@ import (
 const noteMaxLength = 1000
 
 var roundDateTimeLayouts = []string{
-	"2006-01-02T15:04",
-	"2006-01-02T15:04:05",
 	time.RFC3339,
 	"2006-01-02T15:04:05.000Z",
 	"2006-01-02 15:04:05.000Z",
 	"2006-01-02 15:04:05Z",
+}
+
+var roundDateTimeLayoutsInLocation = []string{
+	"2006-01-02T15:04",
+	"2006-01-02T15:04:05",
 }
 
 // Register binds the round hooks and custom routes. Called from
@@ -211,12 +214,17 @@ func Complete(app core.App, userID, roundID, note string, startedAtRaw, finished
 		if err != nil {
 			return err
 		}
+		timeLocation, err := roundTimeLocation(txApp, round)
+		if err != nil {
+			return err
+		}
 		totals := scoring.FromRecords(holes)
 		startedAt, finishedAt, err := resolveRoundTimes(
 			round.GetDateTime(collections.FieldStartedAt),
 			types.NowDateTime(),
 			startedAtRaw,
 			finishedAtRaw,
+			timeLocation,
 		)
 		if err != nil {
 			return err
@@ -361,19 +369,20 @@ func isPlayMode(value string) bool {
 func resolveRoundTimes(
 	defaultStartedAt, defaultFinishedAt types.DateTime,
 	startedAtRaw, finishedAtRaw *string,
+	loc *time.Location,
 ) (types.DateTime, types.DateTime, error) {
 	startedAt := defaultStartedAt
 	finishedAt := defaultFinishedAt
 
 	if startedAtRaw != nil {
-		parsed, err := parseRoundDateTime(*startedAtRaw)
+		parsed, err := parseRoundDateTime(*startedAtRaw, loc)
 		if err != nil {
 			return types.DateTime{}, types.DateTime{}, apierr.Validation("Invalid startedAt")
 		}
 		startedAt = parsed
 	}
 	if finishedAtRaw != nil {
-		parsed, err := parseRoundDateTime(*finishedAtRaw)
+		parsed, err := parseRoundDateTime(*finishedAtRaw, loc)
 		if err != nil {
 			return types.DateTime{}, types.DateTime{}, apierr.Validation("Invalid finishedAt")
 		}
@@ -386,13 +395,36 @@ func resolveRoundTimes(
 	return startedAt, finishedAt, nil
 }
 
-func parseRoundDateTime(value string) (types.DateTime, error) {
+func parseRoundDateTime(value string, loc *time.Location) (types.DateTime, error) {
 	value = strings.TrimSpace(value)
 	for _, layout := range roundDateTimeLayouts {
 		if parsed, err := time.Parse(layout, value); err == nil {
 			return types.ParseDateTime(parsed.UTC())
 		}
 	}
+	for _, layout := range roundDateTimeLayoutsInLocation {
+		if parsed, err := time.ParseInLocation(layout, value, loc); err == nil {
+			return types.ParseDateTime(parsed.UTC())
+		}
+	}
 
 	return types.DateTime{}, fmt.Errorf("parse round datetime %q", value)
+}
+
+func roundTimeLocation(app core.App, round *core.Record) (*time.Location, error) {
+	course, err := app.FindRecordById(collections.NameCourses, round.GetString(collections.FieldCourse))
+	if err != nil {
+		return nil, fmt.Errorf("find round course %q: %w", round.GetString(collections.FieldCourse), err)
+	}
+
+	timeZone := strings.TrimSpace(course.GetString(collections.FieldTimeZone))
+	if timeZone == "" {
+		return time.UTC, nil
+	}
+
+	location, err := time.LoadLocation(timeZone)
+	if err != nil {
+		return nil, fmt.Errorf("load course time zone %q: %w", timeZone, err)
+	}
+	return location, nil
 }

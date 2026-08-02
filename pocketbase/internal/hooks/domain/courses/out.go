@@ -27,6 +27,7 @@ type Out struct {
 	ID         string    `json:"id"`
 	Name       string    `json:"name"`
 	HoleCount  int       `json:"holeCount"`
+	TimeZone   string    `json:"timeZone"`
 	TotalPar   int       `json:"totalPar"`
 	IsArchived bool      `json:"isArchived"`
 	Holes      []HoleOut `json:"holes"`
@@ -77,6 +78,7 @@ func newOut(course *core.Record, holes []*core.Record) *Out {
 		ID:         course.Id,
 		Name:       course.GetString(collections.FieldName),
 		HoleCount:  course.GetInt(collections.FieldHoleCount),
+		TimeZone:   course.GetString(collections.FieldTimeZone),
 		IsArchived: course.GetBool(collections.FieldIsArchived),
 		Holes:      make([]HoleOut, 0, len(holes)),
 		CreatedAt:  course.GetDateTime(collections.FieldCreatedAt).String(),

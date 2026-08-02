@@ -6,6 +6,7 @@
     <p class="text-xs font-semibold uppercase tracking-widest text-stone-400">Course</p>
     <h1 class="text-xl font-bold">{{.Course.Name}}</h1>
     <p class="text-sm text-stone-500">{{.Course.HoleCount}} holes · par {{.Course.TotalPar}}</p>
+    <p class="text-sm text-stone-500">Time zone: {{if .Course.TimeZone}}{{.Course.TimeZone}}{{else}}UTC (not set){{end}}</p>
     {{if .Course.IsArchived}}
       <span class="mt-1 inline-block rounded-lg bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-500">
         Archived

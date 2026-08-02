@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 
@@ -40,6 +41,7 @@ type HoleIn struct {
 type In struct {
 	Name      string   `json:"name" form:"name"`
 	HoleCount int      `json:"holeCount" form:"holeCount"`
+	TimeZone  string   `json:"timeZone" form:"timeZone"`
 	Holes     []HoleIn `json:"holes" form:"holes"`
 }
 
@@ -54,11 +56,17 @@ type In struct {
 // the `{"error": …}` body the contract promises.
 func (in *In) validate() error {
 	in.Name = strings.TrimSpace(in.Name)
+	in.TimeZone = strings.TrimSpace(in.TimeZone)
 	if in.Name == "" {
 		return apierr.Validation("Course name is required")
 	}
 	if len(in.Name) > nameMaxLength {
 		return apierr.Validation("Course name must be 100 characters or fewer")
+	}
+	if in.TimeZone != "" {
+		if _, err := time.LoadLocation(in.TimeZone); err != nil {
+			return apierr.Validation("Time zone must be a valid IANA identifier")
+		}
 	}
 
 	valid := false
@@ -107,6 +115,7 @@ func Create(app core.App, in In) (*core.Record, error) {
 		course = core.NewRecord(coursesCollection)
 		course.Set(collections.FieldName, in.Name)
 		course.Set(collections.FieldHoleCount, in.HoleCount)
+		course.Set(collections.FieldTimeZone, in.TimeZone)
 		if err := txApp.Save(course); err != nil {
 			return fmt.Errorf("create course: %w", err)
 		}
@@ -147,6 +156,7 @@ func Update(app core.App, courseID string, in In) (*core.Record, error) {
 		// deleted rather than updated, and the rule does not run on a delete.
 		course.Set(collections.FieldName, in.Name)
 		course.Set(collections.FieldHoleCount, in.HoleCount)
+		course.Set(collections.FieldTimeZone, in.TimeZone)
 		if err := txApp.Save(course); err != nil {
 			return fmt.Errorf("update course %q: %w", courseID, err)
 		}

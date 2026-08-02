@@ -82,7 +82,7 @@ func TestPagesLoadForASignedInPlayer(t *testing.T) {
 		{"new round", "/rounds/new/", []string{"Start a new round", "Choose a course", "Play mode"}},
 		{"round detail", "/rounds/" + idDoneRound + "/", []string{"Completed Round", "Delete Round", "Hole by hole"}},
 		{"round play", "/rounds/" + idPlayRound + "/play/", []string{"round-init", "Add a shot", "Driver", "Review Round"}},
-		{"round review", "/rounds/" + idPlayRound + "/review/", []string{"Review Round", "Round timing", "Start time", "End time", "Round notes", "Submit Round"}},
+		{"round review", "/rounds/" + idPlayRound + "/review/", []string{"Review Round", "Round timing", "Times shown in America/New_York.", "Start time", "End time", "Round notes", "Submit Round"}},
 		{"sign out", "/accounts/logout/", []string{"Sign out?"}},
 	} {
 		runWeb(t, playOwner, tests.ApiScenario{
@@ -103,8 +103,8 @@ func TestAdminPagesLoadForAnAdmin(t *testing.T) {
 		url     string
 		content []string
 	}{
-		{"new course", "/courses/new/", []string{"Add Course", "Number of holes", "Hole pars", "Save Course"}},
-		{"edit course", "/courses/" + idPlayCourse9 + "/edit/", []string{"Edit Course", "Nine Acres", "Save Changes"}},
+		{"new course", "/courses/new/", []string{"Add Course", "Course time zone (optional)", "<select id=\"timeZone\"", "If left blank, round times are shown in UTC.", "Number of holes", "Hole pars", "Save Course"}},
+		{"edit course", "/courses/" + idPlayCourse9 + "/edit/", []string{"Edit Course", "Nine Acres", "Course time zone (optional)", "<select id=\"timeZone\"", "Save Changes"}},
 		{"archived courses", "/courses/archived/", []string{"Archived Courses"}},
 	} {
 		runWeb(t, playAdmin, tests.ApiScenario{
@@ -319,7 +319,7 @@ func TestStaticAssetsAreServedFromTheBinary(t *testing.T) {
 		{"/static/css/app.css", []string{".bg-emerald-700"}},
 		{"/static/js/alpine.min.js", []string{"Alpine"}},
 		{"/static/js/pocketbase.umd.js", []string{"PocketBase"}},
-		{"/static/js/golftrack.js", []string{"window.gt"}},
+		{"/static/js/golftrack.js", []string{"window.gt", "timeZone || 'UTC'", "Intl.supportedValuesOf('timeZone')", "UTC (not set)", "America/New_York"}},
 		{"/static/js/round-play.js", []string{"roundPlay"}},
 		{"/static/manifest.webmanifest", []string{"GolfTrack", "standalone"}},
 	} {
