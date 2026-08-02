@@ -168,8 +168,13 @@ function courseForm(config) {
   return {
     holeCount: config.holeCount,
     timeZone: config.timeZone || '',
+    timeZoneOptions: [{ value: '', label: 'UTC (not set)' }],
     loading: false,
     error: null,
+
+    init() {
+      this.timeZoneOptions = buildTimeZoneOptions(this.timeZone);
+    },
 
     holes() {
       const holes = [];
@@ -395,4 +400,51 @@ function formatDateTime(date, timeZone) {
     values[parts[i].type] = parts[i].value;
   }
   return values.year + '-' + values.month + '-' + values.day + 'T' + values.hour + ':' + values.minute;
+}
+
+function buildTimeZoneOptions(selectedTimeZone) {
+  var preferredNorthAmerica = [
+    'America/New_York',
+    'America/Chicago',
+    'America/Denver',
+    'America/Phoenix',
+    'America/Los_Angeles',
+    'America/Anchorage',
+    'Pacific/Honolulu',
+    'America/Toronto',
+    'America/Vancouver',
+    'America/Halifax',
+    'America/St_Johns',
+  ];
+
+  var seen = Object.create(null);
+  var options = [{ value: '', label: 'UTC (not set)' }];
+
+  function pushZone(zone) {
+    if (!zone || seen[zone]) return;
+    seen[zone] = true;
+    options.push({ value: zone, label: zone });
+  }
+
+  for (var i = 0; i < preferredNorthAmerica.length; i++) {
+    pushZone(preferredNorthAmerica[i]);
+  }
+
+  var supported = [];
+  if (typeof Intl !== 'undefined' && typeof Intl.supportedValuesOf === 'function') {
+    try {
+      supported = Intl.supportedValuesOf('timeZone');
+    } catch (_e) {
+      supported = [];
+    }
+  }
+  for (var j = 0; j < supported.length; j++) {
+    pushZone(supported[j]);
+  }
+
+  if (selectedTimeZone && !seen[selectedTimeZone]) {
+    options.splice(1, 0, { value: selectedTimeZone, label: selectedTimeZone });
+  }
+
+  return options;
 }
