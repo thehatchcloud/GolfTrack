@@ -304,39 +304,6 @@ function reviewForm(round) {
   };
 }
 
-// completedRoundTimeForm updates the editable timestamps of a completed round.
-function completedRoundTimeForm(round) {
-  return {
-    roundId: round.roundId,
-    startedAt: roundInputDateTime(round.startedAt),
-    finishedAt: roundInputDateTime(round.finishedAt),
-    loading: false,
-    error: null,
-    saved: false,
-
-    async submit() {
-      if (this.loading) return;
-      this.loading = true;
-      this.error = null;
-      this.saved = false;
-      try {
-        await window.gt.api('/api/rounds/' + this.roundId, {
-          method: 'PATCH',
-          body: JSON.stringify({
-            startedAt: this.startedAt,
-            finishedAt: this.finishedAt,
-          }),
-        });
-        this.saved = true;
-        window.location.href = '/rounds/' + this.roundId + '/';
-      } catch (e) {
-        this.error = e.message;
-        this.loading = false;
-      }
-    },
-  };
-}
-
 // cancelRound is the confirm-and-delete modal shared by the play and review
 // pages.
 function cancelRound(roundId) {

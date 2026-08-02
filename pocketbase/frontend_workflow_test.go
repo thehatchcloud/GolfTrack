@@ -160,17 +160,6 @@ func TestFrontendWorkflowStartPlayCompleteReview(t *testing.T) {
 		t.Fatalf("completed round times = %v / %v, want edited values", body["startedAt"], body["finishedAt"])
 	}
 
-	// After submission the player can still adjust the recorded times.
-	code, rawBody = workflowRequest(t, mux, headers, http.MethodPatch, "/api/rounds/"+roundID,
-		`{"startedAt":"2026-05-04T07:00","finishedAt":"2026-05-04T11:30"}`)
-	body, _ = rawBody.(map[string]any)
-	if code != http.StatusOK {
-		t.Fatalf("update round times = %d %v", code, rawBody)
-	}
-	if body["startedAt"] != "2026-05-04 07:00:00.000Z" || body["finishedAt"] != "2026-05-04 11:30:00.000Z" {
-		t.Fatalf("updated round times = %v", body)
-	}
-
 	// Home again: no in-progress round left for this player.
 	if code, body := workflowRequest(t, mux, headers, http.MethodGet, "/api/rounds/in-progress", ""); code != http.StatusOK || body != nil {
 		t.Fatalf("in-progress after completion = %d %v, want 200 null", code, body)

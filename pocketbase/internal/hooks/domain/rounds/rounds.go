@@ -58,8 +58,7 @@ func registerCompletedRoundIsImmutable(app core.App) {
 	app.OnRecordUpdate(collections.NameRounds).BindFunc(func(e *core.RecordEvent) error {
 		original := e.Record.Original()
 		if original != nil &&
-			original.GetString(collections.FieldStatus) == collections.RoundStatusCompleted &&
-			!completedRoundAllowsTimestampEdit(e.Record, original) {
+			original.GetString(collections.FieldStatus) == collections.RoundStatusCompleted {
 			return validation.Errors{
 				collections.FieldStatus: errors.New("round is already completed and cannot be modified"),
 			}
@@ -244,45 +243,6 @@ func Complete(app core.App, userID, roundID, note string, startedAtRaw, finished
 	return round, nil
 }
 
-// UpdateTimes allows the two timestamps a completed round remains editable for.
-func UpdateTimes(app core.App, userID, roundID string, startedAtRaw, finishedAtRaw *string) (*core.Record, error) {
-	var round *core.Record
-
-	err := app.RunInTransaction(func(txApp core.App) error {
-		var err error
-		round, err = records.FindRound(txApp, roundID, userID)
-		if err != nil {
-			return err
-		}
-		if round.GetString(collections.FieldStatus) != collections.RoundStatusCompleted {
-			return apierr.Conflict("Only completed rounds can be updated")
-		}
-
-		startedAt, finishedAt, err := resolveRoundTimes(
-			round.GetDateTime(collections.FieldStartedAt),
-			round.GetDateTime(collections.FieldFinishedAt),
-			startedAtRaw,
-			finishedAtRaw,
-		)
-		if err != nil {
-			return err
-		}
-
-		round.Set(collections.FieldStartedAt, startedAt)
-		round.Set(collections.FieldFinishedAt, finishedAt)
-		if err := txApp.Save(round); err != nil {
-			return fmt.Errorf("update round %q times: %w", roundID, err)
-		}
-
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return round, nil
-}
-
 // Cancel ports cancel_round: delete an in-progress round, taking its holes and
 // shots with it through the cascade.
 func Cancel(app core.App, userID, roundID string) error {
@@ -380,25 +340,6 @@ func isPlayMode(value string) bool {
 	default:
 		return false
 	}
-}
-
-func completedRoundAllowsTimestampEdit(round, original *core.Record) bool {
-	if round.GetString(collections.FieldUser) != original.GetString(collections.FieldUser) ||
-		round.GetString(collections.FieldCourse) != original.GetString(collections.FieldCourse) ||
-		round.GetString(collections.FieldStatus) != original.GetString(collections.FieldStatus) ||
-		round.GetString(collections.FieldPlayMode) != original.GetString(collections.FieldPlayMode) ||
-		round.GetString(collections.FieldNote) != original.GetString(collections.FieldNote) {
-		return false
-	}
-
-	if round.GetInt(collections.FieldCurrentHole) != original.GetInt(collections.FieldCurrentHole) ||
-		round.GetInt(collections.FieldTotalStrokes) != original.GetInt(collections.FieldTotalStrokes) ||
-		round.GetInt(collections.FieldTotalPar) != original.GetInt(collections.FieldTotalPar) ||
-		round.GetInt(collections.FieldRelativeToPar) != original.GetInt(collections.FieldRelativeToPar) {
-		return false
-	}
-
-	return true
 }
 
 func resolveRoundTimes(

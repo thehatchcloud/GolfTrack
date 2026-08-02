@@ -76,7 +76,6 @@ its own record id:
 | `GET` | `/api/rounds/in-progress` | the caller's in-progress round, camelCase `RoundDetailOut`, or `null` |
 | `GET` | `/api/rounds/{id}` | a round's full detail — nested `course`/`holes`/`shots`, camelCase |
 | `POST` | `/api/rounds/{id}/complete` | sum the holes into the round's totals, optionally overriding `startedAt`/`finishedAt`, and finish it |
-| `PATCH` | `/api/rounds/{id}` | update a completed round's `startedAt`/`finishedAt` |
 | `POST` | `/api/rounds/{id}/cancel` | delete an in-progress round and everything under it |
 | `PATCH` | `/api/rounds/{id}/current-hole` | move to a hole this round is playing |
 | `POST` | `/api/rounds/{id}/holes/{n}/shots` | add a shot, maintaining the stroke cache |
