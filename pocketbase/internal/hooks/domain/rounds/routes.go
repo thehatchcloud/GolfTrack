@@ -69,13 +69,15 @@ func create(e *core.RequestEvent) error {
 // POST /api/rounds/{id}/complete — Django CompleteRoundIn, response IdOut.
 func complete(e *core.RequestEvent) error {
 	payload := struct {
-		Note string `json:"note" form:"note"`
+		Note       string  `json:"note" form:"note"`
+		StartedAt  *string `json:"startedAt" form:"startedAt"`
+		FinishedAt *string `json:"finishedAt" form:"finishedAt"`
 	}{}
 	if err := e.BindBody(&payload); err != nil {
 		return apierr.Validation("Invalid request body")
 	}
 
-	round, err := Complete(e.App, e.Auth.Id, e.Request.PathValue("id"), payload.Note)
+	round, err := Complete(e.App, e.Auth.Id, e.Request.PathValue("id"), payload.Note, payload.StartedAt, payload.FinishedAt)
 	if err != nil {
 		return err
 	}

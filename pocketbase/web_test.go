@@ -82,7 +82,7 @@ func TestPagesLoadForASignedInPlayer(t *testing.T) {
 		{"new round", "/rounds/new/", []string{"Start a new round", "Choose a course", "Play mode"}},
 		{"round detail", "/rounds/" + idDoneRound + "/", []string{"Completed Round", "Hole by hole"}},
 		{"round play", "/rounds/" + idPlayRound + "/play/", []string{"round-init", "Add a shot", "Driver", "Review Round"}},
-		{"round review", "/rounds/" + idPlayRound + "/review/", []string{"Review Round", "Round notes", "Submit Round"}},
+		{"round review", "/rounds/" + idPlayRound + "/review/", []string{"Review Round", "Round timing", "Start time", "End time", "Round notes", "Submit Round"}},
 		{"sign out", "/accounts/logout/", []string{"Sign out?"}},
 	} {
 		runWeb(t, playOwner, tests.ApiScenario{

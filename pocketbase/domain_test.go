@@ -560,7 +560,7 @@ func TestCompleteRoundSetsTotals(t *testing.T) {
 
 	mustAddShots(t, g, round, 1, "Driver")
 
-	completed, err := rounds.Complete(g.app, g.user.Id, round.Id, "  Great round  ")
+	completed, err := rounds.Complete(g.app, g.user.Id, round.Id, "  Great round  ", nil, nil)
 	if err != nil {
 		t.Fatalf("complete round: %v", err)
 	}
@@ -585,16 +585,35 @@ func TestCompleteRoundSetsTotals(t *testing.T) {
 	}
 }
 
+func TestCompleteRoundCanOverrideTimes(t *testing.T) {
+	g := newGame(t)
+	round := g.start(t)
+
+	startedAt := "2026-05-04T06:07"
+	finishedAt := "2026-05-04T10:15"
+	completed, err := rounds.Complete(g.app, g.user.Id, round.Id, "", &startedAt, &finishedAt)
+	if err != nil {
+		t.Fatalf("complete round with edited times: %v", err)
+	}
+
+	if got := completed.GetDateTime(collections.FieldStartedAt).String(); got != "2026-05-04 06:07:00.000Z" {
+		t.Errorf("started_at = %q, want %q", got, "2026-05-04 06:07:00.000Z")
+	}
+	if got := completed.GetDateTime(collections.FieldFinishedAt).String(); got != "2026-05-04 10:15:00.000Z" {
+		t.Errorf("finished_at = %q, want %q", got, "2026-05-04 10:15:00.000Z")
+	}
+}
+
 func TestCompleteRoundRejections(t *testing.T) {
 	t.Run("twice", func(t *testing.T) {
 		g := newGame(t)
 		round := g.start(t)
 
-		if _, err := rounds.Complete(g.app, g.user.Id, round.Id, ""); err != nil {
+		if _, err := rounds.Complete(g.app, g.user.Id, round.Id, "", nil, nil); err != nil {
 			t.Fatalf("complete round: %v", err)
 		}
 
-		_, err := rounds.Complete(g.app, g.user.Id, round.Id, "")
+		_, err := rounds.Complete(g.app, g.user.Id, round.Id, "", nil, nil)
 		wantAPIError(t, err, http.StatusConflict, "Round is already completed")
 	})
 
@@ -602,7 +621,7 @@ func TestCompleteRoundRejections(t *testing.T) {
 		g := newGame(t)
 		round := g.start(t)
 
-		_, err := rounds.Complete(g.app, g.other.Id, round.Id, "")
+		_, err := rounds.Complete(g.app, g.other.Id, round.Id, "", nil, nil)
 		wantAPIError(t, err, http.StatusNotFound, "Round not found")
 	})
 
@@ -610,8 +629,18 @@ func TestCompleteRoundRejections(t *testing.T) {
 		g := newGame(t)
 		round := g.start(t)
 
-		_, err := rounds.Complete(g.app, g.user.Id, round.Id, strings.Repeat("x", 1001))
+		_, err := rounds.Complete(g.app, g.user.Id, round.Id, strings.Repeat("x", 1001), nil, nil)
 		wantAPIError(t, err, http.StatusBadRequest, "Note is too long")
+	})
+
+	t.Run("finish before start", func(t *testing.T) {
+		g := newGame(t)
+		round := g.start(t)
+		startedAt := "2026-05-04T10:15"
+		finishedAt := "2026-05-04T06:07"
+
+		_, err := rounds.Complete(g.app, g.user.Id, round.Id, "", &startedAt, &finishedAt)
+		wantAPIError(t, err, http.StatusBadRequest, "Finished time must be on or after the start time")
 	})
 }
 
@@ -623,7 +652,7 @@ func TestCompletedRoundIsImmutable(t *testing.T) {
 	round := g.start(t)
 	hole := g.hole(t, round, 1)
 
-	if _, err := rounds.Complete(g.app, g.user.Id, round.Id, ""); err != nil {
+	if _, err := rounds.Complete(g.app, g.user.Id, round.Id, "", nil, nil); err != nil {
 		t.Fatalf("complete round: %v", err)
 	}
 
@@ -686,7 +715,7 @@ func TestCancelRoundRejections(t *testing.T) {
 	wantAPIError(t, rounds.Cancel(g.app, g.other.Id, round.Id), http.StatusNotFound, "Round not found")
 	wantAPIError(t, rounds.Cancel(g.app, g.user.Id, fixedID("nosuchround")), http.StatusNotFound, "Round not found")
 
-	if _, err := rounds.Complete(g.app, g.user.Id, round.Id, ""); err != nil {
+	if _, err := rounds.Complete(g.app, g.user.Id, round.Id, "", nil, nil); err != nil {
 		t.Fatalf("complete round: %v", err)
 	}
 	wantAPIError(t, rounds.Cancel(g.app, g.user.Id, round.Id),

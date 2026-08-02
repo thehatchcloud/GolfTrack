@@ -141,9 +141,10 @@ func TestFrontendWorkflowStartPlayCompleteReview(t *testing.T) {
 		t.Fatalf("round detail currentHole = %v, want 2", body["currentHole"])
 	}
 
-	// Complete: the response is just an id (Django's `IdOut`); the totals show
-	// up on a follow-up GET, which is what the review screen re-reads.
-	code, rawBody = workflowRequest(t, mux, headers, http.MethodPost, "/api/rounds/"+roundID+"/complete", `{}`)
+	// Complete: the response is just an id (Django's `IdOut`); the review step
+	// can override the round's start/end times immediately before submission.
+	code, rawBody = workflowRequest(t, mux, headers, http.MethodPost, "/api/rounds/"+roundID+"/complete",
+		`{"startedAt":"2026-05-04T06:07","finishedAt":"2026-05-04T10:15"}`)
 	if code != http.StatusOK {
 		t.Fatalf("complete round = %d %v", code, rawBody)
 	}
@@ -154,6 +155,9 @@ func TestFrontendWorkflowStartPlayCompleteReview(t *testing.T) {
 	}
 	if body["totalStrokes"] == nil {
 		t.Fatalf("completed round has no totalStrokes: %v", body)
+	}
+	if body["startedAt"] != "2026-05-04 06:07:00.000Z" || body["finishedAt"] != "2026-05-04 10:15:00.000Z" {
+		t.Fatalf("completed round times = %v / %v, want edited values", body["startedAt"], body["finishedAt"])
 	}
 
 	// Home again: no in-progress round left for this player.

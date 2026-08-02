@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	validation "github.com/pocketbase/ozzo-validation/v4"
 	"github.com/pocketbase/pocketbase/core"
@@ -27,6 +28,15 @@ import (
 // noteMaxLength mirrors the Django CompleteRoundIn validator and the `note`
 // field bound in pb_schema.json.
 const noteMaxLength = 1000
+
+var roundDateTimeLayouts = []string{
+	"2006-01-02T15:04",
+	"2006-01-02T15:04:05",
+	time.RFC3339,
+	"2006-01-02T15:04:05.000Z",
+	"2006-01-02 15:04:05.000Z",
+	"2006-01-02 15:04:05Z",
+}
 
 // Register binds the round hooks and custom routes. Called from
 // internal/hooks.Register.
@@ -47,7 +57,8 @@ func Register(app core.App) {
 func registerCompletedRoundIsImmutable(app core.App) {
 	app.OnRecordUpdate(collections.NameRounds).BindFunc(func(e *core.RecordEvent) error {
 		original := e.Record.Original()
-		if original != nil && original.GetString(collections.FieldStatus) == collections.RoundStatusCompleted {
+		if original != nil &&
+			original.GetString(collections.FieldStatus) == collections.RoundStatusCompleted {
 			return validation.Errors{
 				collections.FieldStatus: errors.New("round is already completed and cannot be modified"),
 			}
@@ -178,7 +189,7 @@ func asConflictIfRoundStarted(app core.App, userID string, err error) error {
 
 // Complete ports complete_round: sum the round's holes into its stored totals,
 // then mark it finished.
-func Complete(app core.App, userID, roundID, note string) (*core.Record, error) {
+func Complete(app core.App, userID, roundID, note string, startedAtRaw, finishedAtRaw *string) (*core.Record, error) {
 	note = strings.TrimSpace(note)
 	if len(note) > noteMaxLength {
 		return nil, apierr.Validation("Note is too long")
@@ -201,9 +212,19 @@ func Complete(app core.App, userID, roundID, note string) (*core.Record, error) 
 			return err
 		}
 		totals := scoring.FromRecords(holes)
+		startedAt, finishedAt, err := resolveRoundTimes(
+			round.GetDateTime(collections.FieldStartedAt),
+			types.NowDateTime(),
+			startedAtRaw,
+			finishedAtRaw,
+		)
+		if err != nil {
+			return err
+		}
 
 		round.Set(collections.FieldStatus, collections.RoundStatusCompleted)
-		round.Set(collections.FieldFinishedAt, types.NowDateTime())
+		round.Set(collections.FieldStartedAt, startedAt)
+		round.Set(collections.FieldFinishedAt, finishedAt)
 		round.Set(collections.FieldNote, note)
 		round.Set(collections.FieldTotalStrokes, totals.TotalStrokes)
 		round.Set(collections.FieldTotalPar, totals.TotalPar)
@@ -319,4 +340,43 @@ func isPlayMode(value string) bool {
 	default:
 		return false
 	}
+}
+
+func resolveRoundTimes(
+	defaultStartedAt, defaultFinishedAt types.DateTime,
+	startedAtRaw, finishedAtRaw *string,
+) (types.DateTime, types.DateTime, error) {
+	startedAt := defaultStartedAt
+	finishedAt := defaultFinishedAt
+
+	if startedAtRaw != nil {
+		parsed, err := parseRoundDateTime(*startedAtRaw)
+		if err != nil {
+			return types.DateTime{}, types.DateTime{}, apierr.Validation("Invalid startedAt")
+		}
+		startedAt = parsed
+	}
+	if finishedAtRaw != nil {
+		parsed, err := parseRoundDateTime(*finishedAtRaw)
+		if err != nil {
+			return types.DateTime{}, types.DateTime{}, apierr.Validation("Invalid finishedAt")
+		}
+		finishedAt = parsed
+	}
+	if finishedAt.Before(startedAt) {
+		return types.DateTime{}, types.DateTime{}, apierr.Validation("Finished time must be on or after the start time")
+	}
+
+	return startedAt, finishedAt, nil
+}
+
+func parseRoundDateTime(value string) (types.DateTime, error) {
+	value = strings.TrimSpace(value)
+	for _, layout := range roundDateTimeLayouts {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return types.ParseDateTime(parsed.UTC())
+		}
+	}
+
+	return types.DateTime{}, fmt.Errorf("parse round datetime %q", value)
 }

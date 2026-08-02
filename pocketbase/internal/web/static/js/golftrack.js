@@ -273,9 +273,12 @@ function startRound() {
 }
 
 // reviewForm completes a round from the review page.
-function reviewForm(roundId) {
+function reviewForm(round) {
   return {
+    roundId: round.roundId,
     note: '',
+    startedAt: roundInputDateTime(round.startedAt),
+    finishedAt: roundInputDateTime(round.finishedAt) || currentInputDateTime(),
     loading: false,
     error: null,
 
@@ -284,9 +287,13 @@ function reviewForm(roundId) {
       this.loading = true;
       this.error = null;
       try {
-        const data = await window.gt.api('/api/rounds/' + roundId + '/complete', {
+        const data = await window.gt.api('/api/rounds/' + this.roundId + '/complete', {
           method: 'POST',
-          body: JSON.stringify({ note: this.note }),
+          body: JSON.stringify({
+            note: this.note,
+            startedAt: this.startedAt,
+            finishedAt: this.finishedAt,
+          }),
         });
         window.location.href = '/rounds/' + data.id + '/';
       } catch (e) {
@@ -316,4 +323,21 @@ function cancelRound(roundId) {
       }
     },
   };
+}
+
+function roundInputDateTime(value) {
+  if (!value || typeof value !== 'string') return '';
+
+  var match = value.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/);
+  return match ? match[1] + 'T' + match[2] : '';
+}
+
+function currentInputDateTime() {
+  var now = new Date();
+  var year = String(now.getFullYear());
+  var month = String(now.getMonth() + 1).padStart(2, '0');
+  var day = String(now.getDate()).padStart(2, '0');
+  var hour = String(now.getHours()).padStart(2, '0');
+  var minute = String(now.getMinutes()).padStart(2, '0');
+  return year + '-' + month + '-' + day + 'T' + hour + ':' + minute;
 }
