@@ -81,6 +81,11 @@ const (
 	FieldClub       = "club"
 )
 
+// ClubPenalty is the sentinel club value that records a penalty stroke.
+// It counts toward the hole total but is displayed and counted separately
+// from regular shots in summaries.
+const ClubPenalty = "Penalty"
+
 // FieldCourseTotalPar is the derived course total, computed per response rather
 // than stored (Django exposes it as the `Course.total_par` property). It is not
 // a column in pb_schema.json — see internal/hooks/domain/courses.

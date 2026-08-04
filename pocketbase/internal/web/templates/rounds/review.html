@@ -35,14 +35,18 @@
 </div>
 
 <!-- Score summary -->
-<div class="mb-5 grid grid-cols-3 gap-3">
+<div class="mb-5 grid grid-cols-4 gap-3">
   <div class="rounded-xl bg-stone-100 p-3 text-center">
     <p class="text-xs font-semibold uppercase tracking-wider text-stone-500">Par</p>
     <p class="text-2xl font-bold">{{.Totals.TotalPar}}</p>
   </div>
   <div class="rounded-xl bg-stone-100 p-3 text-center">
-    <p class="text-xs font-semibold uppercase tracking-wider text-stone-500">Strokes</p>
-    <p class="text-2xl font-bold">{{.Totals.TotalStrokes}}</p>
+    <p class="text-xs font-semibold uppercase tracking-wider text-stone-500">Shots</p>
+    <p class="text-2xl font-bold">{{.Shots}}</p>
+  </div>
+  <div class="rounded-xl bg-red-50 p-3 text-center">
+    <p class="text-xs font-semibold uppercase tracking-wider text-red-500">Penalties</p>
+    <p class="text-2xl font-bold text-red-700">{{.Penalties}}</p>
   </div>
   <div class="rounded-xl bg-stone-100 p-3 text-center">
     <p class="text-xs font-semibold uppercase tracking-wider text-stone-500">To Par</p>

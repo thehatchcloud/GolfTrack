@@ -238,7 +238,9 @@ type roundNewPage struct {
 
 type roundDetailPage struct {
 	Layout
-	Round *rounds.DetailOut
+	Round     *rounds.DetailOut
+	Shots     int
+	Penalties int
 }
 
 type roundPlayPage struct {
@@ -249,8 +251,10 @@ type roundPlayPage struct {
 
 type roundReviewPage struct {
 	Layout
-	Round  *rounds.DetailOut
-	Totals scoring.Totals
+	Round     *rounds.DetailOut
+	Totals    scoring.Totals
+	Shots     int
+	Penalties int
 }
 
 // roundList ports rounds/views.round_list.
@@ -298,9 +302,14 @@ func (s *server) roundDetail(e *core.RequestEvent, v *viewer) error {
 		return err
 	}
 
+	penalties := countPenalties(round)
+	totalStrokes, _ := asInt(round.TotalStrokes)
+
 	return s.render(e, http.StatusOK, "rounds/detail.html", &roundDetailPage{
-		Layout: s.layout(e, v, "Round — "+round.Course.Name+" — GolfTrack"),
-		Round:  round,
+		Layout:    s.layout(e, v, "Round — "+round.Course.Name+" — GolfTrack"),
+		Round:     round,
+		Shots:     totalStrokes - penalties,
+		Penalties: penalties,
 	})
 }
 
@@ -334,16 +343,37 @@ func (s *server) roundReview(e *core.RequestEvent, v *viewer) error {
 		holes = append(holes, scoring.Hole{Par: hole.Par, Strokes: hole.Strokes})
 	}
 
+	totals := scoring.Calculate(holes)
+	penalties := countPenalties(round)
+
 	return s.render(e, http.StatusOK, "rounds/review.html", &roundReviewPage{
-		Layout: s.layout(e, v, "Review Round — GolfTrack"),
-		Round:  round,
-		Totals: scoring.Calculate(holes),
+		Layout:    s.layout(e, v, "Review Round — GolfTrack"),
+		Round:     round,
+		Totals:    totals,
+		Shots:     totals.TotalStrokes - penalties,
+		Penalties: penalties,
 	})
 }
 
 // -----------------------------------------------------------------------------
 // accounts
 // -----------------------------------------------------------------------------
+
+// countPenalties tallies the penalty strokes across all holes of a round by
+// checking each shot's club against the penalty sentinel. Penalty strokes count
+// toward the hole total (and therefore TotalStrokes / RelativeToPar) but are
+// separated from regular shots in the round summary pages.
+func countPenalties(round *rounds.DetailOut) int {
+	count := 0
+	for _, hole := range round.Holes {
+		for _, shot := range hole.Shots {
+			if shot.Club == collections.ClubPenalty {
+				count++
+			}
+		}
+	}
+	return count
+}
 
 type providerButton struct {
 	Name        string
