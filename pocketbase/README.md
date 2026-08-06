@@ -552,7 +552,7 @@ that could drift from it.
 | `perf_test.go` | how many statements each read path issues, counted at two data sizes so an N+1 shows up as a number that moves; the query plan of every hot query; and that sustained traffic leaks neither heap nor goroutines |
 | `loadtest_test.go` | 10/50/100 concurrent players, reads, writes and both — gated on `GOLFTRACK_LOADTEST`, because seeding a hundred players costs more than the rest of this directory put together |
 | `concurrency_test.go` | two writers on one hole, one player starting two rounds, delete racing delete |
-| `export_import_test.go` | round export/import (GOL-1): the JSON and CSV round trips across two separate app instances, the missing-course and hole-count-mismatch rejections, duplicate skipping, per-round validation, and the routes' 401/400/409s |
+| `export_import_test.go` | round export/import (GOL-1): the JSON and CSV round trips across two separate app instances, the missing-course and hole-count-mismatch rejections, duplicate skipping, per-round validation, the import template's validity in both formats, and the routes' 401/400/409s |
 | `internal/hooks/domain/scoring/scoring_test.go` | the totals arithmetic, as plain unit tests |
 | `testapp_test.go` | the harness: seeded app, fixture builders, auth tokens |
 | `scripts/browser-walkthrough.mjs` | the seven workflows in a real Chromium — the one check that runs the JavaScript. Manual: it needs a seeded instance, so it is not part of `make pb-test` |

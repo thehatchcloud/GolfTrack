@@ -81,7 +81,31 @@
     return data;
   }
 
-  window.gt = { token: token, clearToken: clearToken, api: api, cookieName: COOKIE };
+  // download fetches an authenticated route and hands the response to the
+  // browser as a file download. Export and template files cannot be plain
+  // links: the session rides in the Authorization header, not the URL.
+  async function download(url, filename) {
+    var headers = {};
+    var current = token();
+    if (current) headers['Authorization'] = current;
+    var res = await fetch(url, { headers: headers });
+    if (!res.ok) {
+      var data = null;
+      try { data = await res.json(); } catch (e) { data = null; }
+      throw new Error((data && (data.error || data.message)) || 'Download failed');
+    }
+    var blob = await res.blob();
+    var objectUrl = URL.createObjectURL(blob);
+    var link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(objectUrl);
+  }
+
+  window.gt = { token: token, clearToken: clearToken, api: api, download: download, cookieName: COOKIE };
 })();
 
 // --- Alpine components -------------------------------------------------------
@@ -352,46 +376,35 @@ function deleteRound(roundId) {
   };
 }
 
-// roundsTransfer drives the export buttons and the import file input on the
-// rounds list page (GOL-1). Export cannot be a plain link: the session rides
-// in the Authorization header, not the URL, so the file is fetched and handed
-// to the browser as a download.
-function roundsTransfer() {
+// roundsExport drives the export buttons on the rounds list page (GOL-1).
+function roundsExport() {
   return {
     exporting: false,
-    importing: false,
     error: null,
-    skipped: null,
 
     async exportRounds(format) {
       if (this.exporting) return;
       this.exporting = true;
       this.error = null;
-      this.skipped = null;
       try {
-        var headers = {};
-        var token = window.gt.token();
-        if (token) headers['Authorization'] = token;
-        var res = await fetch('/api/rounds/export?format=' + format, { headers: headers });
-        if (!res.ok) {
-          var data = null;
-          try { data = await res.json(); } catch (_e) { data = null; }
-          throw new Error((data && (data.error || data.message)) || 'Export failed');
-        }
-        var blob = await res.blob();
-        var url = URL.createObjectURL(blob);
-        var link = document.createElement('a');
-        link.href = url;
-        link.download = 'golftrack-rounds-' + new Date().toISOString().slice(0, 10) + '.' + format;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(url);
+        await window.gt.download('/api/rounds/export?format=' + format,
+          'golftrack-rounds-' + new Date().toISOString().slice(0, 10) + '.' + format);
       } catch (e) {
         this.error = e.message;
       }
       this.exporting = false;
     },
+  };
+}
+
+// roundsImport drives the import file input and the template downloads on the
+// new-round page (GOL-1) — importing lives where a round begins, not on the
+// history list.
+function roundsImport() {
+  return {
+    importing: false,
+    error: null,
+    skipped: null,
 
     async importFile(event) {
       var input = event.target;
@@ -408,8 +421,9 @@ function roundsTransfer() {
           body: text,
         });
         if (data.imported > 0) {
-          // Reload so the imported rounds render server-side like any others.
-          window.location.reload();
+          // Land on the rounds list, where the imported rounds render
+          // server-side like any others.
+          window.location.href = '/rounds/';
           return;
         }
         this.skipped = data.skipped;
@@ -418,6 +432,17 @@ function roundsTransfer() {
       }
       this.importing = false;
       input.value = '';
+    },
+
+    async downloadTemplate(format) {
+      this.error = null;
+      this.skipped = null;
+      try {
+        await window.gt.download('/api/rounds/import/template?format=' + format,
+          'golftrack-import-template.' + format);
+      } catch (e) {
+        this.error = e.message;
+      }
     },
   };
 }

@@ -52,6 +52,7 @@ func registerRoutes(app core.App) {
 		// literal segments the mux matches ahead of `{id}`.
 		se.Router.GET("/api/rounds/export", apierr.Handler(exportRounds)).Bind(apis.RequireAuth())
 		se.Router.POST("/api/rounds/import", apierr.Handler(importRounds)).Bind(apis.RequireAuth())
+		se.Router.GET("/api/rounds/import/template", apierr.Handler(importTemplate)).Bind(apis.RequireAuth())
 
 		return se.Next()
 	})
@@ -193,6 +194,31 @@ func exportRounds(e *core.RequestEvent) error {
 
 	filename := "golftrack-rounds-" + time.Now().UTC().Format("2006-01-02") + "." + format
 	e.Response.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+
+	if format == "csv" {
+		var buf bytes.Buffer
+		if err := WriteCSV(file, &buf); err != nil {
+			return err
+		}
+		return e.Blob(http.StatusOK, "text/csv; charset=utf-8", buf.Bytes())
+	}
+
+	return e.JSON(http.StatusOK, file)
+}
+
+// GET /api/rounds/import/template?format=json|csv — a filled-in example of the
+// import format for a player building a file by hand, defaulting to JSON.
+func importTemplate(e *core.RequestEvent) error {
+	format := e.Request.URL.Query().Get("format")
+	if format == "" {
+		format = "json"
+	}
+	if format != "json" && format != "csv" {
+		return apierr.Validation("Invalid template format: " + format)
+	}
+
+	file := TemplateFile()
+	e.Response.Header().Set("Content-Disposition", `attachment; filename="golftrack-import-template.`+format+`"`)
 
 	if format == "csv" {
 		var buf bytes.Buffer

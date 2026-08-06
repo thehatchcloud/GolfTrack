@@ -281,6 +281,45 @@ func TestImportingTheSameFileTwiceSkips(t *testing.T) {
 	}
 }
 
+// TestTemplateFileIsAValidImport pins the template download to the contract it
+// exists for: a player can fill it in and upload it. If a format or validation
+// change breaks that, this is the test that says so.
+func TestTemplateFileIsAValidImport(t *testing.T) {
+	file := rounds.TemplateFile()
+
+	// The CSV rendering parses back to the same rounds, so both template
+	// formats teach the same file.
+	var buf bytes.Buffer
+	if err := rounds.WriteCSV(file, &buf); err != nil {
+		t.Fatalf("WriteCSV(template): %v", err)
+	}
+	parsed, err := rounds.ParseImport(buf.Bytes())
+	if err != nil {
+		t.Fatalf("ParseImport(csv template): %v", err)
+	}
+	if !reflect.DeepEqual(parsed.Rounds, file.Rounds) {
+		t.Fatalf("csv template drifted:\n got %+v\nwant %+v", parsed.Rounds, file.Rounds)
+	}
+
+	// Unchanged, the template must fail with the missing-course error — its
+	// course name is a placeholder, not a real course.
+	destination, importer := importDestination(t, "", 0)
+	_, err = rounds.Import(destination, importer.Id, rounds.TemplateFile())
+	wantAPIError(t, err, http.StatusBadRequest,
+		`Cannot import: course "Replace With Your Course Name" does not exist in this instance`)
+
+	// Once a matching course exists, the template imports as-is: every other
+	// validation rule (hole coverage, shot numbering, pars, dates) holds.
+	destination, importer = importDestination(t, "Replace With Your Course Name", 9)
+	result, err := rounds.Import(destination, importer.Id, rounds.TemplateFile())
+	if err != nil {
+		t.Fatalf("Import(template): %v", err)
+	}
+	if result.Imported != 1 {
+		t.Fatalf("result = %+v, want 1 imported", result)
+	}
+}
+
 // -----------------------------------------------------------------------------
 // import rejections
 // -----------------------------------------------------------------------------
@@ -395,6 +434,7 @@ func TestExportImportRoutesRequireAuth(t *testing.T) {
 	}{
 		{http.MethodGet, "/api/rounds/export"},
 		{http.MethodPost, "/api/rounds/import"},
+		{http.MethodGet, "/api/rounds/import/template"},
 	} {
 		runPlay(t, nil, tests.ApiScenario{
 			Name:            "anonymous " + tc.method + " " + tc.url,
@@ -438,6 +478,41 @@ func TestExportRoute(t *testing.T) {
 		URL:             "/api/rounds/export?format=xml",
 		ExpectedStatus:  400,
 		ExpectedContent: []string{`"error":"Invalid export format: xml"`},
+	})
+}
+
+func TestImportTemplateRoute(t *testing.T) {
+	runPlay(t, playOwner, tests.ApiScenario{
+		Name:           "json template carries the envelope and the placeholder course",
+		Method:         http.MethodGet,
+		URL:            "/api/rounds/import/template",
+		ExpectedStatus: 200,
+		ExpectedContent: []string{
+			`"format":"golftrack-rounds"`,
+			`"version":1`,
+			`"name":"Replace With Your Course Name"`,
+		},
+		AfterTestFunc: func(t testing.TB, app *tests.TestApp, res *http.Response) {
+			if got := res.Header.Get("Content-Disposition"); !strings.Contains(got, "attachment") || !strings.Contains(got, "golftrack-import-template.json") {
+				t.Errorf("Content-Disposition = %q, want the .json template attachment", got)
+			}
+		},
+	})
+
+	runPlay(t, playOwner, tests.ApiScenario{
+		Name:            "csv template carries the header row",
+		Method:          http.MethodGet,
+		URL:             "/api/rounds/import/template?format=csv",
+		ExpectedStatus:  200,
+		ExpectedContent: []string{"round,course_name,course_hole_count,play_mode"},
+	})
+
+	runPlay(t, playOwner, tests.ApiScenario{
+		Name:            "unknown template format is rejected",
+		Method:          http.MethodGet,
+		URL:             "/api/rounds/import/template?format=xml",
+		ExpectedStatus:  400,
+		ExpectedContent: []string{`"error":"Invalid template format: xml"`},
 	})
 }
 

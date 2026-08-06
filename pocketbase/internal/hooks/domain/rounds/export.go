@@ -182,6 +182,54 @@ func exportHoles(app core.App, roundID string) ([]ExportHole, error) {
 	return holes, nil
 }
 
+// TemplateFile is a downloadable example of the import format: one 9-hole
+// round that passes every check Import applies, so a player can replace its
+// values with their own and upload the result. It goes through the same
+// structs and serialisers as a real export, which is what keeps the template
+// from drifting away from the format ParseImport actually reads.
+//
+// The course name is a placeholder on purpose — importing the template
+// unchanged fails with the missing-course error, which is the contract the
+// player's own file has to meet too.
+func TemplateFile() *ExportFile {
+	holes := []ExportHole{
+		{HoleNumber: 1, Par: 4, Shots: []ExportShot{
+			{ShotNumber: 1, Club: "Driver"},
+			{ShotNumber: 2, Club: "7 Iron"},
+			{ShotNumber: 3, Club: "Putter"},
+		}},
+		{HoleNumber: 2, Par: 3, Shots: []ExportShot{
+			{ShotNumber: 1, Club: "8 Iron"},
+			{ShotNumber: 2, Club: collections.ClubPenalty},
+			{ShotNumber: 3, Club: "Wedge"},
+			{ShotNumber: 4, Club: "Putter"},
+		}},
+		// A hole with no shots is allowed — in the CSV it is one row with the
+		// shot columns empty.
+		{HoleNumber: 3, Par: 5},
+	}
+	for number := 4; number <= 9; number++ {
+		holes = append(holes, ExportHole{HoleNumber: number, Par: 4, Shots: []ExportShot{
+			{ShotNumber: 1, Club: "Driver"},
+			{ShotNumber: 2, Club: "Putter"},
+		}})
+	}
+
+	return &ExportFile{
+		Format:     ExportFormat,
+		Version:    ExportVersion,
+		ExportedAt: types.NowDateTime().String(),
+		Rounds: []ExportRound{{
+			Course:     ExportCourse{Name: "Replace With Your Course Name", HoleCount: 9},
+			PlayMode:   collections.PlayModeFull,
+			StartedAt:  "2026-05-04T09:00:00Z",
+			FinishedAt: "2026-05-04T11:15:00Z",
+			Note:       "An optional note about the round",
+			Holes:      holes,
+		}},
+	}
+}
+
 // csvHeader is the CSV column contract. One row per shot; a hole a player
 // recorded no shots on still gets one row, with the shot columns empty, so the
 // file carries the full scorecard shape and not just the holes that were
