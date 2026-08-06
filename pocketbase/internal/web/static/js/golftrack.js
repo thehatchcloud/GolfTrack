@@ -352,6 +352,76 @@ function deleteRound(roundId) {
   };
 }
 
+// roundsTransfer drives the export buttons and the import file input on the
+// rounds list page (GOL-1). Export cannot be a plain link: the session rides
+// in the Authorization header, not the URL, so the file is fetched and handed
+// to the browser as a download.
+function roundsTransfer() {
+  return {
+    exporting: false,
+    importing: false,
+    error: null,
+    skipped: null,
+
+    async exportRounds(format) {
+      if (this.exporting) return;
+      this.exporting = true;
+      this.error = null;
+      this.skipped = null;
+      try {
+        var headers = {};
+        var token = window.gt.token();
+        if (token) headers['Authorization'] = token;
+        var res = await fetch('/api/rounds/export?format=' + format, { headers: headers });
+        if (!res.ok) {
+          var data = null;
+          try { data = await res.json(); } catch (_e) { data = null; }
+          throw new Error((data && (data.error || data.message)) || 'Export failed');
+        }
+        var blob = await res.blob();
+        var url = URL.createObjectURL(blob);
+        var link = document.createElement('a');
+        link.href = url;
+        link.download = 'golftrack-rounds-' + new Date().toISOString().slice(0, 10) + '.' + format;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        this.error = e.message;
+      }
+      this.exporting = false;
+    },
+
+    async importFile(event) {
+      var input = event.target;
+      var file = input.files && input.files[0];
+      if (!file || this.importing) return;
+      this.importing = true;
+      this.error = null;
+      this.skipped = null;
+      try {
+        var text = await file.text();
+        var data = await window.gt.api('/api/rounds/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: text,
+        });
+        if (data.imported > 0) {
+          // Reload so the imported rounds render server-side like any others.
+          window.location.reload();
+          return;
+        }
+        this.skipped = data.skipped;
+      } catch (e) {
+        this.error = e.message;
+      }
+      this.importing = false;
+      input.value = '';
+    },
+  };
+}
+
 function roundInputDateTime(value, timeZone) {
   if (!value || typeof value !== 'string') return '';
 
