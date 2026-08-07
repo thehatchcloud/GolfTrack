@@ -109,6 +109,7 @@ func recordURL(collection, id string) string {
 // -----------------------------------------------------------------------------
 
 func TestCoursesAreReadableByAnyAuthenticatedUser(t *testing.T) {
+	t.Parallel()
 	for name, who := range map[string]actor{
 		"regular user": asOwner,
 		"admin":        asAdmin,
@@ -132,6 +133,7 @@ func TestCoursesAreReadableByAnyAuthenticatedUser(t *testing.T) {
 }
 
 func TestCoursesAreHiddenFromAnonymousCallers(t *testing.T) {
+	t.Parallel()
 	run(t, anonymous, tests.ApiScenario{
 		Name:               "anonymous course list is empty",
 		Method:             http.MethodGet,
@@ -150,6 +152,7 @@ func TestCoursesAreHiddenFromAnonymousCallers(t *testing.T) {
 }
 
 func TestOnlyAdminsCanWriteCourses(t *testing.T) {
+	t.Parallel()
 	const newCourse = `{"name":"Written Course","hole_count":9}`
 
 	run(t, asOwner, tests.ApiScenario{
@@ -212,6 +215,7 @@ func TestOnlyAdminsCanWriteCourses(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestRoundsAreScopedToTheirOwner(t *testing.T) {
+	t.Parallel()
 	run(t, asOwner, tests.ApiScenario{
 		Name:               "owner lists only their own round",
 		Method:             http.MethodGet,
@@ -245,6 +249,7 @@ func TestRoundsAreScopedToTheirOwner(t *testing.T) {
 }
 
 func TestAdminsReadEveryRound(t *testing.T) {
+	t.Parallel()
 	run(t, asAdmin, tests.ApiScenario{
 		Name:            "admin lists every round",
 		Method:          http.MethodGet,
@@ -264,6 +269,7 @@ func TestAdminsReadEveryRound(t *testing.T) {
 // TestAdminsCannotWriteAnotherUsersRound pins the read/write split: the issue
 // grants admins visibility into every round, not the ability to score one.
 func TestAdminsCannotWriteAnotherUsersRound(t *testing.T) {
+	t.Parallel()
 	run(t, asAdmin, tests.ApiScenario{
 		Name:            "admin cannot update another user's round",
 		Method:          http.MethodPatch,
@@ -289,6 +295,7 @@ func TestAdminsCannotWriteAnotherUsersRound(t *testing.T) {
 }
 
 func TestRoundsCannotBeCreatedOrReassignedForAnotherUser(t *testing.T) {
+	t.Parallel()
 	run(t, asOwner, tests.ApiScenario{
 		Name:   "cannot create a round owned by someone else",
 		Method: http.MethodPost,
@@ -321,6 +328,7 @@ func TestRoundsCannotBeCreatedOrReassignedForAnotherUser(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestRoundHolesFollowTheirRound(t *testing.T) {
+	t.Parallel()
 	run(t, asOwner, tests.ApiScenario{
 		Name:               "owner lists only their own holes",
 		Method:             http.MethodGet,
@@ -364,6 +372,7 @@ func TestRoundHolesFollowTheirRound(t *testing.T) {
 // TestShotsFollowTheirRoundThroughTwoRelations exercises the deepest rule in the
 // schema: shots reach their owner across round_hole -> round -> user.
 func TestShotsFollowTheirRoundThroughTwoRelations(t *testing.T) {
+	t.Parallel()
 	run(t, asOwner, tests.ApiScenario{
 		Name:               "owner lists only their own shots",
 		Method:             http.MethodGet,
@@ -423,6 +432,7 @@ func TestShotsFollowTheirRoundThroughTwoRelations(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestUsersSeeOnlyThemselvesUnlessAdmin(t *testing.T) {
+	t.Parallel()
 	run(t, asOwner, tests.ApiScenario{
 		Name:               "user lists only their own record",
 		Method:             http.MethodGet,
@@ -467,6 +477,7 @@ func TestUsersSeeOnlyThemselvesUnlessAdmin(t *testing.T) {
 // `@request.body.role` clause in the update rule any user could grant
 // themselves ADMIN and inherit read access to every round.
 func TestRoleIsNotSelfAssignable(t *testing.T) {
+	t.Parallel()
 	run(t, asOwner, tests.ApiScenario{
 		Name:            "user cannot promote themselves to ADMIN",
 		Method:          http.MethodPatch,
@@ -562,6 +573,7 @@ func TestSignupIsOAuth2Only(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestSuperusersBypassEveryRule(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		collection string
 		totalItems int
@@ -609,6 +621,7 @@ func TestSuperusersBypassEveryRule(t *testing.T) {
 // can silently fall into: `nil`, which makes an endpoint superuser-only and 403s
 // every real caller, and `""`, which makes it public.
 func TestEveryCollectionHasExplicitRules(t *testing.T) {
+	t.Parallel()
 	app := newTestApp(t)
 
 	for _, name := range collections.Names {

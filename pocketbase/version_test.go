@@ -13,6 +13,7 @@ import (
 // through this sibling route instead, mirroring the Django app's
 // /api/health {"version": ...} field.
 func TestVersionRoute(t *testing.T) {
+	t.Parallel()
 	runPlay(t, nil, tests.ApiScenario{
 		Name:            "version is unauthenticated and reports a build version",
 		Method:          http.MethodGet,

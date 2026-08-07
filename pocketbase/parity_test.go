@@ -73,6 +73,7 @@ var customRoutes = []customRoute{
 // NotFound — so another player's round is 404 with the contract's error body,
 // never 403 and never a leak of whether the id exists.
 func TestCustomRoutesEnforceOwnership(t *testing.T) {
+	t.Parallel()
 	for _, r := range customRoutes {
 		runPlay(t, playOther, tests.ApiScenario{
 			Name:            "another player " + r.method + " " + r.url,
@@ -95,6 +96,7 @@ func TestCustomRoutesEnforceOwnership(t *testing.T) {
 // Worth stating as a test rather than leaving implicit: "admin" here means
 // course administration, not impersonation.
 func TestCustomRoutesAreNotOpenToAdmins(t *testing.T) {
+	t.Parallel()
 	for name, who := range map[string]func(*playFixture) *core.Record{
 		"admin":     playAdmin,
 		"superuser": playSuperuser,
@@ -117,6 +119,7 @@ func TestCustomRoutesAreNotOpenToAdmins(t *testing.T) {
 // owner, but the round, hole or shot the path names does not exist. The message
 // identifies which part of the path failed, as the contract's does.
 func TestCustomRoutesRejectUnknownIds(t *testing.T) {
+	t.Parallel()
 	missingRound := fixedID("norounds")
 
 	for _, tc := range []struct {
@@ -184,6 +187,7 @@ func assertOwnerRoundUntouched(t testing.TB, app *tests.TestApp, _ *http.Respons
 // much as a record of what the generated endpoints offer in its place. Phase 7
 // (#128) decides which the frontend uses.
 func TestListPagination(t *testing.T) {
+	t.Parallel()
 	roundHoles := recordsURL(collections.NameRoundHoles)
 
 	runPlay(t, playOwner, tests.ApiScenario{
@@ -235,6 +239,7 @@ func TestListPagination(t *testing.T) {
 // `filter=(status='in_progress')&perPage=1`, both of which the rounds list rule
 // has already narrowed to the caller.
 func TestListFiltering(t *testing.T) {
+	t.Parallel()
 	rounds := recordsURL(collections.NameRounds)
 
 	runPlay(t, playOwner, tests.ApiScenario{
@@ -289,6 +294,7 @@ func TestListFiltering(t *testing.T) {
 // TestListSorting covers ordering, including the descending form the contract's
 // round list uses (`-started_at`) and multi-key sorts.
 func TestListSorting(t *testing.T) {
+	t.Parallel()
 	shots := recordsURL(collections.NameShots)
 
 	runPlay(t, playOwner, tests.ApiScenario{
@@ -340,6 +346,7 @@ func TestListSorting(t *testing.T) {
 // keys off 401 to redirect to sign-in sees an empty list instead, so it has to
 // key off the token it holds. Recorded as gap 7 for Phase 7 (#128).
 func TestAnonymousCallerStatusCodes(t *testing.T) {
+	t.Parallel()
 	runPlay(t, nil, tests.ApiScenario{
 		Name:               "unauthenticated list is 200 and empty, not 401",
 		Method:             http.MethodGet,
@@ -363,6 +370,7 @@ func TestAnonymousCallerStatusCodes(t *testing.T) {
 // authenticated caller who is not permitted. Django returns 403; PocketBase
 // returns 404 on update and delete and 400 on create.
 func TestUnauthorisedCallerStatusCodes(t *testing.T) {
+	t.Parallel()
 	runPlay(t, playOther, tests.ApiScenario{
 		Name:            "creating a course as a non-admin is 400, not 403",
 		Method:          http.MethodPost,
@@ -413,6 +421,7 @@ func TestUnauthorisedCallerStatusCodes(t *testing.T) {
 // parity Phase 1 was briefed on — or fronting the reads with custom routes that
 // transform, which is what Phase 3 did for the routes it built.
 func TestGeneratedEndpointsReturnSnakeCase(t *testing.T) {
+	t.Parallel()
 	runPlay(t, playOwner, tests.ApiScenario{
 		Name:           "a course lists its columns, not the contract's names",
 		Method:         http.MethodGet,
@@ -438,6 +447,7 @@ func TestGeneratedEndpointsReturnSnakeCase(t *testing.T) {
 // is "closed on the custom routes": every Phase 3 route reads and writes the
 // contract's names.
 func TestCustomRoutesReturnCamelCase(t *testing.T) {
+	t.Parallel()
 	runPlay(t, playOwner, tests.ApiScenario{
 		Name:               "the hole payload uses the contract's names",
 		Method:             http.MethodPost,
@@ -470,6 +480,7 @@ func TestCustomRoutesReturnCamelCase(t *testing.T) {
 // route that can emit null, which is the argument for assembling RoundOut in a
 // custom route in Phase 7 (#128).
 func TestUnsetNumbersComeBackAsZero(t *testing.T) {
+	t.Parallel()
 	runPlay(t, playOwner, tests.ApiScenario{
 		Name:           "an in-progress round has zeroes where the contract has nulls",
 		Method:         http.MethodGet,
@@ -490,6 +501,7 @@ func TestUnsetNumbersComeBackAsZero(t *testing.T) {
 // The custom routes already return the string form, so the decision is not
 // deferrable past the data migration.
 func TestRecordIdsAreStrings(t *testing.T) {
+	t.Parallel()
 	if len(idPlayRound) != 15 {
 		t.Fatalf("fixture id %q is %d characters, want 15", idPlayRound, len(idPlayRound))
 	}
@@ -527,6 +539,7 @@ func TestRecordIdsAreStrings(t *testing.T) {
 // `holes` and `shots` inline in camelCase. So the detail payload is a
 // transformation away from the contract, not a second round trip away.
 func TestRelationsAreIdsPlusExpand(t *testing.T) {
+	t.Parallel()
 	runPlay(t, playOwner, tests.ApiScenario{
 		Name:               "a relation is an id by default",
 		Method:             http.MethodGet,
@@ -563,6 +576,7 @@ func TestRelationsAreIdsPlusExpand(t *testing.T) {
 // `{"data": {…}, "message": …, "status": …}`. Custom routes go through
 // internal/apierr and so match; the generated endpoints do not.
 func TestErrorBodyShapes(t *testing.T) {
+	t.Parallel()
 	runPlay(t, playOwner, tests.ApiScenario{
 		Name:               "a generated endpoint uses PocketBase's shape",
 		Method:             http.MethodGet,
@@ -591,6 +605,7 @@ func TestErrorBodyShapes(t *testing.T) {
 // This is the concrete argument for `POST /api/rounds/` staying a custom route
 // rather than the frontend posting records directly.
 func TestConstraintViolationStatusCodes(t *testing.T) {
+	t.Parallel()
 	secondRound := `{"user":"` + idOwner + `","course":"` + idPlayCourse +
 		`","status":"in_progress","play_mode":"full","current_hole":1,"started_at":"2026-01-01 10:00:00.000Z"}`
 
@@ -620,6 +635,7 @@ func TestConstraintViolationStatusCodes(t *testing.T) {
 // shape is asserted here rather than left to be discovered by a failing
 // container health check.
 func TestHealthEndpointShape(t *testing.T) {
+	t.Parallel()
 	runPlay(t, nil, tests.ApiScenario{
 		Name:               "health is unauthenticated and uses PocketBase's envelope",
 		Method:             http.MethodGet,
@@ -638,6 +654,7 @@ func TestHealthEndpointShape(t *testing.T) {
 // route that quietly starts answering 200 where the frontend expects 201 fails
 // here rather than in the browser.
 func TestSuccessStatusCodes(t *testing.T) {
+	t.Parallel()
 	// 201 — only round creation returns it; everything else is 200.
 	runPlay(t, playOther, tests.ApiScenario{
 		Name:            "POST /api/rounds/ is 201",

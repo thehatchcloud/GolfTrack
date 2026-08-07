@@ -141,6 +141,7 @@ func playOther(f *playFixture) *core.Record { return f.other }
 // because a list rule filters rather than gates. The custom routes restore the
 // 401 the current contract returns (API.md, seventh parity gap).
 func TestCustomRoutesRequireAuth(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		method string
 		url    string
@@ -174,6 +175,7 @@ func TestCustomRoutesRequireAuth(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestCreateRoundRoute(t *testing.T) {
+	t.Parallel()
 	runPlay(t, playOther, tests.ApiScenario{
 		Name:            "start a round",
 		Method:          http.MethodPost,
@@ -252,6 +254,7 @@ func TestCreateRoundRoute(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestCompleteRoundRoute(t *testing.T) {
+	t.Parallel()
 	runPlay(t, playOwner, tests.ApiScenario{
 		Name:            "complete the round",
 		Method:          http.MethodPost,
@@ -319,6 +322,7 @@ func TestCompleteRoundRoute(t *testing.T) {
 }
 
 func TestCancelRoundRoute(t *testing.T) {
+	t.Parallel()
 	runPlay(t, playOwner, tests.ApiScenario{
 		Name:            "cancel the round",
 		Method:          http.MethodPost,
@@ -349,6 +353,7 @@ func TestCancelRoundRoute(t *testing.T) {
 }
 
 func TestDeleteRoundRoute(t *testing.T) {
+	t.Parallel()
 	runPlay(t, playOwner, tests.ApiScenario{
 		Name:            "delete a finished round",
 		Method:          http.MethodDelete,
@@ -372,6 +377,7 @@ func TestDeleteRoundRoute(t *testing.T) {
 }
 
 func TestCurrentHoleRoute(t *testing.T) {
+	t.Parallel()
 	runPlay(t, playOwner, tests.ApiScenario{
 		Name:            "move to another hole",
 		Method:          http.MethodPatch,
@@ -405,6 +411,7 @@ func TestCurrentHoleRoute(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestAddShotRoute(t *testing.T) {
+	t.Parallel()
 	runPlay(t, playOwner, tests.ApiScenario{
 		Name:   "add the first shot on an empty hole",
 		Method: http.MethodPost,
@@ -465,6 +472,7 @@ func TestAddShotRoute(t *testing.T) {
 }
 
 func TestUndoRoute(t *testing.T) {
+	t.Parallel()
 	runPlay(t, playOwner, tests.ApiScenario{
 		Name:            "undo the last shot",
 		Method:          http.MethodPost,
@@ -485,6 +493,7 @@ func TestUndoRoute(t *testing.T) {
 }
 
 func TestUpdateShotRoute(t *testing.T) {
+	t.Parallel()
 	runPlay(t, playOwner, tests.ApiScenario{
 		Name:            "re-club a shot",
 		Method:          http.MethodPatch,
@@ -507,6 +516,7 @@ func TestUpdateShotRoute(t *testing.T) {
 // TestDeleteShotRouteRenumbers is the endpoint-level view of the renumbering
 // rule: deleting shot 2 of 3 leaves 1 and 2, in their original order.
 func TestDeleteShotRouteRenumbers(t *testing.T) {
+	t.Parallel()
 	runPlay(t, playOwner, tests.ApiScenario{
 		Name:            "delete a mid-hole shot",
 		Method:          http.MethodDelete,
@@ -537,6 +547,7 @@ func TestDeleteShotRouteRenumbers(t *testing.T) {
 // carry it too — which is the only reason a Phase 3 rule can be observed on an
 // endpoint Phase 3 does not own.
 func TestCourseTotalParIsDerivedPerResponse(t *testing.T) {
+	t.Parallel()
 	runPlay(t, playOwner, tests.ApiScenario{
 		Name:            "view an 18-hole course",
 		Method:          http.MethodGet,

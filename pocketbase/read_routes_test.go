@@ -29,6 +29,7 @@ import (
 // either, and the courses collection's read rule is already open to anyone
 // (README.md § "Access rules").
 func TestCourseReadRoutesReturnCamelCase(t *testing.T) {
+	t.Parallel()
 	runPlay(t, nil, tests.ApiScenario{
 		Name:           "an anonymous caller can list courses",
 		Method:         http.MethodGet,
@@ -80,6 +81,7 @@ func TestCourseReadRoutesReturnCamelCase(t *testing.T) {
 // the read path: camelCase field names, and the course (with its own holes)
 // nested inline rather than an id plus `?expand=`.
 func TestRoundDetailRouteReturnsCamelCaseAndNestedCourse(t *testing.T) {
+	t.Parallel()
 	runPlay(t, playOwner, tests.ApiScenario{
 		Name:           "a round detail nests its course and its own holes",
 		Method:         http.MethodGet,
@@ -104,6 +106,7 @@ func TestRoundDetailRouteReturnsCamelCaseAndNestedCourse(t *testing.T) {
 // frontend that renders `relativeToPar === 0` as "E" would show an unfinished
 // round as even par.
 func TestRoundDetailRouteEmitsNullForUnsetTotals(t *testing.T) {
+	t.Parallel()
 	runPlay(t, playOwner, tests.ApiScenario{
 		Name:           "an in-progress round has nulls, not zeroes",
 		Method:         http.MethodGet,
@@ -120,6 +123,7 @@ func TestRoundDetailRouteEmitsNullForUnsetTotals(t *testing.T) {
 // round is completed the four fields are real values, not nulls plucked out of
 // thin air.
 func TestRoundDetailRouteReturnsRealTotalsWhenCompleted(t *testing.T) {
+	t.Parallel()
 	runPlay(t, playOwner, tests.ApiScenario{
 		Name:           "a completed round reports its real totals",
 		Method:         http.MethodGet,
@@ -135,6 +139,7 @@ func TestRoundDetailRouteReturnsRealTotalsWhenCompleted(t *testing.T) {
 // TestRoundListRouteReturnsOnlyCompletedRounds is Django's list_completed:
 // only the caller's completed rounds, never one still in progress.
 func TestRoundListRouteReturnsOnlyCompletedRounds(t *testing.T) {
+	t.Parallel()
 	runPlay(t, playOwner, tests.ApiScenario{
 		Name:           "the round list has the completed round, not the in-progress one",
 		Method:         http.MethodGet,
@@ -151,6 +156,7 @@ func TestRoundListRouteReturnsOnlyCompletedRounds(t *testing.T) {
 // resumable round needs: a request that succeeds and answers `null`, rather
 // than the frontend inferring "no round" from a 404.
 func TestInProgressRouteReturnsNullWithNoRound(t *testing.T) {
+	t.Parallel()
 	runPlay(t, playOther, tests.ApiScenario{
 		Name:            "a player with no rounds sees null, not 404",
 		Method:          http.MethodGet,
@@ -163,6 +169,7 @@ func TestInProgressRouteReturnsNullWithNoRound(t *testing.T) {
 // TestInProgressRouteReturnsTheDetailShape is the resume path: the same
 // RoundDetailOut shape as GET /api/rounds/{id}.
 func TestInProgressRouteReturnsTheDetailShape(t *testing.T) {
+	t.Parallel()
 	runPlay(t, playOwner, tests.ApiScenario{
 		Name:           "the in-progress round is returned in the detail shape",
 		Method:         http.MethodGet,

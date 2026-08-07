@@ -83,6 +83,7 @@ func workflowRequest(t *testing.T, mux http.Handler, headers map[string]string, 
 // hole) -> complete -> home again (in-progress is gone) -> review (round
 // detail, and the round appears in the completed list).
 func TestFrontendWorkflowStartPlayCompleteReview(t *testing.T) {
+	t.Parallel()
 	mux, f := workflowServer(t)
 	headers := authHeader(t, f.other) // f.other owns nothing yet; see newPlayFixture
 
@@ -192,6 +193,7 @@ func TestFrontendWorkflowStartPlayCompleteReview(t *testing.T) {
 // is also the one leg that crosses from the custom routes into PocketBase's own
 // endpoint, in the shape a frontend would have to handle.
 func TestFrontendWorkflowCourseAdmin(t *testing.T) {
+	t.Parallel()
 	mux, f := workflowServer(t)
 	admin := authHeader(t, f.admin)
 
@@ -284,6 +286,7 @@ func TestFrontendWorkflowCourseAdmin(t *testing.T) {
 // TestFrontendWorkflowCancel walks: start a round, then cancel it instead of
 // finishing — the review list must never see it.
 func TestFrontendWorkflowCancel(t *testing.T) {
+	t.Parallel()
 	mux, f := workflowServer(t)
 	headers := authHeader(t, f.other)
 

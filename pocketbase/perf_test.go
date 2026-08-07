@@ -225,6 +225,7 @@ func (f *perfFixture) cookie(tb testing.TB) map[string]string { return authCooki
 // Before this phase the round-detail route was 2 statements per hole plus 2 per
 // round; the large fixture cost 40 statements to the small one's 22.
 func TestReadPathsDoNotQueryPerRecord(t *testing.T) {
+	t.Parallel()
 	small := newPerfFixture(t, smallScale)
 	large := newPerfFixture(t, largeScale)
 
@@ -262,6 +263,7 @@ func TestReadPathsDoNotQueryPerRecord(t *testing.T) {
 // its holes and the club list in one response — so a regression could land on
 // the page path alone.
 func TestPagesDoNotQueryPerRecord(t *testing.T) {
+	t.Parallel()
 	small := newPerfFixture(t, smallScale)
 	large := newPerfFixture(t, largeScale)
 
@@ -305,6 +307,7 @@ func TestPagesDoNotQueryPerRecord(t *testing.T) {
 // route returns the hole with all of its shots — a per-shot lookup in that
 // response would only show up once the hole is deep.
 func TestAddShotCostIsFlat(t *testing.T) {
+	t.Parallel()
 	f := newPerfFixture(t, largeScale)
 	headers := f.auth(t)
 
@@ -351,6 +354,7 @@ func TestAddShotCostIsFlat(t *testing.T) {
 // that is small by construction and never grows — none of these are — so any
 // occurrence here is a missing index.
 func TestHotQueriesUseAnIndex(t *testing.T) {
+	t.Parallel()
 	f := newPerfFixture(t, largeScale)
 
 	for _, tc := range []struct {
@@ -450,6 +454,9 @@ func TestHotQueriesUseAnIndex(t *testing.T) {
 // that taught the reader nothing. What it catches is the shape a real leak has:
 // retained bytes proportional to requests served.
 func TestSustainedTrafficDoesNotLeak(t *testing.T) {
+	// Not t.Parallel(): runtime.NumGoroutine() and the heap stats below are
+	// process-wide, so a sibling test allocating or spawning goroutines during
+	// this one's measurement window would produce a false failure.
 	f := newLoadFixture(t, 4)
 	workload := append(readWorkload(), writeWorkload()...)
 

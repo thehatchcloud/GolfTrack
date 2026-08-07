@@ -70,6 +70,7 @@ func authCookie(t testing.TB, record *core.Record) map[string]string {
 // TestPagesLoadForASignedInPlayer is the gate item: every route in the plan's
 // page table renders for a signed-in user, with the content that page is for.
 func TestPagesLoadForASignedInPlayer(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name    string
 		url     string
@@ -101,6 +102,7 @@ func TestPagesLoadForASignedInPlayer(t *testing.T) {
 // TestAdminPagesLoadForAnAdmin covers the three admin-only routes, which the
 // player above cannot reach at all.
 func TestAdminPagesLoadForAnAdmin(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name    string
 		url     string
@@ -126,6 +128,7 @@ func TestAdminPagesLoadForAnAdmin(t *testing.T) {
 // button that cannot work — the same closed baseline authconfig.go logs about
 // at startup.
 func TestSignInPageRendersTheConfiguredProviders(t *testing.T) {
+	t.Parallel()
 	runWeb(t, nil, tests.ApiScenario{
 		Name:            "the sign-in page renders",
 		Method:          http.MethodGet,
@@ -140,6 +143,7 @@ func TestSignInPageRendersTheConfiguredProviders(t *testing.T) {
 // reason. A migration that quietly closed these would be a behaviour change
 // nobody asked for.
 func TestCoursePagesAreOpenToAnonymousVisitors(t *testing.T) {
+	t.Parallel()
 	runWeb(t, nil, tests.ApiScenario{
 		Name:               "an anonymous visitor can list courses",
 		Method:             http.MethodGet,
@@ -165,6 +169,7 @@ func TestCoursePagesAreOpenToAnonymousVisitors(t *testing.T) {
 // TestGatedPagesRedirectASignedOutVisitor ports @login_required_view, including
 // the `?next=` that sends the visitor back where they were going.
 func TestGatedPagesRedirectASignedOutVisitor(t *testing.T) {
+	t.Parallel()
 	for _, path := range []string{
 		"/rounds/",
 		"/rounds/new/",
@@ -197,6 +202,7 @@ func TestGatedPagesRedirectASignedOutVisitor(t *testing.T) {
 // signed-in player is not redirected — they are refused, the way Django's
 // HttpResponseForbidden does.
 func TestAdminPagesRefuseANonAdmin(t *testing.T) {
+	t.Parallel()
 	for _, path := range []string{
 		"/courses/new/",
 		"/courses/archived/",
@@ -217,6 +223,7 @@ func TestAdminPagesRefuseANonAdmin(t *testing.T) {
 // The rounds queries scope by user, so somebody else's round is a 404 page —
 // never a render, and never a hint that the id exists.
 func TestRoundPagesDoNotLeakAnotherPlayersRound(t *testing.T) {
+	t.Parallel()
 	for _, path := range []string{
 		"/rounds/" + idPlayRound + "/",
 		"/rounds/" + idPlayRound + "/play/",
@@ -236,6 +243,7 @@ func TestRoundPagesDoNotLeakAnotherPlayersRound(t *testing.T) {
 // TestUnknownPageIsA404Page covers the other 404: a path that is not a route
 // at all still lands on GolfTrack's page rather than PocketBase's JSON.
 func TestUnknownPageIsA404Page(t *testing.T) {
+	t.Parallel()
 	runWeb(t, playOwner, tests.ApiScenario{
 		Name:            "an unknown course id",
 		Method:          http.MethodGet,
@@ -255,6 +263,7 @@ func TestUnknownPageIsA404Page(t *testing.T) {
 // server ignores that half entirely: the token is verified and the role is
 // re-read from the database, so the admin page still refuses them.
 func TestTamperedCookieRecordCannotGrantAdmin(t *testing.T) {
+	t.Parallel()
 	scenario := tests.ApiScenario{
 		Name:               "a cookie claiming ADMIN does not open the admin page",
 		Method:             http.MethodGet,
@@ -293,6 +302,7 @@ func TestTamperedCookieRecordCannotGrantAdmin(t *testing.T) {
 // to "no session" rather than to an error page, because a signed-out visitor is
 // something every page already knows how to handle.
 func TestGarbageCookieIsTreatedAsSignedOut(t *testing.T) {
+	t.Parallel()
 	for name, cookie := range map[string]string{
 		"not JSON":       "pb_auth=" + url.QueryEscape("nonsense"),
 		"no token":       "pb_auth=" + url.QueryEscape(`{"record":{"id":"x"}}`),
@@ -318,6 +328,7 @@ func TestGarbageCookieIsTreatedAsSignedOut(t *testing.T) {
 // the CSS, the vendored scripts, the manifest and the icons all come out of the
 // embedded FS, with no filesystem or CDN involved.
 func TestStaticAssetsAreServedFromTheBinary(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		path    string
 		content []string
@@ -343,6 +354,7 @@ func TestStaticAssetsAreServedFromTheBinary(t *testing.T) {
 // the apple touch icon and the (regular + maskable) PWA icons referenced from
 // base.html and the manifest all resolve from the embedded FS.
 func TestIconsAreServedFromTheBinary(t *testing.T) {
+	t.Parallel()
 	for _, path := range []string{
 		"/static/icons/favicon-16.png",
 		"/static/icons/favicon-32.png",
@@ -367,6 +379,7 @@ func TestIconsAreServedFromTheBinary(t *testing.T) {
 // Django base template pulled Alpine and htmx from unpkg.com, which an
 // installed PWA cannot rely on.
 func TestPagesLoadNothingFromACDN(t *testing.T) {
+	t.Parallel()
 	for _, path := range []string{"/", "/courses/", "/rounds/", "/rounds/" + idPlayRound + "/play/"} {
 		runWeb(t, playOwner, tests.ApiScenario{
 			Name:            "no external origins on " + path,
@@ -398,6 +411,7 @@ func TestPagesLoadNothingFromACDN(t *testing.T) {
 // `<meta name="csrf-token">` and its uses are gone, because auth is a bearer
 // token and no page route accepts a write.
 func TestPagesCarryNoCSRFPlumbing(t *testing.T) {
+	t.Parallel()
 	runWeb(t, playOwner, tests.ApiScenario{
 		Name:               "the play page has no CSRF token",
 		Method:             http.MethodGet,
@@ -411,6 +425,7 @@ func TestPagesCarryNoCSRFPlumbing(t *testing.T) {
 // TestSlashlessPathsRedirect is Django's APPEND_SLASH, kept so that a link or
 // bookmark written without the trailing slash still lands.
 func TestSlashlessPathsRedirect(t *testing.T) {
+	t.Parallel()
 	for _, path := range []string{"/courses", "/rounds", "/settings", "/settings/export", "/settings/import", "/accounts/login"} {
 		runWeb(t, playOwner, tests.ApiScenario{
 			Name:           path + " redirects onto the trailing slash",
@@ -431,6 +446,7 @@ func TestSlashlessPathsRedirect(t *testing.T) {
 // the round, and it has to be the same RoundDetailOut shape the API returns or
 // round-play.js reads the wrong field names.
 func TestPlayPageBootstrapsTheRoundAsJSON(t *testing.T) {
+	t.Parallel()
 	runWeb(t, playOwner, tests.ApiScenario{
 		Name:           "the play page embeds the round",
 		Method:         http.MethodGet,
@@ -448,6 +464,7 @@ func TestPlayPageBootstrapsTheRoundAsJSON(t *testing.T) {
 // place `null` totals reach a template: a round in progress has no score to
 // show, and must not render as even par.
 func TestHomePageShowsTheResumableRound(t *testing.T) {
+	t.Parallel()
 	runWeb(t, playOwner, tests.ApiScenario{
 		Name:            "home offers the in-progress round",
 		Method:          http.MethodGet,
@@ -470,6 +487,7 @@ func TestHomePageShowsTheResumableRound(t *testing.T) {
 // page, which no page test above would otherwise notice if it only checked for
 // a string that happens to be in the layout too.
 func TestTemplatesRenderEveryPageWithoutAnErrorPage(t *testing.T) {
+	t.Parallel()
 	for _, path := range []string{
 		"/", "/courses/", "/courses/" + idPlayCourse + "/", "/rounds/", "/rounds/new/",
 		"/rounds/" + idDoneRound + "/", "/rounds/" + idPlayRound + "/play/",
