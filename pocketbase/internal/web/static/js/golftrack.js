@@ -542,3 +542,13 @@ function buildTimeZoneOptions(selectedTimeZone) {
 
   return options;
 }
+
+// Register the service worker so the app can cache static assets and serve
+// the round-play page when the golfer has no network connection.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('/sw.js').catch(function () {
+      // Fail silently — the page works without the service worker.
+    });
+  });
+}

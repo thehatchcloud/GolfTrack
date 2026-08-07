@@ -51,6 +51,18 @@
           {{end}}
         </nav>
       </header>
+      {{/* Offline indicator — appears only when the browser reports no network
+           connection. Alpine reads navigator.onLine on init and then reacts to
+           the window online/offline events, so it tracks connectivity changes
+           without polling. x-cloak prevents a flash on page load. */}}
+      <div x-data="{ online: navigator.onLine }"
+           @online.window="online = true"
+           @offline.window="online = false"
+           x-show="!online"
+           x-cloak
+           class="bg-amber-500 px-4 py-1.5 text-center text-xs font-medium text-white">
+        Offline — your shots are saved locally and will sync when you reconnect
+      </div>
       <main class="flex-1 px-4 py-6">{{block "content" .}}{{end}}</main>
       <footer class="px-4 py-3 text-center text-xs text-stone-400">{{.Version}}</footer>
     </div>
