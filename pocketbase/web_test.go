@@ -83,6 +83,9 @@ func TestPagesLoadForASignedInPlayer(t *testing.T) {
 		{"round detail", "/rounds/" + idDoneRound + "/", []string{"Completed Round", "Delete Round", "Hole by hole"}},
 		{"round play", "/rounds/" + idPlayRound + "/play/", []string{"round-init", "Add a shot", "Driver", "Review Round"}},
 		{"round review", "/rounds/" + idPlayRound + "/review/", []string{"Review Round", "Round timing", "Times shown in America/New_York.", "Start time", "End time", "Round notes", "Submit Round"}},
+		{"settings", "/settings/", []string{"Settings", "Import", "Export", "Sign Out"}},
+		{"settings export", "/settings/export/", []string{"Export", "Export JSON", "Export CSV"}},
+		{"settings import", "/settings/import/", []string{"Import", "Import file", "JSON template", "CSV template"}},
 		{"sign out", "/accounts/logout/", []string{"Sign out?"}},
 	} {
 		runWeb(t, playOwner, tests.ApiScenario{
@@ -168,6 +171,9 @@ func TestGatedPagesRedirectASignedOutVisitor(t *testing.T) {
 		"/rounds/" + idPlayRound + "/",
 		"/rounds/" + idPlayRound + "/play/",
 		"/rounds/" + idPlayRound + "/review/",
+		"/settings/",
+		"/settings/export/",
+		"/settings/import/",
 		"/courses/new/",
 		"/courses/archived/",
 		"/courses/" + idPlayCourse + "/edit/",
@@ -405,7 +411,7 @@ func TestPagesCarryNoCSRFPlumbing(t *testing.T) {
 // TestSlashlessPathsRedirect is Django's APPEND_SLASH, kept so that a link or
 // bookmark written without the trailing slash still lands.
 func TestSlashlessPathsRedirect(t *testing.T) {
-	for _, path := range []string{"/courses", "/rounds", "/accounts/login"} {
+	for _, path := range []string{"/courses", "/rounds", "/settings", "/settings/export", "/settings/import", "/accounts/login"} {
 		runWeb(t, playOwner, tests.ApiScenario{
 			Name:           path + " redirects onto the trailing slash",
 			Method:         http.MethodGet,
@@ -467,7 +473,8 @@ func TestTemplatesRenderEveryPageWithoutAnErrorPage(t *testing.T) {
 	for _, path := range []string{
 		"/", "/courses/", "/courses/" + idPlayCourse + "/", "/rounds/", "/rounds/new/",
 		"/rounds/" + idDoneRound + "/", "/rounds/" + idPlayRound + "/play/",
-		"/rounds/" + idPlayRound + "/review/", "/accounts/logout/",
+		"/rounds/" + idPlayRound + "/review/", "/settings/", "/settings/export/",
+		"/settings/import/", "/accounts/logout/",
 	} {
 		runWeb(t, playOwner, tests.ApiScenario{
 			Name:               "no error page at " + path,

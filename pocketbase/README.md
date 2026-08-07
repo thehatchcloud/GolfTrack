@@ -49,6 +49,7 @@ pocketbase/
 ├── loadtest_test.go      # 10/50/100 concurrent players (gated; see Performance)
 ├── performance_report.md # the performance measurements and what they mean
 ├── concurrency_test.go   # the races: two writers on one hole or one player
+├── export_import_test.go # round export/import: cross-instance round trips
 ├── course_write_routes_test.go # the course write routes, HTTP + reconciliation
 ├── frontend_workflow_test.go   # each workflow as a request sequence
 ├── read_routes_test.go   # the custom read routes' shapes
@@ -147,11 +148,13 @@ hand to a browser.
 | `/courses/archived/` | admin |
 | `/rounds/`, `/rounds/new/` | signed in |
 | `/rounds/{id}/`, `/rounds/{id}/play/`, `/rounds/{id}/review/` | signed in |
+| `/settings/`, `/settings/export/`, `/settings/import/` | signed in |
 | `/accounts/login/`, `/accounts/logout/` | open |
 
 The course pages are open because `GET /api/courses` is unauthenticated and
-viewing courses does not require sign-in. Everything under `/rounds/`
-redirects a signed-out visitor to `/accounts/login/?next=…`, and the admin
+viewing courses does not require sign-in. Everything under `/rounds/` and
+`/settings/` redirects a signed-out visitor to `/accounts/login/?next=…`,
+and the admin
 pages answer a signed-in non-admin with the 403 page.
 
 Three properties are worth stating outright, because they shape the design:
@@ -551,6 +554,7 @@ that could drift from it.
 | `perf_test.go` | how many statements each read path issues, counted at two data sizes so an N+1 shows up as a number that moves; the query plan of every hot query; and that sustained traffic leaks neither heap nor goroutines |
 | `loadtest_test.go` | 10/50/100 concurrent players, reads, writes and both — gated on `GOLFTRACK_LOADTEST`, because seeding a hundred players costs more than the rest of this directory put together |
 | `concurrency_test.go` | two writers on one hole, one player starting two rounds, delete racing delete |
+| `export_import_test.go` | round export/import (GOL-1): the JSON and CSV round trips across two separate app instances, the missing-course and hole-count-mismatch rejections, duplicate skipping, per-round validation, the import template's validity in both formats, and the routes' 401/400/409s |
 | `internal/hooks/domain/scoring/scoring_test.go` | the totals arithmetic, as plain unit tests |
 | `testapp_test.go` | the harness: seeded app, fixture builders, auth tokens |
 | `scripts/browser-walkthrough.mjs` | the seven workflows in a real Chromium — the one check that runs the JavaScript. Manual: it needs a seeded instance, so it is not part of `make pb-test` |

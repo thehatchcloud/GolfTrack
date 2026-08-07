@@ -83,8 +83,36 @@ its own record id:
 | `POST` | `/api/rounds/{id}/holes/{n}/undo` | remove the hole's highest-numbered shot |
 | `PATCH` | `/api/rounds/{id}/holes/{n}/shots/{shotId}` | re-club a shot |
 | `DELETE` | `/api/rounds/{id}/holes/{n}/shots/{shotId}` | delete a shot and close the numbering gap |
+| `GET` | `/api/rounds/export?format=json\|csv` | the caller's completed rounds as a downloadable file (default `json`) |
+| `POST` | `/api/rounds/import` | an export file (either format) in the request body; rebuilds the rounds for the caller |
+| `GET` | `/api/rounds/import/template?format=json\|csv` | a filled-in example of the import format, for building a file by hand (default `json`) |
 
-`ARCHITECTURE.md` covers what each does; `routes_test.go` exercises them.
+`ARCHITECTURE.md` covers what each does; `routes_test.go` exercises them
+(`export_import_test.go` for the last three).
+
+### Export/import file contract
+
+The export file identifies a round's course by **name and hole count**, never
+by record id — ids are instance-local, and the import contract is "the same
+course exists in the receiving instance". Import responds
+`{"imported": n, "skipped": n}`; a round the caller already has (same course,
+same `startedAt`, completed) is skipped, so re-importing a file is idempotent.
+Errors are the usual `{"error": …}` 400s: a course that does not exist here
+(or exists with a different hole count) is named in the message, one message
+covering every unmatchable course in the file. Import is transactional — an
+invalid file imports nothing. A 409 is returned while the caller has a round
+in progress, because each imported round passes through the in-progress state
+the one-per-user index guards. Hole pars travel in the file (they are the
+round's snapshot, not the course's current values); hole strokes deliberately
+do not — `round_holes.strokes` is a cache of the hole's shot count, so it is
+recomputed by the same hooks that maintain it during play, and the totals are
+re-summed by the scoring package on the way in.
+
+The template route serves a filled-in one-round example built from the same
+structs and serialisers as a real export, so it cannot drift from what the
+import parser reads. Its course name is a placeholder — importing the template
+unchanged fails with the missing-course error, the same contract a hand-built
+file has to meet.
 
 The two course write routes exist for the same reason `POST /api/rounds/`
 does: a course is submitted as one payload and stored across two collections

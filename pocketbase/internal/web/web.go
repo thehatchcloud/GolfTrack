@@ -81,12 +81,17 @@ func Register(app core.App) {
 		e.Router.GET("/rounds/{id}/play/{$}", s.loggedIn(s.roundPlay))
 		e.Router.GET("/rounds/{id}/review/{$}", s.loggedIn(s.roundReview))
 
+		e.Router.GET("/settings/{$}", s.loggedIn(s.settings))
+		e.Router.GET("/settings/export/{$}", s.loggedIn(s.settingsExport))
+		e.Router.GET("/settings/import/{$}", s.loggedIn(s.settingsImport))
+
 		e.Router.GET("/accounts/login/{$}", s.public(s.login))
 		e.Router.GET("/accounts/logout/{$}", s.public(s.logout))
 
 		for _, path := range []string{
 			"/courses", "/courses/new", "/courses/archived", "/courses/{id}", "/courses/{id}/edit",
 			"/rounds", "/rounds/new", "/rounds/{id}", "/rounds/{id}/play", "/rounds/{id}/review",
+			"/settings", "/settings/export", "/settings/import",
 			"/accounts/login", "/accounts/logout",
 		} {
 			e.Router.GET(path, appendSlash)
