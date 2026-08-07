@@ -28,7 +28,7 @@ Stack:
 - cancel in-progress rounds
 - browse completed round history
 - export completed rounds to JSON or CSV, and import them into another
-  GolfTrack instance from the new-round page (the same course must exist
+  GolfTrack instance from the Settings page (the same course must exist
   there); a downloadable template shows the file format for hand-built imports
 
 ## Local development

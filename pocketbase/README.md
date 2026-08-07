@@ -148,11 +148,13 @@ hand to a browser.
 | `/courses/archived/` | admin |
 | `/rounds/`, `/rounds/new/` | signed in |
 | `/rounds/{id}/`, `/rounds/{id}/play/`, `/rounds/{id}/review/` | signed in |
+| `/settings/`, `/settings/export/`, `/settings/import/` | signed in |
 | `/accounts/login/`, `/accounts/logout/` | open |
 
 The course pages are open because `GET /api/courses` is unauthenticated and
-viewing courses does not require sign-in. Everything under `/rounds/`
-redirects a signed-out visitor to `/accounts/login/?next=…`, and the admin
+viewing courses does not require sign-in. Everything under `/rounds/` and
+`/settings/` redirects a signed-out visitor to `/accounts/login/?next=…`,
+and the admin
 pages answer a signed-in non-admin with the 403 page.
 
 Three properties are worth stating outright, because they shape the design:

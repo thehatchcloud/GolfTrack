@@ -356,6 +356,39 @@ func (s *server) roundReview(e *core.RequestEvent, v *viewer) error {
 }
 
 // -----------------------------------------------------------------------------
+// settings
+// -----------------------------------------------------------------------------
+
+// settingsPage is the whole settings section's data: these pages are static
+// markup around Alpine components that talk to the JSON API themselves, so
+// there is nothing to query.
+type settingsPage struct {
+	Layout
+}
+
+// settings is the section index: Import, Export, Sign Out.
+func (s *server) settings(e *core.RequestEvent, v *viewer) error {
+	return s.render(e, http.StatusOK, "settings/index.html", &settingsPage{
+		Layout: s.layout(e, v, "Settings — GolfTrack"),
+	})
+}
+
+// settingsExport hosts the export buttons (GOL-1).
+func (s *server) settingsExport(e *core.RequestEvent, v *viewer) error {
+	return s.render(e, http.StatusOK, "settings/export.html", &settingsPage{
+		Layout: s.layout(e, v, "Export — GolfTrack"),
+	})
+}
+
+// settingsImport hosts the import file picker and the template downloads
+// (GOL-1).
+func (s *server) settingsImport(e *core.RequestEvent, v *viewer) error {
+	return s.render(e, http.StatusOK, "settings/import.html", &settingsPage{
+		Layout: s.layout(e, v, "Import — GolfTrack"),
+	})
+}
+
+// -----------------------------------------------------------------------------
 // accounts
 // -----------------------------------------------------------------------------
 

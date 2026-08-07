@@ -1,0 +1,40 @@
+{{define "title"}}{{.Title}}{{end}}
+
+{{define "content"}}
+<div class="mb-5 flex items-center justify-between">
+  <h1 class="text-xl font-bold">Settings</h1>
+</div>
+
+<ul class="space-y-3">
+  <li>
+    <a href="/settings/import/"
+       class="flex items-center justify-between rounded-2xl border border-stone-200 bg-white p-4 shadow-sm transition hover:border-emerald-300 hover:shadow-md">
+      <div>
+        <p class="font-semibold">Import</p>
+        <p class="text-sm text-stone-500">Bring in completed rounds from a GolfTrack file.</p>
+      </div>
+      <span aria-hidden="true" class="text-stone-400">›</span>
+    </a>
+  </li>
+  <li>
+    <a href="/settings/export/"
+       class="flex items-center justify-between rounded-2xl border border-stone-200 bg-white p-4 shadow-sm transition hover:border-emerald-300 hover:shadow-md">
+      <div>
+        <p class="font-semibold">Export</p>
+        <p class="text-sm text-stone-500">Download your completed rounds as JSON or CSV.</p>
+      </div>
+      <span aria-hidden="true" class="text-stone-400">›</span>
+    </a>
+  </li>
+  <li>
+    <a href="/accounts/logout/"
+       class="flex items-center justify-between rounded-2xl border border-stone-200 bg-white p-4 shadow-sm transition hover:border-emerald-300 hover:shadow-md">
+      <div>
+        <p class="font-semibold">Sign Out</p>
+        <p class="text-sm text-stone-500">End this session on this device.</p>
+      </div>
+      <span aria-hidden="true" class="text-stone-400">›</span>
+    </a>
+  </li>
+</ul>
+{{end}}

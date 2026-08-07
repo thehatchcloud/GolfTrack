@@ -376,7 +376,7 @@ function deleteRound(roundId) {
   };
 }
 
-// roundsExport drives the export buttons on the rounds list page (GOL-1).
+// roundsExport drives the export buttons on /settings/export/ (GOL-1).
 function roundsExport() {
   return {
     exporting: false,
@@ -397,9 +397,8 @@ function roundsExport() {
   };
 }
 
-// roundsImport drives the import file input and the template downloads on the
-// new-round page (GOL-1) — importing lives where a round begins, not on the
-// history list.
+// roundsImport drives the import file input and the template downloads on
+// /settings/import/ (GOL-1).
 function roundsImport() {
   return {
     importing: false,
