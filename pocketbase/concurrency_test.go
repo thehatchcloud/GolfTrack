@@ -49,6 +49,7 @@ func runConcurrently(fns ...func() error) []error {
 }
 
 func TestConcurrentAddShotNeverDuplicatesAShotNumber(t *testing.T) {
+	t.Parallel()
 	g := newGame(t)
 	round := g.start(t)
 	hole := g.hole(t, round, 1)
@@ -92,6 +93,7 @@ func TestConcurrentAddShotNeverDuplicatesAShotNumber(t *testing.T) {
 }
 
 func TestConcurrentCreateRoundAllowsOnlyOne(t *testing.T) {
+	t.Parallel()
 	g := newGame(t)
 
 	errs := runConcurrently(
@@ -132,6 +134,7 @@ func TestConcurrentCreateRoundAllowsOnlyOne(t *testing.T) {
 }
 
 func TestConcurrentDeleteOfTheSameShotAllowsOnlyOne(t *testing.T) {
+	t.Parallel()
 	g := newGame(t)
 	round := g.start(t)
 	hole := g.hole(t, round, 1)
@@ -179,6 +182,7 @@ func TestConcurrentDeleteOfTheSameShotAllowsOnlyOne(t *testing.T) {
 // in-progress round has no precondition a concurrent add can invalidate, so it
 // always succeeds. The add either lands first or is refused as a conflict.
 func TestConcurrentCompleteAndAddShot(t *testing.T) {
+	t.Parallel()
 	g := newGame(t)
 	round := g.start(t)
 	hole := g.hole(t, round, 1)

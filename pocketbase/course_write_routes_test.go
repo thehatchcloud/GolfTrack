@@ -133,6 +133,7 @@ func assertNineAcresUntouched(t testing.TB, app *tests.TestApp, _ *http.Response
 // TestCreateCourseRouteCreatesCourseAndItsHoles is the route's reason to exist:
 // one request, one transaction, a course with a complete hole set.
 func TestCreateCourseRouteCreatesCourseAndItsHoles(t *testing.T) {
+	t.Parallel()
 	runPlay(t, playAdmin, tests.ApiScenario{
 		Name:            "an admin creates an 18-hole course",
 		Method:          http.MethodPost,
@@ -179,6 +180,7 @@ func TestCreateCourseRouteCreatesCourseAndItsHoles(t *testing.T) {
 // the 401 apis.RequireAuth() gives, and a PocketBase superuser is let through —
 // it already bypasses the collection rules the generated endpoints enforce.
 func TestCreateCourseRouteIsAdminOnly(t *testing.T) {
+	t.Parallel()
 	runPlay(t, nil, tests.ApiScenario{
 		Name:           "an anonymous caller cannot create a course",
 		Method:         http.MethodPost,
@@ -222,6 +224,7 @@ func TestCreateCourseRouteIsAdminOnly(t *testing.T) {
 // transaction — and the reason a rejected 18-hole course cannot leave a
 // nameless, holeless course behind.
 func TestCreateCourseRouteRejectsInvalidPayloads(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name    string
 		body    string
@@ -317,6 +320,7 @@ func holesJSON(count, par int) string {
 // TestUpdateCourseRouteEditsTheCourse is the edit form's request: a rename and
 // a new set of pars, answered with the contract's IdOut at 200.
 func TestUpdateCourseRouteEditsTheCourse(t *testing.T) {
+	t.Parallel()
 	runPlay(t, playAdmin, tests.ApiScenario{
 		Name:            "an admin renames and re-pars a course",
 		Method:          http.MethodPut,
@@ -351,6 +355,7 @@ func TestUpdateCourseRouteEditsTheCourse(t *testing.T) {
 
 // TestUpdateCourseRouteIsAdminOnly is create's gating, on the other verb.
 func TestUpdateCourseRouteIsAdminOnly(t *testing.T) {
+	t.Parallel()
 	runPlay(t, nil, tests.ApiScenario{
 		Name:            "an anonymous caller cannot edit a course",
 		Method:          http.MethodPut,
@@ -375,6 +380,7 @@ func TestUpdateCourseRouteIsAdminOnly(t *testing.T) {
 // TestUpdateCourseRouteRejectsAnUnknownCourse is the contract's 404, message
 // included — the same one GET /api/courses/{id} returns.
 func TestUpdateCourseRouteRejectsAnUnknownCourse(t *testing.T) {
+	t.Parallel()
 	runPlay(t, playAdmin, tests.ApiScenario{
 		Name:            "an unknown course id is a 404",
 		Method:          http.MethodPut,
@@ -389,6 +395,7 @@ func TestUpdateCourseRouteRejectsAnUnknownCourse(t *testing.T) {
 // edit path: an update that fails validation leaves the course exactly as it
 // was, rather than renaming it and then choking on its holes.
 func TestUpdateCourseRouteRejectsInvalidPayloads(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name    string
 		body    string
@@ -443,6 +450,7 @@ func holeIDsByNumber(t testing.TB, app core.App, courseID string) map[int]string
 // replaced. Django keeps the row (it filters and updates by id), and so does
 // this — the ids are what a client holds between a read and an edit.
 func TestUpdateCourseKeepsTheHoleRecordsItCanReuse(t *testing.T) {
+	t.Parallel()
 	f := newPlayFixture(t)
 	before := holeIDsByNumber(t, f.app, idPlayCourse9)
 
@@ -478,6 +486,7 @@ func TestUpdateCourseKeepsTheHoleRecordsItCanReuse(t *testing.T) {
 // the course's new hole_count has to be saved before hole 10 is created, or
 // registerHoleNumberRule rejects it against the old count of 9.
 func TestUpdateCourseGrowsTheHoleSet(t *testing.T) {
+	t.Parallel()
 	f := newPlayFixture(t)
 	before := holeIDsByNumber(t, f.app, idPlayCourse9)
 
@@ -511,6 +520,7 @@ func TestUpdateCourseGrowsTheHoleSet(t *testing.T) {
 // payload drops are deleted, which is the behaviour Django documents on
 // update_course ("holes absent from the incoming list are deleted").
 func TestUpdateCourseShrinksTheHoleSet(t *testing.T) {
+	t.Parallel()
 	f := newPlayFixture(t)
 
 	if _, err := courses.Update(f.app, idPlayCourse, courses.In{
@@ -544,6 +554,7 @@ func TestUpdateCourseShrinksTheHoleSet(t *testing.T) {
 // from the edit side: the round holding a snapshot of the course keeps its par
 // values when the course is re-pared underneath it.
 func TestUpdateCourseDoesNotRescoreRoundsAlreadyPlayed(t *testing.T) {
+	t.Parallel()
 	f := newPlayFixture(t)
 
 	if _, err := courses.Update(f.app, idPlayCourse, courses.In{

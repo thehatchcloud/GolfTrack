@@ -82,6 +82,7 @@ var (
 // -----------------------------------------------------------------------------
 
 func TestExportBuildsTheFullHistoryAndNothingElse(t *testing.T) {
+	t.Parallel()
 	app := newTestApp(t)
 	owner := createUser(t, app, idOwner, "owner@golftrack.test", collections.UserRoleUser)
 	other := createUser(t, app, idOther, "other@golftrack.test", collections.UserRoleUser)
@@ -160,6 +161,7 @@ func exportedNineHoleFile(t testing.TB) *rounds.ExportFile {
 }
 
 func TestJSONRoundTripAcrossInstances(t *testing.T) {
+	t.Parallel()
 	file := exportedNineHoleFile(t)
 
 	raw, err := json.Marshal(file)
@@ -235,6 +237,7 @@ func TestJSONRoundTripAcrossInstances(t *testing.T) {
 }
 
 func TestCSVRoundTripMatchesTheJSONExport(t *testing.T) {
+	t.Parallel()
 	file := exportedNineHoleFile(t)
 
 	var buf bytes.Buffer
@@ -261,6 +264,7 @@ func TestCSVRoundTripMatchesTheJSONExport(t *testing.T) {
 }
 
 func TestImportingTheSameFileTwiceSkips(t *testing.T) {
+	t.Parallel()
 	file := exportedNineHoleFile(t)
 	destination, importer := importDestination(t, "Nine Acres", 9)
 
@@ -285,6 +289,7 @@ func TestImportingTheSameFileTwiceSkips(t *testing.T) {
 // exists for: a player can fill it in and upload it. If a format or validation
 // change breaks that, this is the test that says so.
 func TestTemplateFileIsAValidImport(t *testing.T) {
+	t.Parallel()
 	file := rounds.TemplateFile()
 
 	// The CSV rendering parses back to the same rounds, so both template
@@ -325,6 +330,7 @@ func TestTemplateFileIsAValidImport(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestImportRequiresTheCourseToExist(t *testing.T) {
+	t.Parallel()
 	file := exportedNineHoleFile(t)
 
 	destination, importer := importDestination(t, "", 0)
@@ -334,6 +340,7 @@ func TestImportRequiresTheCourseToExist(t *testing.T) {
 }
 
 func TestImportRequiresTheCourseHoleCountToMatch(t *testing.T) {
+	t.Parallel()
 	file := exportedNineHoleFile(t)
 
 	destination, importer := importDestination(t, "Nine Acres", 18)
@@ -343,6 +350,7 @@ func TestImportRequiresTheCourseHoleCountToMatch(t *testing.T) {
 }
 
 func TestImportRefusesWhileARoundIsInProgress(t *testing.T) {
+	t.Parallel()
 	file := exportedNineHoleFile(t)
 
 	destination, importer := importDestination(t, "Nine Acres", 9)
@@ -357,6 +365,7 @@ func TestImportRefusesWhileARoundIsInProgress(t *testing.T) {
 }
 
 func TestParseImportRejectsForeignFiles(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		data string
@@ -377,6 +386,7 @@ func TestParseImportRejectsForeignFiles(t *testing.T) {
 }
 
 func TestImportValidatesTheRoundsBeforeWritingAnything(t *testing.T) {
+	t.Parallel()
 	base := func() *rounds.ExportFile {
 		file := exportedNineHoleFile(t)
 		return file
@@ -428,6 +438,7 @@ func TestImportValidatesTheRoundsBeforeWritingAnything(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestExportImportRoutesRequireAuth(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		method string
 		url    string
@@ -447,6 +458,7 @@ func TestExportImportRoutesRequireAuth(t *testing.T) {
 }
 
 func TestExportRoute(t *testing.T) {
+	t.Parallel()
 	runPlay(t, playOwner, tests.ApiScenario{
 		Name:           "json export carries the envelope and the completed round",
 		Method:         http.MethodGet,
@@ -482,6 +494,7 @@ func TestExportRoute(t *testing.T) {
 }
 
 func TestImportTemplateRoute(t *testing.T) {
+	t.Parallel()
 	runPlay(t, playOwner, tests.ApiScenario{
 		Name:           "json template carries the envelope and the placeholder course",
 		Method:         http.MethodGet,
@@ -517,6 +530,7 @@ func TestImportTemplateRoute(t *testing.T) {
 }
 
 func TestImportRoute(t *testing.T) {
+	t.Parallel()
 	// A file the play fixture can absorb: one full round on its 18-hole
 	// course. `other` imports it — the fixture's owner is mid-round, which the
 	// import refuses by design.

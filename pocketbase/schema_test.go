@@ -62,6 +62,7 @@ func newWorld(t *testing.T) *world {
 // PocketBase select fields carry no default, so without the hook an OAuth2
 // sign-up — which never supplies a role — would fail validation.
 func TestUserRoleDefaults(t *testing.T) {
+	t.Parallel()
 	app := newTestApp(t)
 
 	blank := createUser(t, app, "", "blank@golftrack.test", "")
@@ -80,6 +81,7 @@ func TestUserRoleDefaults(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestCompositeUniqueIndexes(t *testing.T) {
+	t.Parallel()
 	t.Run("one row per (course, hole_number)", func(t *testing.T) {
 		w := newWorld(t)
 		duplicate := newRecord(t, w.app, collections.NameCourseHoles, "", map[string]any{
@@ -110,6 +112,7 @@ func TestCompositeUniqueIndexes(t *testing.T) {
 // uq_user_one_in_progress_round. Both halves matter: a second in-progress round
 // is rejected, a completed one is not.
 func TestOnlyOneInProgressRoundPerUser(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 
 	second := newRecord(t, w.app, collections.NameRounds, "", map[string]any{
@@ -128,6 +131,7 @@ func TestOnlyOneInProgressRoundPerUser(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestFieldValidation(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name       string
 		collection string
@@ -193,6 +197,7 @@ func TestFieldValidation(t *testing.T) {
 // import, it would just make `@request.auth.role = "ADMIN"` match nothing —
 // silently revoking every admin's read access.
 func TestRoleValuesMatchTheAccessRules(t *testing.T) {
+	t.Parallel()
 	app := newTestApp(t)
 
 	collection, err := app.FindCollectionByNameOrId(collections.NameUsers)
@@ -230,6 +235,7 @@ func slicesContains(haystack []string, needle string) bool {
 // -----------------------------------------------------------------------------
 
 func TestDeletingARoundCascadesToHolesAndShots(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 
 	if err := w.app.Delete(w.round); err != nil {
@@ -251,6 +257,7 @@ func TestDeletingARoundCascadesToHolesAndShots(t *testing.T) {
 // on_delete=PROTECT: cascadeDelete=false on a *required* relation rejects the
 // delete rather than orphaning the round.
 func TestCourseWithRoundsCannotBeDeleted(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 
 	if err := w.app.Delete(w.course); err == nil {

@@ -100,6 +100,7 @@ func rangeInts(from, to int) []int {
 // pb_schema.json bounds hole_count to 9–18 because PocketBase number fields have
 // no value set, so everything in between is a hook's job.
 func TestHoleCountMustBeNineOrEighteen(t *testing.T) {
+	t.Parallel()
 	t.Run("create", func(t *testing.T) {
 		app := newTestApp(t)
 		twelve := newRecord(t, app, collections.NameCourses, "", map[string]any{
@@ -127,6 +128,7 @@ func TestHoleCountMustBeNineOrEighteen(t *testing.T) {
 // validate_holes: with the unique (course, hole_number) index, bounding every
 // hole to 1..hole_count makes a full set exactly {1..hole_count}.
 func TestCourseHoleMustFitItsCourse(t *testing.T) {
+	t.Parallel()
 	app := newTestApp(t)
 	nine := seedCourse(t, app, "", "Nine", 9, 3)
 
@@ -141,6 +143,7 @@ func TestCourseHoleMustFitItsCourse(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestCreateRoundSnapshotsTheCourse(t *testing.T) {
+	t.Parallel()
 	g := newGame(t)
 	round := g.start(t)
 
@@ -158,6 +161,7 @@ func TestCreateRoundSnapshotsTheCourse(t *testing.T) {
 // TestCreateRoundSnapshotIsIndependentOfTheCourse is the rule the whole snapshot
 // exists for: editing a course must not rescore a round already played on it.
 func TestCreateRoundSnapshotIsIndependentOfTheCourse(t *testing.T) {
+	t.Parallel()
 	g := newGame(t)
 	round := g.start(t)
 
@@ -179,6 +183,7 @@ func TestCreateRoundSnapshotIsIndependentOfTheCourse(t *testing.T) {
 }
 
 func TestCreateRoundPlayModes(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		playMode string
 		want     []int
@@ -206,6 +211,7 @@ func TestCreateRoundPlayModes(t *testing.T) {
 }
 
 func TestCreateRoundRejections(t *testing.T) {
+	t.Parallel()
 	t.Run("nine holes cannot be played as front9", func(t *testing.T) {
 		g := newGame(t)
 		_, err := rounds.Create(g.app, g.user.Id, g.nine.Id, collections.PlayModeFront9)
@@ -249,6 +255,7 @@ func TestCreateRoundRejections(t *testing.T) {
 // TestCreateRoundIsAllOrNothing pins the transaction: a create that fails must
 // not leave a round behind without its holes.
 func TestCreateRoundIsAllOrNothing(t *testing.T) {
+	t.Parallel()
 	g := newGame(t)
 	g.start(t)
 
@@ -270,6 +277,7 @@ func TestCreateRoundIsAllOrNothing(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestAddShotMaintainsTheStrokeCache(t *testing.T) {
+	t.Parallel()
 	g := newGame(t)
 	round := g.start(t)
 
@@ -294,6 +302,7 @@ func TestAddShotMaintainsTheStrokeCache(t *testing.T) {
 }
 
 func TestAddShotTrimsAndValidatesTheClub(t *testing.T) {
+	t.Parallel()
 	g := newGame(t)
 	round := g.start(t)
 
@@ -313,6 +322,7 @@ func TestAddShotTrimsAndValidatesTheClub(t *testing.T) {
 }
 
 func TestShotOperationsAreScopedToTheRoundOwner(t *testing.T) {
+	t.Parallel()
 	g := newGame(t)
 	round := g.start(t)
 
@@ -324,6 +334,7 @@ func TestShotOperationsAreScopedToTheRoundOwner(t *testing.T) {
 }
 
 func TestUndoRemovesOnlyTheLastShot(t *testing.T) {
+	t.Parallel()
 	g := newGame(t)
 	round := g.start(t)
 
@@ -341,6 +352,7 @@ func TestUndoRemovesOnlyTheLastShot(t *testing.T) {
 }
 
 func TestUndoOnAnEmptyHoleIsANoop(t *testing.T) {
+	t.Parallel()
 	g := newGame(t)
 	round := g.start(t)
 
@@ -357,6 +369,7 @@ func TestUndoOnAnEmptyHoleIsANoop(t *testing.T) {
 // UPDATE exists for: the surviving shots have to end up 1,2 in their original
 // order, not merely two rows with some pair of numbers.
 func TestDeleteShotRenumbersSubsequentShots(t *testing.T) {
+	t.Parallel()
 	g := newGame(t)
 	round := g.start(t)
 
@@ -391,6 +404,7 @@ func TestDeleteShotRenumbersSubsequentShots(t *testing.T) {
 }
 
 func TestDeleteMissingShot(t *testing.T) {
+	t.Parallel()
 	g := newGame(t)
 	round := g.start(t)
 
@@ -399,6 +413,7 @@ func TestDeleteMissingShot(t *testing.T) {
 }
 
 func TestUpdateShotChangesTheClubOnly(t *testing.T) {
+	t.Parallel()
 	g := newGame(t)
 	round := g.start(t)
 
@@ -428,6 +443,7 @@ func TestUpdateShotChangesTheClubOnly(t *testing.T) {
 // removed straight through the record API — which the round's owner is allowed
 // to do — still leaves the cache and the numbering correct.
 func TestTheStrokeCacheSurvivesTheGeneratedEndpoints(t *testing.T) {
+	t.Parallel()
 	g := newGame(t)
 	round := g.start(t)
 	hole := g.hole(t, round, 1)
@@ -474,6 +490,7 @@ func TestTheStrokeCacheSurvivesTheGeneratedEndpoints(t *testing.T) {
 // roughly a quarter of the time and the suite failed intermittently. This
 // spells the orders out instead.
 func TestRenumberingIsIndependentOfInsertionOrder(t *testing.T) {
+	t.Parallel()
 	for name, order := range map[string][]int{
 		"ascending":                     {1, 2, 3},
 		"descending":                    {3, 2, 1},
@@ -516,6 +533,7 @@ func TestRenumberingIsIndependentOfInsertionOrder(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestSetCurrentHole(t *testing.T) {
+	t.Parallel()
 	g := newGame(t)
 	round := g.start(t)
 
@@ -535,6 +553,7 @@ func TestSetCurrentHole(t *testing.T) {
 // than a range check: on a back9 round, hole 3 exists on the course but is not
 // being played.
 func TestSetCurrentHoleIsScopedToTheRoundsOwnHoles(t *testing.T) {
+	t.Parallel()
 	g := newGame(t)
 
 	round, err := rounds.Create(g.app, g.user.Id, g.course.Id, collections.PlayModeBack9)
@@ -555,6 +574,7 @@ func TestSetCurrentHoleIsScopedToTheRoundsOwnHoles(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestCompleteRoundSetsTotals(t *testing.T) {
+	t.Parallel()
 	g := newGame(t)
 	round := g.start(t)
 
@@ -586,6 +606,7 @@ func TestCompleteRoundSetsTotals(t *testing.T) {
 }
 
 func TestCompleteRoundCanOverrideTimes(t *testing.T) {
+	t.Parallel()
 	g := newGame(t)
 	round := g.start(t)
 
@@ -605,6 +626,7 @@ func TestCompleteRoundCanOverrideTimes(t *testing.T) {
 }
 
 func TestCompleteRoundOverridesUseCourseTimeZone(t *testing.T) {
+	t.Parallel()
 	g := newGame(t)
 	g.course.Set(collections.FieldTimeZone, "America/New_York")
 	if err := g.app.Save(g.course); err != nil {
@@ -628,6 +650,7 @@ func TestCompleteRoundOverridesUseCourseTimeZone(t *testing.T) {
 }
 
 func TestCompleteRoundRejections(t *testing.T) {
+	t.Parallel()
 	t.Run("twice", func(t *testing.T) {
 		g := newGame(t)
 		round := g.start(t)
@@ -671,6 +694,7 @@ func TestCompleteRoundRejections(t *testing.T) {
 // cannot reach: a direct record save, which the round's owner is allowed to make
 // through the generated PATCH endpoint.
 func TestCompletedRoundIsImmutable(t *testing.T) {
+	t.Parallel()
 	g := newGame(t)
 	round := g.start(t)
 	hole := g.hole(t, round, 1)
@@ -709,6 +733,7 @@ func TestCompletedRoundIsImmutable(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestCancelRoundRemovesEverything(t *testing.T) {
+	t.Parallel()
 	g := newGame(t)
 	round := g.start(t)
 	mustAddShots(t, g, round, 1, "Driver")
@@ -732,6 +757,7 @@ func TestCancelRoundRemovesEverything(t *testing.T) {
 }
 
 func TestCancelRoundRejections(t *testing.T) {
+	t.Parallel()
 	g := newGame(t)
 	round := g.start(t)
 
@@ -746,6 +772,7 @@ func TestCancelRoundRejections(t *testing.T) {
 }
 
 func TestDeleteRoundRemovesCompletedRoundWithMultipleShots(t *testing.T) {
+	t.Parallel()
 	g := newGame(t)
 	round := g.start(t)
 	mustAddShots(t, g, round, 1, "Driver", "7 Iron", "Pitching Wedge", "Putter")
