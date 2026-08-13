@@ -167,7 +167,7 @@ pull from it. If you prefer, you can set the package visibility to **Public** in
 1. **PocketBase (Go)** — `gofmt`, `go vet`, `go build` and the full Go test suite (schema, access rules, hooks, API parity, frontend). This job **gates the build**
 2. **Build** — builds the PocketBase Docker image from the `pocketbase/` context and pushes it to `ghcr.io/<owner>/golftrack:latest` and `:pocketbase-<sha>`
 3. **Deploy** — SSHes into the exe.dev VM (`bin/deploy-prod.sh`):
-   - pulls the new image
+   - logs into GHCR and pulls the new image, retrying each registry call up to four times with a growing backoff — ghcr.io occasionally answers a valid credential with `denied: denied`, and the workflow's own retry step runs too soon after the first attempt to ride that out
    - stops and removes the old PocketBase container
    - starts the new container (Litestream restores the DBs if missing, then `golftrack-pb serve` starts and syncs the schema itself)
    - health-checks `/api/version` for this commit's SHA, prints `docker ps`, prunes old images

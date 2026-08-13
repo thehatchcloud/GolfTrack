@@ -21,8 +21,37 @@
 set -e
 IMAGE="ghcr.io/${OWNER}/golftrack:pocketbase-dev"
 
-echo "$GHCR_TOKEN" | docker login ghcr.io -u "$OWNER" --password-stdin
-docker pull "$IMAGE"
+# ghcr.io intermittently refuses a perfectly valid credential with
+# `Error response from daemon: Get "https://ghcr.io/v2/": denied: denied`, and
+# the workflow's retry step fires a second later — inside the same bad window —
+# so a momentary registry refusal reds the whole deploy. Give the registry
+# calls a few attempts with a growing backoff instead. Anything that is a real
+# authorization problem (expired or unscoped GHCR_TOKEN) still fails, just a
+# minute later and with every attempt on the record.
+retry_registry() {
+  what="$1"
+  shift
+  attempt=1
+  while :; do
+    if "$@"; then
+      return 0
+    fi
+    if [ "$attempt" -ge 4 ]; then
+      echo "::error::${what} failed after ${attempt} attempts against ghcr.io. If every attempt said 'denied', check that the GHCR_TOKEN secret is a current PAT with read:packages — see DEPLOYMENT.md."
+      return 1
+    fi
+    echo "${what} failed (attempt ${attempt}) — retrying in $((attempt * 5))s..."
+    sleep $((attempt * 5))
+    attempt=$((attempt + 1))
+  done
+}
+
+ghcr_login() {
+  echo "$GHCR_TOKEN" | docker login ghcr.io -u "$OWNER" --password-stdin
+}
+
+retry_registry "docker login ghcr.io" ghcr_login
+retry_registry "docker pull $IMAGE" docker pull "$IMAGE"
 
 docker stop golftrack-pb-dev 2>/dev/null || true
 docker rm   golftrack-pb-dev 2>/dev/null || true

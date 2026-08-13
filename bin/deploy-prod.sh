@@ -36,8 +36,39 @@
 
 IMAGE="ghcr.io/${OWNER}/golftrack:latest"
 
-echo "$GHCR_TOKEN" | docker login ghcr.io -u "$OWNER" --password-stdin
-if ! docker pull "$IMAGE"; then
+# ghcr.io intermittently refuses a perfectly valid credential with
+# `Error response from daemon: Get "https://ghcr.io/v2/": denied: denied`, and
+# the workflow's retry step fires a second later — inside the same bad window —
+# so a momentary registry refusal reds the whole deploy. Give the registry
+# calls a few attempts with a growing backoff instead. Anything that is a real
+# authorization problem (expired or unscoped GHCR_TOKEN) still fails, just a
+# minute later and with every attempt on the record.
+retry_registry() {
+  what="$1"
+  shift
+  attempt=1
+  while :; do
+    if "$@"; then
+      return 0
+    fi
+    if [ "$attempt" -ge 4 ]; then
+      echo "::error::${what} failed after ${attempt} attempts against ghcr.io. If every attempt said 'denied', check that the GHCR_TOKEN secret is a current PAT with read:packages — see DEPLOYMENT.md."
+      return 1
+    fi
+    echo "${what} failed (attempt ${attempt}) — retrying in $((attempt * 5))s..."
+    sleep $((attempt * 5))
+    attempt=$((attempt + 1))
+  done
+}
+
+ghcr_login() {
+  echo "$GHCR_TOKEN" | docker login ghcr.io -u "$OWNER" --password-stdin
+}
+
+# A failed login is deliberately not fatal on its own — the pull below is what
+# decides, since a public package pulls fine without credentials.
+retry_registry "docker login ghcr.io" ghcr_login || true
+if ! retry_registry "docker pull $IMAGE" docker pull "$IMAGE"; then
   echo "::error::docker pull $IMAGE failed — aborting rather than running whatever is already cached locally."
   exit 1
 fi
