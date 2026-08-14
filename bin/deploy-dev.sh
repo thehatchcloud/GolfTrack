@@ -21,25 +21,44 @@
 set -e
 IMAGE="ghcr.io/${OWNER}/golftrack:pocketbase-dev"
 
-# ghcr.io intermittently refuses a perfectly valid credential with
-# `Error response from daemon: Get "https://ghcr.io/v2/": denied: denied`, and
-# the workflow's retry step fires a second later — inside the same bad window —
-# so a momentary registry refusal reds the whole deploy. Give the registry
-# calls a few attempts with a growing backoff instead. Anything that is a real
-# authorization problem (expired or unscoped GHCR_TOKEN) still fails, just a
-# minute later and with every attempt on the record.
+# Registry calls get a few attempts with a growing backoff, because a dropped
+# connection or a 5xx from ghcr.io is worth waiting out — the workflow's own
+# retry step fires a second after the first, too soon to help.
+#
+# A `denied`/`unauthorized` answer is different in kind: it is the registry's
+# verdict on the credential, and it will be the same verdict in five seconds
+# and in five minutes. Retrying it only buries the real cause under a minute
+# of identical failures that read like a flake. So that case stops immediately
+# and says what to actually go and fix.
+#
+# Duplicated verbatim in bin/deploy-prod.sh: appleboy/ssh-action's script_path
+# copies exactly one file to the host, so a shared helper file would never
+# arrive. Keep the two copies in sync.
 retry_registry() {
   what="$1"
   shift
   attempt=1
+  out="$(mktemp)"
   while :; do
-    if "$@"; then
+    if "$@" >"$out" 2>&1; then
+      cat "$out"
+      rm -f "$out"
       return 0
     fi
-    if [ "$attempt" -ge 4 ]; then
-      echo "::error::${what} failed after ${attempt} attempts against ghcr.io. If every attempt said 'denied', check that the GHCR_TOKEN secret is a current PAT with read:packages — see DEPLOYMENT.md."
+    cat "$out"
+
+    if grep -Eqi 'denied|unauthorized|authentication required|forbidden' "$out"; then
+      echo "::error::ghcr.io refused the credential for '${what}'. This is an authorization failure, not a transient one — retrying will not help. The GHCR_TOKEN secret is almost certainly an expired or revoked PAT; issue a new classic PAT with read:packages and update the repository secret. See DEPLOYMENT.md § 'Rotating GHCR_TOKEN'."
+      rm -f "$out"
       return 1
     fi
+
+    if [ "$attempt" -ge 4 ]; then
+      echo "::error::${what} still failing after ${attempt} attempts against ghcr.io — giving up. The output above is from the last attempt."
+      rm -f "$out"
+      return 1
+    fi
+
     echo "${what} failed (attempt ${attempt}) — retrying in $((attempt * 5))s..."
     sleep $((attempt * 5))
     attempt=$((attempt + 1))
@@ -50,8 +69,15 @@ ghcr_login() {
   echo "$GHCR_TOKEN" | docker login ghcr.io -u "$OWNER" --password-stdin
 }
 
-retry_registry "docker login ghcr.io" ghcr_login
-retry_registry "docker pull $IMAGE" docker pull "$IMAGE"
+# A failed login is not fatal on its own — the pull below is what decides,
+# since a package whose visibility is Public pulls fine with no credential at
+# all (DEPLOYMENT.md offers that as an alternative to GHCR_TOKEN). Same order
+# as bin/deploy-prod.sh.
+retry_registry "docker login ghcr.io" ghcr_login || true
+if ! retry_registry "docker pull $IMAGE" docker pull "$IMAGE"; then
+  echo "::error::docker pull $IMAGE failed — aborting rather than running whatever is already cached locally."
+  exit 1
+fi
 
 docker stop golftrack-pb-dev 2>/dev/null || true
 docker rm   golftrack-pb-dev 2>/dev/null || true

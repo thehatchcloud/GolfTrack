@@ -138,6 +138,10 @@ Create a GitHub personal access token (classic) with the `read:packages` scope a
 This is the `GHCR_TOKEN` secret — it lets the VM pull the container image from
 GitHub Container Registry.
 
+Give the token an expiry you can live with, and note the date: a classic PAT
+expires silently as far as the deploy is concerned, and the only symptom is the
+deploy failing at `docker login` (see [Rotating `GHCR_TOKEN`](#rotating-ghcr_token)).
+
 ### 4. Set GitHub Actions secrets
 
 In the repository: **Settings → Secrets and variables → Actions → New repository secret**
@@ -160,6 +164,31 @@ pull from it. If you prefer, you can set the package visibility to **Public** in
 **GitHub → Packages → golftrack → Package settings**, which eliminates the need for
 `GHCR_TOKEN` authentication (remove the login line in the workflow script).
 
+### Rotating `GHCR_TOKEN`
+
+Both deploy scripts log the host into GHCR with this PAT, so when it expires or is
+revoked **every deploy fails — production and dev alike** — at the first command,
+with:
+
+```
+Error response from daemon: Get "https://ghcr.io/v2/": denied: denied
+```
+
+`denied` is the registry's verdict on the credential, not a network problem, so
+`bin/deploy-dev.sh` and `bin/deploy-prod.sh` stop on it immediately rather than
+retrying. Nothing in the repository can fix it — the secret has to be replaced:
+
+1. Issue a new classic PAT with the `read:packages` scope (same place as
+   [step 3](#3-generate-a-ghcr-token)). It must belong to a user who can pull the
+   `golftrack` package.
+2. Update the `GHCR_TOKEN` repository secret under **Settings → Secrets and
+   variables → Actions**.
+3. Re-run the failed deploy — **Actions → the failed run → Re-run all jobs**. No
+   code change or new commit is needed.
+
+If the package's visibility is **Public**, the pull works without any credential
+and a stale `GHCR_TOKEN` only produces a non-fatal login warning.
+
 ---
 
 ## What happens on each push to `main`
@@ -167,7 +196,7 @@ pull from it. If you prefer, you can set the package visibility to **Public** in
 1. **PocketBase (Go)** — `gofmt`, `go vet`, `go build` and the full Go test suite (schema, access rules, hooks, API parity, frontend). This job **gates the build**
 2. **Build** — builds the PocketBase Docker image from the `pocketbase/` context and pushes it to `ghcr.io/<owner>/golftrack:latest` and `:pocketbase-<sha>`
 3. **Deploy** — SSHes into the exe.dev VM (`bin/deploy-prod.sh`):
-   - logs into GHCR and pulls the new image, retrying each registry call up to four times with a growing backoff — ghcr.io occasionally answers a valid credential with `denied: denied`, and the workflow's own retry step runs too soon after the first attempt to ride that out
+   - logs into GHCR and pulls the new image, retrying each registry call up to four times with a growing backoff for transient network errors — a `denied` answer is an expired credential rather than a hiccup, so it fails straight away (see [Rotating `GHCR_TOKEN`](#rotating-ghcr_token))
    - stops and removes the old PocketBase container
    - starts the new container (Litestream restores the DBs if missing, then `golftrack-pb serve` starts and syncs the schema itself)
    - health-checks `/api/version` for this commit's SHA, prints `docker ps`, prunes old images
