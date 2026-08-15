@@ -336,8 +336,8 @@ func TestStaticAssetsAreServedFromTheBinary(t *testing.T) {
 		{"/static/css/app.css", []string{".bg-emerald-700"}},
 		{"/static/js/alpine.min.js", []string{"Alpine"}},
 		{"/static/js/pocketbase.umd.js", []string{"PocketBase"}},
-		{"/static/js/golftrack.js", []string{"window.gt", "timeZone || 'UTC'", "Intl.supportedValuesOf('timeZone')", "UTC (not set)", "America/New_York"}},
-		{"/static/js/round-play.js", []string{"roundPlay"}},
+		{"/static/js/golftrack.js", []string{"window.gt", "timeZone || 'UTC'", "Intl.supportedValuesOf('timeZone')", "UTC (not set)", "America/New_York", "serviceWorker", "/sw.js", "cache-page"}},
+		{"/static/js/round-play.js", []string{"roundPlay", "golftrack:offline:", "syncQueue", "hasPendingOnCurrentHole", "pending: true"}},
 		{"/static/manifest.webmanifest", []string{"GolfTrack", "standalone"}},
 	} {
 		runWeb(t, nil, tests.ApiScenario{
@@ -372,6 +372,38 @@ func TestIconsAreServedFromTheBinary(t *testing.T) {
 			ExpectedContent: []string{"PNG"},
 		})
 	}
+}
+
+// TestServiceWorkerIsServed checks that /sw.js is served with the
+// Service-Worker-Allowed header set to "/" so the worker can control the whole
+// origin, and that it contains the expected cache strategies.
+func TestServiceWorkerIsServed(t *testing.T) {
+	runWeb(t, nil, tests.ApiScenario{
+		Name:            "/sw.js is served with correct content and headers",
+		Method:          http.MethodGet,
+		URL:             "/sw.js",
+		ExpectedStatus:  200,
+		ExpectedContent: []string{"golftrack-v2", "PRECACHE", "/static/css/app.css", "navigate", "cache-page"},
+		AfterTestFunc: func(t testing.TB, _ *tests.TestApp, res *http.Response) {
+			got := res.Header.Get("Service-Worker-Allowed")
+			if got != "/" {
+				t.Errorf("Service-Worker-Allowed = %q, want %q", got, "/")
+			}
+		},
+	})
+}
+
+// TestOfflineBannerIsInBaseLayout checks that every page carries the Alpine
+// offline banner so golfers know their score is not yet synced when there is
+// no network connection.
+func TestOfflineBannerIsInBaseLayout(t *testing.T) {
+	runWeb(t, playOwner, tests.ApiScenario{
+		Name:            "offline banner is present on the play page",
+		Method:          http.MethodGet,
+		URL:             "/rounds/" + idPlayRound + "/play/",
+		ExpectedStatus:  200,
+		ExpectedContent: []string{"Offline", "sync when you reconnect", "window.gt.isOnline()", "@online.window", "@offline.window", "@gt-connectivity.window"},
+	})
 }
 
 // TestPagesLoadNothingFromACDN is the "no run-time requests to any external

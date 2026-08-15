@@ -37,6 +37,154 @@
 
   function clearToken() {
     document.cookie = COOKIE + '=; Path=/; Max-Age=0; SameSite=Lax';
+    purgeOfflineData();
+  }
+
+  // The service worker caches authenticated, personalized HTML (including the
+  // round JSON embedded in the play page) and round-play.js queues pending
+  // shots in localStorage. Both must be purged on sign-out so a subsequent
+  // user on this device cannot see the previous golfer's cached data.
+  function purgeOfflineData() {
+    try {
+      for (var i = localStorage.length - 1; i >= 0; i--) {
+        var key = localStorage.key(i);
+        if (key && key.indexOf('golftrack:offline:') === 0) {
+          localStorage.removeItem(key);
+        }
+      }
+    } catch (e) {
+      // localStorage may be unavailable (private browsing); nothing to purge.
+    }
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({ type: 'clear-cache' });
+    }
+  }
+
+  // --- Offline queue --------------------------------------------------------
+  //
+  // Shots taken without a connection are queued in localStorage under
+  // `golftrack:offline:<roundId>`. Replaying them lives here rather than in the
+  // play page's Alpine component so a golfer who closed the app or walked back
+  // to the home or review page still drains the queue as soon as the connection
+  // returns — otherwise those shots would be lost the moment the round is
+  // completed and the server's completed-round guard starts rejecting them.
+  var QUEUE_PREFIX = 'golftrack:offline:';
+  var draining = null;
+
+  function readQueue(key) {
+    try {
+      var raw = localStorage.getItem(key);
+      var ops = raw ? JSON.parse(raw) : [];
+      return Array.isArray(ops) ? ops : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function writeQueue(key, ops) {
+    try {
+      if (ops && ops.length > 0) {
+        localStorage.setItem(key, JSON.stringify(ops));
+      } else {
+        localStorage.removeItem(key);
+      }
+    } catch (e) {
+      // localStorage may be unavailable (private browsing); nothing to persist.
+    }
+  }
+
+  function queueKeys() {
+    var keys = [];
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var key = localStorage.key(i);
+        if (key && key.indexOf(QUEUE_PREFIX) === 0) keys.push(key);
+      }
+    } catch (e) {
+      return [];
+    }
+    return keys;
+  }
+
+  // drainQueues replays every round's queued operations in order. Concurrent
+  // callers (the online event and the play page) share the one in-flight run so
+  // no operation is sent twice.
+  function drainQueues() {
+    if (draining) return draining;
+    var done = function () { draining = null; };
+    draining = runDrain().then(done, done);
+    return draining;
+  }
+
+  async function runDrain() {
+    try {
+      if (!navigator.onLine || !token()) return;
+      var keys = queueKeys();
+      for (var k = 0; k < keys.length; k++) {
+        var key = keys[k];
+        var roundId = key.slice(QUEUE_PREFIX.length);
+        // Re-read the queue on every step so operations the play page appends
+        // while the drain runs are picked up rather than overwritten.
+        for (;;) {
+          var ops = readQueue(key);
+          if (ops.length === 0) break;
+          var op = ops[0];
+          if (op && op.op === 'addShot') {
+            await api(
+              '/api/rounds/' + roundId + '/holes/' + op.holeNumber + '/shots',
+              { method: 'POST', body: JSON.stringify({ club: op.club }) }
+            );
+          }
+          var latest = readQueue(key);
+          if (latest.length === 0 || latest[0].tempId !== (op && op.tempId)) break;
+          writeQueue(key, latest.slice(1));
+        }
+      }
+    } catch (e) {
+      // Leave what is left in the queue; the next online event or page load
+      // retries it.
+    }
+  }
+
+  // Shared connectivity state. `navigator.onLine` only reports whether the
+  // device has a network interface, so it stays true in a dead zone, behind a
+  // captive portal, or during a server outage — exactly when requests are
+  // failing. Every request below reports what it actually observed, and any
+  // change is broadcast as a `gt-connectivity` window event so the offline
+  // banner tracks reachability rather than the browser's guess.
+  var reachable = true;
+
+  function isOnline() {
+    return navigator.onLine && reachable;
+  }
+
+  function setReachable(value) {
+    if (reachable === value) return;
+    reachable = value;
+    window.dispatchEvent(
+      new CustomEvent('gt-connectivity', { detail: { online: isOnline() } })
+    );
+  }
+
+  // The browser regaining an interface is only a hint that the server may be
+  // reachable again; assume it is, and let the next failed request say
+  // otherwise.
+  window.addEventListener('online', function () {
+    setReachable(true);
+  });
+
+  // request wraps fetch so a transport failure (which fetch reports by
+  // rejecting, not by a status code) updates the shared connectivity state.
+  async function request(url, options) {
+    var res;
+    try {
+      res = await fetch(url, options);
+    } catch (e) {
+      setReachable(false);
+      throw e;
+    }
+    setReachable(true);
+    return res;
   }
 
   // api is fetch with the session attached and the two error shapes unwrapped:
@@ -52,7 +200,7 @@
     var current = token();
     if (current) headers['Authorization'] = current;
 
-    var res = await fetch(url, Object.assign({}, options, { headers: headers }));
+    var res = await request(url, Object.assign({}, options, { headers: headers }));
 
     // A 401 means the token expired or was revoked while the page was open.
     // Sending the player to sign in beats showing them a failure they cannot
@@ -88,7 +236,7 @@
     var headers = {};
     var current = token();
     if (current) headers['Authorization'] = current;
-    var res = await fetch(url, { headers: headers });
+    var res = await request(url, { headers: headers });
     if (!res.ok) {
       var data = null;
       try { data = await res.json(); } catch (e) { data = null; }
@@ -105,7 +253,28 @@
     URL.revokeObjectURL(objectUrl);
   }
 
-  window.gt = { token: token, clearToken: clearToken, api: api, download: download, cookieName: COOKIE };
+  window.gt = {
+    token: token,
+    clearToken: clearToken,
+    api: api,
+    download: download,
+    isOnline: isOnline,
+    cookieName: COOKIE,
+    offlineQueue: {
+      prefix: QUEUE_PREFIX,
+      read: readQueue,
+      write: writeQueue,
+      drain: drainQueues,
+    },
+  };
+
+  // Drain queued shots from every page, not just the play page: a golfer who
+  // reconnects on the home or review page must not be able to complete the
+  // round with shots still stranded in localStorage.
+  window.addEventListener('online', function () {
+    drainQueues();
+  });
+  drainQueues();
 })();
 
 // --- Alpine components -------------------------------------------------------
@@ -541,4 +710,31 @@ function buildTimeZoneOptions(selectedTimeZone) {
   }
 
   return options;
+}
+
+// Register the service worker so the app can cache static assets and serve
+// the round-play page when the golfer has no network connection.
+//
+// A page that installs the worker is fetched before the worker exists, so its
+// own HTML never passes through the fetch handler. Once the worker is active
+// the page hands its URL over to be cached, otherwise the first offline
+// reload after a golfer's first visit would find nothing to fall back to.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    var uncontrolled = !navigator.serviceWorker.controller;
+    navigator.serviceWorker
+      .register('/sw.js')
+      .then(function () {
+        if (!uncontrolled) return null;
+        return navigator.serviceWorker.ready.then(function (registration) {
+          var worker = navigator.serviceWorker.controller || registration.active;
+          if (worker) {
+            worker.postMessage({ type: 'cache-page', url: window.location.href });
+          }
+        });
+      })
+      .catch(function () {
+        // Fail silently — the page works without the service worker.
+      });
+  });
 }

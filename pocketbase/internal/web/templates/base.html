@@ -51,6 +51,22 @@
           {{end}}
         </nav>
       </header>
+      {{/* Offline indicator — appears when GolfTrack is unreachable, not merely
+           when the browser reports no interface. Alpine seeds itself from the
+           shared connectivity state in golftrack.js, then reacts both to the
+           window online/offline events and to the `gt-connectivity` event that
+           state dispatches when a request fails or succeeds, so a dead zone or
+           server outage still raises the warning. x-cloak prevents a flash on
+           page load. */}}
+      <div x-data="{ online: window.gt.isOnline() }"
+           @online.window="online = window.gt.isOnline()"
+           @offline.window="online = false"
+           @gt-connectivity.window="online = $event.detail.online"
+           x-show="!online"
+           x-cloak
+           class="bg-amber-500 px-4 py-1.5 text-center text-xs font-medium text-white">
+        Offline — your shots are saved locally and will sync when you reconnect
+      </div>
       <main class="flex-1 px-4 py-6">{{block "content" .}}{{end}}</main>
       <footer class="px-4 py-3 text-center text-xs text-stone-400">{{.Version}}</footer>
     </div>

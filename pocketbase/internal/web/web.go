@@ -63,6 +63,7 @@ func Register(app core.App) {
 			return err
 		}
 		e.Router.GET("/static/{path...}", apis.Static(static, false))
+		e.Router.GET("/sw.js", s.serviceWorker)
 
 		// Page routes, in the order the plan's table lists them. Paths carry
 		// Django's trailing slash, and the slashless spelling redirects onto it
@@ -206,4 +207,16 @@ func (s *server) renderError(e *core.RequestEvent, v *viewer, status int) error 
 		Heading: heading,
 		Message: message,
 	})
+}
+
+// serviceWorker serves /sw.js from the embedded FS with the
+// Service-Worker-Allowed header set to "/" so the worker controls the whole
+// origin even though the file is embedded alongside the other static assets.
+func (s *server) serviceWorker(e *core.RequestEvent) error {
+	data, err := staticFS.ReadFile("static/js/sw.js")
+	if err != nil {
+		return err
+	}
+	e.Response.Header().Set("Service-Worker-Allowed", "/")
+	return e.Blob(http.StatusOK, "application/javascript; charset=utf-8", data)
 }

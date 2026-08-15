@@ -5,6 +5,14 @@
 // that read Django's CSRF meta tag. The endpoints, the payloads and the
 // hole-syncing behaviour are unchanged — they are the same routes the Django
 // page called.
+//
+// Offline support: when the browser has no network connection, addShot stores
+// shots in localStorage under a per-round key and displays them optimistically
+// as "pending" in the UI. navigateTo updates local state only. undoShot can
+// remove the last pending shot. Queued shots are replayed in order by the
+// shared drain in golftrack.js — which runs on every page, so the queue is not
+// stranded if the golfer leaves this page — and this page reloads to show the
+// server state once its own queue is empty.
 function roundPlay(initData) {
   return {
     round: initData,
@@ -14,6 +22,76 @@ function roundPlay(initData) {
     error: null,
     editingShot: null,
     editClub: '',
+
+    // Offline state
+    offline: !navigator.onLine,
+    syncing: false,
+    queueKey: 'golftrack:offline:' + initData.id,
+    queue: [],
+
+    // --- Alpine lifecycle ---
+
+    init() {
+      var self = this;
+      window.addEventListener('online', function () {
+        self.offline = false;
+        self.syncQueue();
+      });
+      window.addEventListener('offline', function () {
+        self.offline = true;
+      });
+      this.loadQueue();
+      if (!this.offline && this.queue.length > 0) {
+        this.syncQueue();
+      }
+    },
+
+    // --- Offline queue ---
+
+    loadQueue() {
+      this.queue = window.gt.offlineQueue.read(this.queueKey);
+      for (var i = 0; i < this.queue.length; i++) {
+        if (this.queue[i].op === 'addShot') {
+          this._applyPendingShot(this.queue[i]);
+        }
+      }
+    },
+
+    saveQueue() {
+      window.gt.offlineQueue.write(this.queueKey, this.queue);
+    },
+
+    _applyPendingShot(op) {
+      var hole = this.holes.find(function (h) { return h.holeNumber === op.holeNumber; });
+      if (!hole) return;
+      if (hole.shots.find(function (s) { return s.id === op.tempId; })) return;
+      hole.shots = hole.shots.concat([{
+        id: op.tempId,
+        club: op.club,
+        shotNumber: hole.shots.length + 1,
+        pending: true,
+      }]);
+      hole.strokes = hole.shots.length;
+      this.holes = this.holes.slice();
+    },
+
+    // syncQueue defers the actual replay to the shared drain in golftrack.js,
+    // which also runs on pages that have no Alpine component; this page only
+    // needs to know when its own round is fully synced so it can reload.
+    async syncQueue() {
+      if (this.syncing || this.queue.length === 0) return;
+      this.syncing = true;
+      try {
+        await window.gt.offlineQueue.drain();
+        this.queue = window.gt.offlineQueue.read(this.queueKey);
+        if (this.queue.length === 0) {
+          // All offline shots synced — reload to get authoritative server state.
+          window.location.reload();
+        }
+      } finally {
+        this.syncing = false;
+      }
+    },
 
     // --- Computed ---
 
@@ -37,6 +115,13 @@ function roundPlay(initData) {
       return this.holes.reduce((s, h) => s + h.strokes, 0);
     },
 
+    get hasPendingOnCurrentHole() {
+      var hole = this.currentHole;
+      return this.queue.some(function (q) {
+        return q.op === 'addShot' && q.holeNumber === hole;
+      });
+    },
+
     // --- Navigation ---
 
     async prevHole() {
@@ -51,6 +136,13 @@ function roundPlay(initData) {
 
     async navigateTo(holeNumber) {
       if (this.loading) return;
+      this.editingShot = null;
+      if (this.offline) {
+        // Offline: update local state only; the server will not know the
+        // current hole changed until reconnection.
+        this.currentHole = holeNumber;
+        return;
+      }
       this.loading = true;
       this.error = null;
       try {
@@ -59,7 +151,6 @@ function roundPlay(initData) {
           { method: 'PATCH', body: JSON.stringify({ currentHole: holeNumber }) }
         );
         this.currentHole = data.currentHole;
-        this.editingShot = null;
       } catch (e) {
         this.error = e.message;
       } finally {
@@ -71,8 +162,18 @@ function roundPlay(initData) {
 
     async addShot(club) {
       if (this.loading) return;
-      this.loading = true;
       this.error = null;
+
+      if (this.offline) {
+        var tempId = 'tmp-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+        var op = { op: 'addShot', holeNumber: this.currentHole, club: club, tempId: tempId };
+        this.queue = this.queue.concat([op]);
+        this.saveQueue();
+        this._applyPendingShot(op);
+        return;
+      }
+
+      this.loading = true;
       try {
         const data = await window.gt.api(
           `/api/rounds/${this.round.id}/holes/${this.currentHole}/shots`,
@@ -88,8 +189,36 @@ function roundPlay(initData) {
 
     async undoShot() {
       if (this.loading) return;
-      this.loading = true;
       this.error = null;
+
+      if (this.offline) {
+        // Offline undo: remove the last pending shot on this hole.
+        var holeNumber = this.currentHole;
+        var reversed = this.queue.slice().reverse();
+        var lastPending = null;
+        for (var i = 0; i < reversed.length; i++) {
+          if (reversed[i].op === 'addShot' && reversed[i].holeNumber === holeNumber) {
+            lastPending = reversed[i];
+            break;
+          }
+        }
+        if (!lastPending) {
+          this.error = 'Go online to undo shots that were saved before you went offline';
+          return;
+        }
+        var tempId = lastPending.tempId;
+        this.queue = this.queue.filter(function (q) { return q !== lastPending; });
+        this.saveQueue();
+        var hole = this.holes.find(function (h) { return h.holeNumber === holeNumber; });
+        if (hole) {
+          hole.shots = hole.shots.filter(function (s) { return s.id !== tempId; });
+          hole.strokes = hole.shots.length;
+          this.holes = this.holes.slice();
+        }
+        return;
+      }
+
+      this.loading = true;
       try {
         const data = await window.gt.api(
           `/api/rounds/${this.round.id}/holes/${this.currentHole}/undo`,
