@@ -37,6 +37,27 @@
 
   function clearToken() {
     document.cookie = COOKIE + '=; Path=/; Max-Age=0; SameSite=Lax';
+    purgeOfflineData();
+  }
+
+  // The service worker caches authenticated, personalized HTML (including the
+  // round JSON embedded in the play page) and round-play.js queues pending
+  // shots in localStorage. Both must be purged on sign-out so a subsequent
+  // user on this device cannot see the previous golfer's cached data.
+  function purgeOfflineData() {
+    try {
+      for (var i = localStorage.length - 1; i >= 0; i--) {
+        var key = localStorage.key(i);
+        if (key && key.indexOf('golftrack:offline:') === 0) {
+          localStorage.removeItem(key);
+        }
+      }
+    } catch (e) {
+      // localStorage may be unavailable (private browsing); nothing to purge.
+    }
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({ type: 'clear-cache' });
+    }
   }
 
   // api is fetch with the session attached and the two error shapes unwrapped:

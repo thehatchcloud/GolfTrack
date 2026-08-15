@@ -48,6 +48,16 @@ self.addEventListener('activate', function (e) {
   self.clients.claim();
 });
 
+// Sign-out purges the cache: it holds authenticated, personalized HTML
+// (including the round JSON embedded in the play page), and leaving it in
+// place would let a subsequent signed-out or different user on this device
+// open a previous golfer's cached round while offline.
+self.addEventListener('message', function (e) {
+  if (e.data && e.data.type === 'clear-cache') {
+    e.waitUntil(caches.delete(CACHE));
+  }
+});
+
 self.addEventListener('fetch', function (e) {
   var req = e.request;
   var url = new URL(req.url);
