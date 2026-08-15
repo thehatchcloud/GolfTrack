@@ -60,6 +60,92 @@
     }
   }
 
+  // --- Offline queue --------------------------------------------------------
+  //
+  // Shots taken without a connection are queued in localStorage under
+  // `golftrack:offline:<roundId>`. Replaying them lives here rather than in the
+  // play page's Alpine component so a golfer who closed the app or walked back
+  // to the home or review page still drains the queue as soon as the connection
+  // returns — otherwise those shots would be lost the moment the round is
+  // completed and the server's completed-round guard starts rejecting them.
+  var QUEUE_PREFIX = 'golftrack:offline:';
+  var draining = null;
+
+  function readQueue(key) {
+    try {
+      var raw = localStorage.getItem(key);
+      var ops = raw ? JSON.parse(raw) : [];
+      return Array.isArray(ops) ? ops : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function writeQueue(key, ops) {
+    try {
+      if (ops && ops.length > 0) {
+        localStorage.setItem(key, JSON.stringify(ops));
+      } else {
+        localStorage.removeItem(key);
+      }
+    } catch (e) {
+      // localStorage may be unavailable (private browsing); nothing to persist.
+    }
+  }
+
+  function queueKeys() {
+    var keys = [];
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var key = localStorage.key(i);
+        if (key && key.indexOf(QUEUE_PREFIX) === 0) keys.push(key);
+      }
+    } catch (e) {
+      return [];
+    }
+    return keys;
+  }
+
+  // drainQueues replays every round's queued operations in order. Concurrent
+  // callers (the online event and the play page) share the one in-flight run so
+  // no operation is sent twice.
+  function drainQueues() {
+    if (draining) return draining;
+    var done = function () { draining = null; };
+    draining = runDrain().then(done, done);
+    return draining;
+  }
+
+  async function runDrain() {
+    try {
+      if (!navigator.onLine || !token()) return;
+      var keys = queueKeys();
+      for (var k = 0; k < keys.length; k++) {
+        var key = keys[k];
+        var roundId = key.slice(QUEUE_PREFIX.length);
+        // Re-read the queue on every step so operations the play page appends
+        // while the drain runs are picked up rather than overwritten.
+        for (;;) {
+          var ops = readQueue(key);
+          if (ops.length === 0) break;
+          var op = ops[0];
+          if (op && op.op === 'addShot') {
+            await api(
+              '/api/rounds/' + roundId + '/holes/' + op.holeNumber + '/shots',
+              { method: 'POST', body: JSON.stringify({ club: op.club }) }
+            );
+          }
+          var latest = readQueue(key);
+          if (latest.length === 0 || latest[0].tempId !== (op && op.tempId)) break;
+          writeQueue(key, latest.slice(1));
+        }
+      }
+    } catch (e) {
+      // Leave what is left in the queue; the next online event or page load
+      // retries it.
+    }
+  }
+
   // api is fetch with the session attached and the two error shapes unwrapped:
   // GolfTrack's own routes answer `{"error": …}`, PocketBase's generated
   // endpoints `{"message": …}` (API.md gap 5), and a page should not care which
@@ -126,7 +212,27 @@
     URL.revokeObjectURL(objectUrl);
   }
 
-  window.gt = { token: token, clearToken: clearToken, api: api, download: download, cookieName: COOKIE };
+  window.gt = {
+    token: token,
+    clearToken: clearToken,
+    api: api,
+    download: download,
+    cookieName: COOKIE,
+    offlineQueue: {
+      prefix: QUEUE_PREFIX,
+      read: readQueue,
+      write: writeQueue,
+      drain: drainQueues,
+    },
+  };
+
+  // Drain queued shots from every page, not just the play page: a golfer who
+  // reconnects on the home or review page must not be able to complete the
+  // round with shots still stranded in localStorage.
+  window.addEventListener('online', function () {
+    drainQueues();
+  });
+  drainQueues();
 })();
 
 // --- Alpine components -------------------------------------------------------

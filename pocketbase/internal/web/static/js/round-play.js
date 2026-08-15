@@ -9,8 +9,10 @@
 // Offline support: when the browser has no network connection, addShot stores
 // shots in localStorage under a per-round key and displays them optimistically
 // as "pending" in the UI. navigateTo updates local state only. undoShot can
-// remove the last pending shot. All queued shots are replayed in order when
-// the connection comes back, then the page reloads to show the server state.
+// remove the last pending shot. Queued shots are replayed in order by the
+// shared drain in golftrack.js — which runs on every page, so the queue is not
+// stranded if the golfer leaves this page — and this page reloads to show the
+// server state once its own queue is empty.
 function roundPlay(initData) {
   return {
     round: initData,
@@ -47,12 +49,7 @@ function roundPlay(initData) {
     // --- Offline queue ---
 
     loadQueue() {
-      try {
-        var raw = localStorage.getItem(this.queueKey);
-        this.queue = raw ? JSON.parse(raw) : [];
-      } catch (e) {
-        this.queue = [];
-      }
+      this.queue = window.gt.offlineQueue.read(this.queueKey);
       for (var i = 0; i < this.queue.length; i++) {
         if (this.queue[i].op === 'addShot') {
           this._applyPendingShot(this.queue[i]);
@@ -61,9 +58,7 @@ function roundPlay(initData) {
     },
 
     saveQueue() {
-      try {
-        localStorage.setItem(this.queueKey, JSON.stringify(this.queue));
-      } catch (e) {}
+      window.gt.offlineQueue.write(this.queueKey, this.queue);
     },
 
     _applyPendingShot(op) {
@@ -80,28 +75,19 @@ function roundPlay(initData) {
       this.holes = this.holes.slice();
     },
 
+    // syncQueue defers the actual replay to the shared drain in golftrack.js,
+    // which also runs on pages that have no Alpine component; this page only
+    // needs to know when its own round is fully synced so it can reload.
     async syncQueue() {
       if (this.syncing || this.queue.length === 0) return;
       this.syncing = true;
       try {
-        var ops = this.queue.slice();
-        for (var i = 0; i < ops.length; i++) {
-          var op = ops[i];
-          if (op.op === 'addShot') {
-            await window.gt.api(
-              `/api/rounds/${this.round.id}/holes/${op.holeNumber}/shots`,
-              { method: 'POST', body: JSON.stringify({ club: op.club }) }
-            );
-            this.queue = this.queue.filter(function (q) { return q !== op; });
-            this.saveQueue();
-          }
-        }
+        await window.gt.offlineQueue.drain();
+        this.queue = window.gt.offlineQueue.read(this.queueKey);
         if (this.queue.length === 0) {
           // All offline shots synced — reload to get authoritative server state.
           window.location.reload();
         }
-      } catch (e) {
-        // Will retry on the next online event or page load.
       } finally {
         this.syncing = false;
       }
