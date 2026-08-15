@@ -402,7 +402,7 @@ func TestOfflineBannerIsInBaseLayout(t *testing.T) {
 		Method:          http.MethodGet,
 		URL:             "/rounds/" + idPlayRound + "/play/",
 		ExpectedStatus:  200,
-		ExpectedContent: []string{"Offline", "sync when you reconnect", "navigator.onLine", "@online.window", "@offline.window"},
+		ExpectedContent: []string{"Offline", "sync when you reconnect", "window.gt.isOnline()", "@online.window", "@offline.window", "@gt-connectivity.window"},
 	})
 }
 

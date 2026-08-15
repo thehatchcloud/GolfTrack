@@ -146,6 +146,47 @@
     }
   }
 
+  // Shared connectivity state. `navigator.onLine` only reports whether the
+  // device has a network interface, so it stays true in a dead zone, behind a
+  // captive portal, or during a server outage — exactly when requests are
+  // failing. Every request below reports what it actually observed, and any
+  // change is broadcast as a `gt-connectivity` window event so the offline
+  // banner tracks reachability rather than the browser's guess.
+  var reachable = true;
+
+  function isOnline() {
+    return navigator.onLine && reachable;
+  }
+
+  function setReachable(value) {
+    if (reachable === value) return;
+    reachable = value;
+    window.dispatchEvent(
+      new CustomEvent('gt-connectivity', { detail: { online: isOnline() } })
+    );
+  }
+
+  // The browser regaining an interface is only a hint that the server may be
+  // reachable again; assume it is, and let the next failed request say
+  // otherwise.
+  window.addEventListener('online', function () {
+    setReachable(true);
+  });
+
+  // request wraps fetch so a transport failure (which fetch reports by
+  // rejecting, not by a status code) updates the shared connectivity state.
+  async function request(url, options) {
+    var res;
+    try {
+      res = await fetch(url, options);
+    } catch (e) {
+      setReachable(false);
+      throw e;
+    }
+    setReachable(true);
+    return res;
+  }
+
   // api is fetch with the session attached and the two error shapes unwrapped:
   // GolfTrack's own routes answer `{"error": …}`, PocketBase's generated
   // endpoints `{"message": …}` (API.md gap 5), and a page should not care which
@@ -159,7 +200,7 @@
     var current = token();
     if (current) headers['Authorization'] = current;
 
-    var res = await fetch(url, Object.assign({}, options, { headers: headers }));
+    var res = await request(url, Object.assign({}, options, { headers: headers }));
 
     // A 401 means the token expired or was revoked while the page was open.
     // Sending the player to sign in beats showing them a failure they cannot
@@ -195,7 +236,7 @@
     var headers = {};
     var current = token();
     if (current) headers['Authorization'] = current;
-    var res = await fetch(url, { headers: headers });
+    var res = await request(url, { headers: headers });
     if (!res.ok) {
       var data = null;
       try { data = await res.json(); } catch (e) { data = null; }
@@ -217,6 +258,7 @@
     clearToken: clearToken,
     api: api,
     download: download,
+    isOnline: isOnline,
     cookieName: COOKIE,
     offlineQueue: {
       prefix: QUEUE_PREFIX,
