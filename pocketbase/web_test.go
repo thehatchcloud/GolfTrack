@@ -336,7 +336,7 @@ func TestStaticAssetsAreServedFromTheBinary(t *testing.T) {
 		{"/static/css/app.css", []string{".bg-emerald-700"}},
 		{"/static/js/alpine.min.js", []string{"Alpine"}},
 		{"/static/js/pocketbase.umd.js", []string{"PocketBase"}},
-		{"/static/js/golftrack.js", []string{"window.gt", "timeZone || 'UTC'", "Intl.supportedValuesOf('timeZone')", "UTC (not set)", "America/New_York", "serviceWorker", "/sw.js"}},
+		{"/static/js/golftrack.js", []string{"window.gt", "timeZone || 'UTC'", "Intl.supportedValuesOf('timeZone')", "UTC (not set)", "America/New_York", "serviceWorker", "/sw.js", "cache-page"}},
 		{"/static/js/round-play.js", []string{"roundPlay", "golftrack:offline:", "syncQueue", "hasPendingOnCurrentHole", "pending: true"}},
 		{"/static/manifest.webmanifest", []string{"GolfTrack", "standalone"}},
 	} {
@@ -383,7 +383,7 @@ func TestServiceWorkerIsServed(t *testing.T) {
 		Method:          http.MethodGet,
 		URL:             "/sw.js",
 		ExpectedStatus:  200,
-		ExpectedContent: []string{"golftrack-v2", "PRECACHE", "/static/css/app.css", "navigate"},
+		ExpectedContent: []string{"golftrack-v2", "PRECACHE", "/static/css/app.css", "navigate", "cache-page"},
 		AfterTestFunc: func(t testing.TB, _ *tests.TestApp, res *http.Response) {
 			got := res.Header.Get("Service-Worker-Allowed")
 			if got != "/" {

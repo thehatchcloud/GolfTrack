@@ -55,8 +55,26 @@ self.addEventListener('activate', function (e) {
 // place would let a subsequent signed-out or different user on this device
 // open a previous golfer's cached round while offline.
 self.addEventListener('message', function (e) {
-  if (e.data && e.data.type === 'clear-cache') {
+  if (!e.data) return;
+
+  if (e.data.type === 'clear-cache') {
     e.waitUntil(caches.delete(CACHE));
+    return;
+  }
+
+  // The page that installed this worker was fetched before the worker
+  // existed, so the fetch handler never saw it and its HTML is not cached.
+  // golftrack.js asks for it explicitly once the worker is active, so the
+  // very first offline reload after a golfer's first visit still renders.
+  if (e.data.type === 'cache-page' && e.data.url) {
+    e.waitUntil(
+      caches.open(CACHE).then(function (c) {
+        return c.add(new Request(e.data.url, { credentials: 'same-origin' }));
+      }).catch(function () {
+        // Offline again already, or the page is no longer available; the
+        // fetch handler will cache it on the next successful navigation.
+      })
+    );
   }
 });
 

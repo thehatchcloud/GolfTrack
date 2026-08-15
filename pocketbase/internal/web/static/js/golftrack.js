@@ -566,10 +566,27 @@ function buildTimeZoneOptions(selectedTimeZone) {
 
 // Register the service worker so the app can cache static assets and serve
 // the round-play page when the golfer has no network connection.
+//
+// A page that installs the worker is fetched before the worker exists, so its
+// own HTML never passes through the fetch handler. Once the worker is active
+// the page hands its URL over to be cached, otherwise the first offline
+// reload after a golfer's first visit would find nothing to fall back to.
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function () {
-    navigator.serviceWorker.register('/sw.js').catch(function () {
-      // Fail silently — the page works without the service worker.
-    });
+    var uncontrolled = !navigator.serviceWorker.controller;
+    navigator.serviceWorker
+      .register('/sw.js')
+      .then(function () {
+        if (!uncontrolled) return null;
+        return navigator.serviceWorker.ready.then(function (registration) {
+          var worker = navigator.serviceWorker.controller || registration.active;
+          if (worker) {
+            worker.postMessage({ type: 'cache-page', url: window.location.href });
+          }
+        });
+      })
+      .catch(function () {
+        // Fail silently — the page works without the service worker.
+      });
   });
 }
