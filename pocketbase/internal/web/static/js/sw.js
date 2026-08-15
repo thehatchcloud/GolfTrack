@@ -9,7 +9,7 @@
 //   navigate  — network-first, fall back to the cached version of the page.
 //   /api/     — always network; the page JS queues mutations when offline.
 
-var CACHE = 'golftrack-v1';
+var CACHE = 'golftrack-v2';
 
 // Assets pre-loaded on install so the round-play page renders immediately
 // after the golfer's first online visit, even when signal disappears later.
