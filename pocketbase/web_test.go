@@ -383,7 +383,7 @@ func TestServiceWorkerIsServed(t *testing.T) {
 		Method:          http.MethodGet,
 		URL:             "/sw.js",
 		ExpectedStatus:  200,
-		ExpectedContent: []string{"golftrack-v1", "PRECACHE", "/static/css/app.css", "navigate"},
+		ExpectedContent: []string{"golftrack-v2", "PRECACHE", "/static/css/app.css", "navigate"},
 		AfterTestFunc: func(t testing.TB, _ *tests.TestApp, res *http.Response) {
 			got := res.Header.Get("Service-Worker-Allowed")
 			if got != "/" {

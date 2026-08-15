@@ -5,7 +5,9 @@
 // under /static/.
 //
 // Caching strategies:
-//   /static/  — cache-first; assets are fingerprinted so stale is fine.
+//   /static/  — stale-while-revalidate; the asset URLs are not fingerprinted,
+//               so every hit refreshes the cache in the background and the
+//               next load picks up a redeployed stylesheet or script.
 //   navigate  — network-first, fall back to the cached version of the page.
 //   /api/     — always network; the page JS queues mutations when offline.
 
@@ -68,16 +70,24 @@ self.addEventListener('fetch', function (e) {
   // API calls always go to the network; round-play.js handles failures.
   if (url.pathname.startsWith('/api/')) return;
 
-  // Static assets: serve from cache, populate cache on first fetch.
+  // Static assets: serve the cached copy for speed, but always revalidate in
+  // the background. The URLs carry no fingerprint, so without this a deploy
+  // that changes app.css or a script would leave existing clients on the old
+  // copy forever; refreshing the cache on every hit means the next load gets
+  // the new asset.
   if (url.pathname.startsWith('/static/') || url.pathname === '/sw.js') {
     e.respondWith(
       caches.match(req).then(function (cached) {
-        if (cached) return cached;
-        return fetch(req).then(function (res) {
-          var clone = res.clone();
-          caches.open(CACHE).then(function (c) { c.put(req, clone); });
+        var fetched = fetch(req).then(function (res) {
+          if (res && res.ok) {
+            var clone = res.clone();
+            caches.open(CACHE).then(function (c) { c.put(req, clone); });
+          }
           return res;
         });
+        if (!cached) return fetched;
+        e.waitUntil(fetched.catch(function () {}));
+        return cached;
       })
     );
     return;
