@@ -50,6 +50,7 @@ Everything lives under `pocketbase/`:
 | `internal/collections/` | Collection names/ids, field names, enum values |
 | `internal/apierr/` | The `{"error": …}` contract + the route wrapper |
 | `internal/authenv/` | Auth configuration, read from the environment |
+| `internal/backup/` | The backup setting (#172): model, validation, encrypted storage, `LITESTREAM_*` fallback, Litestream config rendering |
 | `internal/records/` | Record lookups the domain packages share |
 | `internal/hooks/` | Business logic — one package per aggregate (round lifecycle, shots, scoring, courses) |
 | `internal/web/` | The frontend — page routes, templates, embedded static assets, the auth cookie |

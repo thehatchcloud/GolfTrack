@@ -59,6 +59,7 @@ pocketbase/
 │   ├── collections/      # collection names/ids, field names, enum values
 │   ├── apierr/           # the {"error": …} contract + the route wrapper
 │   ├── authenv/          # the auth configuration, read from the environment
+│   ├── backup/           # the backup setting: model, encrypted storage, Litestream config
 │   ├── records/          # record lookups the domain packages share
 │   ├── hooks/
 │   │   ├── hooks.go      # Register() — the only place hooks are bound
@@ -542,6 +543,8 @@ that could drift from it.
 | `acl_test.go` | every rule, over HTTP, as anonymous / user / other user / admin / superuser |
 | `auth_test.go` | sign-in over the real OAuth path: record creation, the `ADMIN_EMAILS` sync, the `createData` guard, the password-login switch |
 | `internal/authenv/authenv_test.go` | the environment parsing, as plain unit tests |
+| `internal/backup/backup_test.go` | the backup setting: validation per destination type, credential encryption, page-over-environment precedence, and golden files for the rendered Litestream config (`-update` rewrites them) |
+| `internal/backup/litestream_schema_test.go` | every rendered Litestream config parses strictly with Litestream's own YAML library, so a misspelt key or a mis-quoted password fails here instead of being ignored at runtime |
 | `schema_test.go` | unique indexes, field bounds and enums, cascade and restrict deletes, the `role` default |
 | `domain_test.go` | the business rules — snapshotting, the stroke cache, renumbering, totals, cancellation |
 | `routes_test.go` | the custom routes end to end, including their 401s, 404s and 409s |
